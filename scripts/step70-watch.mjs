@@ -17,7 +17,7 @@
 // decoration.** So this script will not click unless the card says `Ringing` and carries the number
 // it was told to expect, and it says out loud what it is skipping and why.
 import { argv, exit } from 'node:process';
-import { gateReasons, skipLine, digits, isCorrectionFor } from './step70-gate.mjs';
+import { gateReasons, skipLine, digits, correctionInWatch } from './step70-gate.mjs';
 import {
   refusalsFor, refusalText, readLock, pidAlive, countCdpClients,
   acquireLock, releaseLock, clearStaleLock, LOCK_PATH, CDP_PORT,
@@ -206,8 +206,8 @@ console.log(`${now()}  MATCHED — inbound ring accepted by the gate` +
 console.log(`--- holding ${holdSeconds}s, reading the card and tailing the phone's [calls] log ---`);
 let lastCardKey = null;
 let seenPhoneLines = baseline.length;
-/** The defect 45 option 4 line for this episode, if the phone logged one. See requireCorrection. */
-let correctionLine = null;
+/** Every phone [calls] line since the baseline — what correctionInWatch reads. */
+let sinceStart = [];
 while ((Date.now() - ringStart) / 1000 < holdSeconds) {
   const elapsed = ((Date.now() - ringStart) / 1000).toFixed(1).padStart(5);
   const s = await evaluate(READ);
@@ -225,7 +225,7 @@ while ((Date.now() - ringStart) / 1000 < holdSeconds) {
   if (lines && lines.length > seenPhoneLines) {
     for (const line of lines.slice(seenPhoneLines)) {
       console.log(`  +${elapsed}s  PHONE ${line.replace(/^\S+\s+I \[calls\] /, '')}`);
-      if (isCorrectionFor(line, wantDigits)) correctionLine = line;
+      sinceStart.push(line);
     }
     seenPhoneLines = lines.length;
   }
@@ -239,15 +239,21 @@ while ((Date.now() - ringStart) / 1000 < holdSeconds) {
 // is the destructive half and it is not worth spending on a build whose visible change did not
 // happen — and "the line was missing" is a finding, where a reject that went ahead anyway would
 // leave nobody able to tell whether option 4 shipped.
+// Lines logged before the hold (while waiting for the card) belong to this watch too: the episode's
+// own `Call cN ringing` line is usually among them.
+const watched = await phoneCallLines();
+if (watched) sinceStart = watched.slice(baseline.length);
+const correction = correctionInWatch(sinceStart);
+const correctionLine = correction.line;
 if (requireCorrection && !correctionLine) {
-  console.log(`${now()}  NOT CLICKING — no 'card corrected in place' line for …${wantDigits} appeared during the hold.`);
+  console.log(`${now()}  NOT CLICKING — no 'card corrected in place' line for the call under test: ${correction.why}.`);
   console.log(`${now()}  Option 4 did not fire on this ring. The reject is withheld deliberately;`);
   console.log(`${now()}  the call is still live and untouched. Investigate before spending another.`);
   ws.close();
   exit(6);
 }
 if (correctionLine) {
-  console.log(`${now()}  option 4 confirmed live on this ring:`);
+  console.log(`${now()}  option 4 confirmed live on this ring (${correction.why}):`);
   console.log(`    ${correctionLine.trim()}`);
 }
 

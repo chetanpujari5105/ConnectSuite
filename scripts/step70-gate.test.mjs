@@ -7,7 +7,7 @@
  * watcher had no gate and hung up the user's own outgoing call; the point of pulling the predicate
  * out is that its behaviour can be inspected without a phone ringing.
  */
-import { gateReasons, skipLine, isCorrectionFor } from './step70-gate.mjs';
+import { gateReasons, skipLine, correctionInWatch } from './step70-gate.mjs';
 import assert from 'node:assert/strict';
 
 const WANT = '8800000004';
@@ -147,41 +147,50 @@ assert.equal(
   'a waived clause must be reported, not merely skipped',
 );
 
-// --- isCorrectionFor: --require-correction must be about THIS call ---------------------------
+// --- correctionInWatch: --require-correction must be about THIS call --------------------------
 //
-// Added 2026-08-31 before arming. The clause used to match any `card corrected in place` line, so
-// with --allow-blank-number a correction belonging to a different inbound call would have
-// authorised the reject. The fixture named for that hole is "a correction for a DIFFERENT caller".
+// Added 2026-08-31 as isCorrectionFor, which read the number out of the line. 559f1da removed the
+// number from the phone's log, which made that matcher refuse every correction; it is replaced by a
+// match on call id against the one inbound episode of the watch. The fixture named for the original
+// hole is still here: "a correction for a DIFFERENT call". Both line formats are fixtures, because
+// the installed APK writes the old one until the next install.
 
-const CALLER = '9800000001';                       // the caller under test
-const OTHER  = '8800000004';                       // a different inbound caller
-const real = (n, name) => `2026-08-31T13:44:02.118+05:30 I [calls] Call c14 card corrected in place: ` +
-  `number ${n}${name ? ` (${name})` : ', no contact name'} arrived 112ms into the RINGING — ` +
-  `1 of 1 episodes corrected since start`;
+const T = '2026-10-06T01:00:00.000+05:30 I [calls] ';
+const OLD = {
+  began: (id) => `${T}Call ${id} ringing from +919800000001 (Contact A)`,
+  corrected: (id) => `${T}Call ${id} card corrected in place: number +919800000001 (Contact A) arrived 112ms into the RINGING — 1 of 1 episodes corrected since start`,
+};
+const NEW = {
+  began: (id) => `${T}Call ${id} ringing: number withheld by the platform — 0 of 1 episodes with a number since start`,
+  corrected: (id) => `${T}Call ${id} card corrected in place: number arrived 112ms into the ringing, contact name found — 1 of 1 episodes corrected since start`,
+};
 
 const correctionCases = [
-  { name: 'a correction for the caller under test',            line: real('+91' + CALLER, 'Chetan'), want: CALLER, expect: true },
-  { name: 'same, national form and no contact name',           line: real(CALLER, null),             want: CALLER, expect: true },
-  { name: 'a correction for a DIFFERENT caller',               line: real('+91' + OTHER, 'Contact D'), want: CALLER, expect: false },
-  { name: 'a line that is not a correction at all',            line: '2026-08-31T13:44:02.118+05:30 I [calls] Call c14 ringing number withheld by the platform — 1 of 14', want: CALLER, expect: false },
-  { name: 'no expected number given',                          line: real('+91' + CALLER, 'Chetan'), want: '',     expect: false },
-  { name: 'format moved — fails CLOSED, not open',             line: '2026-08-31T13:44:02.118+05:30 I [calls] Call c14 card corrected in place, number=+919800000001', want: CALLER, expect: false },
+  { name: 'new format: the episode of this watch, corrected',      lines: [NEW.began('c14'), NEW.corrected('c14')], expect: 'c14' },
+  { name: 'old format (installed APK): same',                      lines: [OLD.began('c14'), OLD.corrected('c14')], expect: 'c14' },
+  { name: 'a correction for a DIFFERENT call',                     lines: [NEW.began('c14'), NEW.corrected('c13')], expect: null },
+  { name: 'two inbound episodes in the watch — cannot tie it',     lines: [NEW.began('c14'), NEW.began('c15'), NEW.corrected('c14')], expect: null },
+  { name: 'no episode began in the watch',                         lines: [NEW.corrected('c14')], expect: null },
+  { name: 'the episode began, nothing corrected it',               lines: [NEW.began('c14'), `${T}Call c14 ended missed after 9000ms`], expect: null },
+  { name: 'a re-sent ringing line is one episode, not two',        lines: [NEW.began('c14'), NEW.began('c14'), NEW.corrected('c14')], expect: 'c14' },
+  { name: '"into the ringing" inside a correction is not a begin', lines: [NEW.corrected('c14')], expect: null },
+  { name: 'format moved — fails CLOSED, not open',                 lines: [NEW.began('c14'), `${T}Call c14 card was corrected (in place)`], expect: null },
 ];
 
-console.log('\n--- isCorrectionFor (--require-correction is about THIS call) ---\n');
+console.log('\n--- correctionInWatch (--require-correction is about THIS call) ---\n');
 for (const c of correctionCases) {
-  const got = isCorrectionFor(c.line, c.want);
-  const mark = got === c.expect ? 'ok  ' : 'FAIL';
-  if (got !== c.expect) bad += 1;
-  console.log(`${mark} ${String(got).padEnd(5)} ${c.name}`);
+  const got = correctionInWatch(c.lines);
+  const ok = (got.line === null ? null : got.id) === c.expect;
+  if (!ok) bad += 1;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${String(got.line === null ? null : got.id).padEnd(5)} ${c.name} — ${got.why}`);
 }
 
-// The control that the timestamp and the counters cannot supply the digits by coincidence: the
-// same line, with the number replaced, must not match on the rest of its digits.
-assert.equal(
-  isCorrectionFor(real('+91' + OTHER, 'Contact D'), OTHER), true,
-  'sanity: the OTHER caller\'s own correction must match for OTHER — otherwise the negative above proves nothing',
-);
+// The control: the line the positive case accepts is the correction line, not the begin line.
+assert.match(correctionInWatch([NEW.began('c14'), NEW.corrected('c14')]).line, /card corrected in place/);
+// And no reason this function prints carries a number, whichever format it read.
+for (const c of correctionCases) {
+  assert.ok(!/\d{6,}/.test(correctionInWatch(c.lines).why), `a reason carried a number: ${c.name}`);
+}
 
 console.log();
 console.log(bad === 0 ? 'all gate cases behave as written' : `${bad} CASE(S) WRONG`);

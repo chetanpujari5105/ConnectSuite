@@ -80,26 +80,53 @@ export function skipLine(card, reasons) {
 }
 
 /**
- * Does this phone `[calls]` log line record defect 45's option 4 firing **for the call under
- * test**?
+ * `--require-correction`: the defect-45 correction line for **the call under test**, or nothing.
  *
- * `--require-correction` originally matched any line containing `card corrected in place`, with no
- * check that the corrected number was the expected one. Paired with `--allow-blank-number` — which
- * this build needs, because every inbound card starts blank — that left a real hole: a blank card
- * from a *different* inbound caller, plus a correction published for that other call, satisfied
- * both gates and authorised the click. Narrow, and exactly the shape of the accident the gate
- * exists for: a reading that was true about something, used to authorise an action against
- * something else.
+ * History, because both earlier forms are the reason for this one's shape:
  *
- * It reads the number out of the line rather than scanning the whole line for the digits, so a
- * timestamp or a counter cannot supply them by coincidence. **It fails closed**: if the log format
- * moves, the regex stops matching, the correction is treated as absent, and the watcher withholds
- * the reject and says so — which is the safe direction for the half of the run that cannot be
- * undone.
+ * 1. It first matched any `card corrected in place` line. Paired with `--allow-blank-number` — which a
+ *    defect-45 build needs, because every inbound card starts blank — a correction published for a
+ *    *different* inbound call authorised the click.
+ * 2. It then read the number out of the line (`card corrected in place: number (\S+)`) and compared
+ *    digits. **559f1da took the number out of the phone's log** (no caller on disk, `docs/protocol.md`
+ *    → Calls), so the line now reads `…in place: number arrived 112ms into the ringing…`, the capture
+ *    was the word `arrived`, and no correction could ever match: `--require-correction` withheld every
+ *    reject. Closed in the safe direction, and useless.
+ *
+ * Now it ties a correction to a call by **call id**, which is structured and carries nothing about the
+ * caller: the correction must name the id of the **one** inbound episode (`Call cN ringing`) that
+ * began in the lines this watch has read. Zero episodes, or two (call waiting, a second caller), and
+ * there is no correction — the watcher cannot say which call the card is, so it does not guess. The
+ * number check stays where it belongs, on the card on the Mac's screen (`gateReasons`), and is
+ * re-run immediately before the click.
+ *
+ * Both line formats carry the id in the same place — the installed APK's `Call c3 ringing from …`
+ * and `Call c14 card corrected in place: number +…`, and 559f1da's `Call c3 ringing: number present…`
+ * and `Call c14 card corrected in place: number arrived…` — so it reads either without reading a
+ * number from either. **It still fails closed**: if the format moves and nothing matches, the
+ * correction is absent and the reject is withheld, with the reason printed.
+ *
+ * @param {string[]} lines the phone's `[calls]` lines since the watch started
+ * @returns {{ line: string | null, id: string | null, why: string }}
  */
-export function isCorrectionFor(line, wantDigits) {
-  if (!line || !wantDigits) return false;
-  const m = /card corrected in place: number (\S+)/.exec(line);
-  if (!m) return false;
-  return digits(m[1]).includes(digits(wantDigits));
+export function correctionInWatch(lines) {
+  const begun = [];
+  const corrections = [];
+  for (const line of lines ?? []) {
+    const b = /\bCall (c\d+) ringing\b/.exec(line);
+    if (b && !begun.includes(b[1])) begun.push(b[1]);
+    const c = /\bCall (c\d+) card corrected in place\b/.exec(line);
+    if (c) corrections.push({ id: c[1], line });
+  }
+  if (begun.length === 0) return { line: null, id: null, why: 'no inbound episode began in the lines this watch read' };
+  if (begun.length > 1) {
+    return { line: null, id: null, why: `${begun.length} inbound episodes began (${begun.join(', ')}); a correction cannot be tied to the card` };
+  }
+  const id = begun[0];
+  const mine = corrections.filter((c) => c.id === id);
+  if (mine.length === 0) {
+    const others = corrections.map((c) => c.id);
+    return { line: null, id, why: `no correction for ${id}${others.length ? ` (only for ${others.join(', ')})` : ''}` };
+  }
+  return { line: mine[mine.length - 1].line, id, why: `correction for ${id}, the one inbound episode of this watch` };
 }
