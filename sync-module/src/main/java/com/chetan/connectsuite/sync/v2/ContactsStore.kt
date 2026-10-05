@@ -329,7 +329,7 @@ object ContactsStore {
             context.contentResolver
                 .query(uri, projection, selection, selectionArgs, sortOrder)
                 ?.use(body)
-        }.onFailure { LinkLog.w("contacts", "Query on $uri failed: ${it.message}") }
+        }.onFailure { LinkLog.w("contacts", ProviderLog.queryFailed(uri.toString(), it)) }
     }
 
     private fun Cursor.getLongOrNull(index: Int): Long? =

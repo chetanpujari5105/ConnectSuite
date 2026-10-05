@@ -533,7 +533,7 @@ object SmsStore {
             context.contentResolver
                 .query(uri, projection, selection, selectionArgs, sortOrder)
                 ?.use(body)
-        }.onFailure { LinkLog.w("sms", "Query on $uri failed: ${it.message}") }
+        }.onFailure { LinkLog.w("sms", ProviderLog.queryFailed(uri.toString(), it)) }
     }
 
     /**
