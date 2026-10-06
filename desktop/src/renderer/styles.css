@@ -2133,6 +2133,10 @@ img#qr {
    */
   padding: var(--space-4) var(--space-5);
   min-height: 70px;
+  /* The list is a flex column, and an explicit min-height replaces the flex item's automatic one —
+     so a row whose app name wraps to two lines was squeezed back to 70px and its message line ran
+     8px into the next row (audit U1 harness, 2026-10-06, control-versus-text). Rows never shrink. */
+  flex-shrink: 0;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
   background: transparent;

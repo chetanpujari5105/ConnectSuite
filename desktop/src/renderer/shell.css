@@ -447,6 +447,29 @@ body {
 
 .nav-row svg { flex: none; color: var(--text-body); transition: color var(--dur-state) var(--ease); }
 
+/*
+ * U2 (audit 2026-10-06): at short window heights the twelve rows did not fit their scroll port, so
+ * the last row (Settings) sat half-clipped against the account footer with nothing saying the list
+ * scrolls — 502 px of rows in a 468 px port at the minimum 700 px window, 435 px at View → Zoom In
+ * on an 800 px window. 30 px rows (still above the 24 px minimum target) bring the rows to 430 px, so
+ * both fit (and 28 px below 680 px of viewport, for View → Zoom In). The pill reads each row's live
+ * `offsetTop`, so only its height has to follow. Below about 600 px of viewport the port still
+ * scrolls, as a native scroll port.
+ */
+@media (max-height: 740px) {
+  .nav-row,
+  .nav-pill { height: 30px; }
+  /* styles.css's base `button` floor (32px) would otherwise hold the row at 32 whatever its height. */
+  .nav-row { min-height: 0; }
+}
+/* View → Zoom In on an 800 px window leaves a 666 px viewport and a 435 px port: 28 px rows (406 px). */
+@media (max-height: 680px) {
+  .nav-row,
+  .nav-pill { height: 28px; }
+  /* styles.css's base `button` floor (32px) would otherwise hold the row at 32 whatever its height. */
+  .nav-row { min-height: 0; }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .nav-row:hover { color: var(--text-primary); background: var(--nav-hover); border-color: transparent; }
   .nav-row:hover svg { color: var(--text-primary); }
@@ -1740,9 +1763,14 @@ body {
 
 .setting-row {
   display: flex;
+  /* U1 (audit 2026-10-06): the row wraps. Before, the controls were `flex: none` and the text had
+     `min-width: 0`, so a narrow pane — the minimum 1100×700 window, or View → Zoom In — squeezed the
+     label to one word per line while Connect / Disconnect / Retry now ran out of the card and over
+     the next one. Now the label keeps a readable floor and the controls take their own line. */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-9);
+  gap: var(--space-3) var(--space-9);
   /* 14px 4px, the design's own. */
   padding: var(--space-6) var(--space-1);
   border-top: 1px solid rgba(var(--overlay-rgb), 0.06);
@@ -1751,12 +1779,18 @@ body {
 /* The design's `.cs-row` hover, which every other list in the app has and this one did not. */
 .setting-row:hover { background: rgba(var(--overlay-rgb), 0.02); }
 
-.setting-row-text { min-width: 0; }
+.setting-row-text { flex: 1 1 240px; min-width: min(240px, 100%); }
 .setting-label { display: block; font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
 .setting-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--text-body); line-height: 1.5; }
-.setting-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
+/* Never wider than the row: a control group that cannot fit beside the label wraps below it, and its
+   own buttons wrap among themselves rather than leaving the card. */
+.setting-control { flex: 0 1 auto; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+/* The Connection pane hands its buttons and address fields over in a generic `.row` (styles.css),
+   which does not wrap; inside a setting's control slot it must, or the group runs out of the card. */
+.setting-control > .row { flex-wrap: wrap; max-width: 100%; }
+.setting-control > .row > input { min-width: 0; flex: 1 1 160px; }
 /* More than one button in a row's control slot — File transfer's Choose… / Use default / Reveal. */
-.setting-actions { display: flex; align-items: center; gap: var(--space-3); }
+.setting-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .setting-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-body); }
 
 /* A path is read, not scanned, so it wraps rather than truncating — the whole point of showing it

@@ -1,0 +1,14 @@
+===== ui-before
+dark-1100x700          control=True panes=13 textOverlaps=4 {'mirror': 1, 'notifications': 1, 'settings': 2} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=502/468 settingsRowHit=False
+light-1100x700         control=True panes=13 textOverlaps=4 {'mirror': 1, 'notifications': 1, 'settings': 2} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=502/468 settingsRowHit=False
+dark-1280x800          control=True panes=13 textOverlaps=2 {'mirror': 1, 'notifications': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=568/568 settingsRowHit=True
+light-1280x800         control=True panes=13 textOverlaps=2 {'mirror': 1, 'notifications': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=568/568 settingsRowHit=True
+dark-1280x800-z1.2     control=True panes=13 textOverlaps=4 {'mirror': 1, 'notifications': 1, 'settings': 2} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=502/435 settingsRowHit=False
+light-1280x800-z1.2    control=True panes=13 textOverlaps=4 {'mirror': 1, 'notifications': 1, 'settings': 2} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=502/435 settingsRowHit=False
+===== ui-harness
+dark-1100x700          control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=468/468 settingsRowHit=True
+light-1100x700         control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=468/468 settingsRowHit=True
+dark-1280x800          control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=568/568 settingsRowHit=True
+light-1280x800         control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=568/568 settingsRowHit=True
+dark-1280x800-z1.2     control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=435/435 settingsRowHit=True
+light-1280x800-z1.2    control=True panes=13 textOverlaps=1 {'mirror': 1} ctrlOverlaps=0 clipped=0 offViewport=0 unnamed=0 docOverflow=0 errors=0 | nav sh/ch=435/435 settingsRowHit=True

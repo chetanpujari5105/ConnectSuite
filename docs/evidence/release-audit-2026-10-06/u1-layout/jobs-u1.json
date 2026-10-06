@@ -1,0 +1,6 @@
+[{"label":"dark-1100x700","mode":"populated","theme":"dark","width":1100,"height":700},
+ {"label":"light-1100x700","mode":"populated","theme":"light","width":1100,"height":700},
+ {"label":"dark-1280x800","mode":"populated","theme":"dark","width":1280,"height":800},
+ {"label":"light-1280x800","mode":"populated","theme":"light","width":1280,"height":800},
+ {"label":"dark-1280x800-z1.2","mode":"populated","theme":"dark","width":1280,"height":800,"zoom":1.2},
+ {"label":"light-1280x800-z1.2","mode":"populated","theme":"light","width":1280,"height":800,"zoom":1.2}]
