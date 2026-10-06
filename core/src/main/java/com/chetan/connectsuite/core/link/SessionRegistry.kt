@@ -10,19 +10,19 @@ import java.util.concurrent.ConcurrentHashMap
  * them to a specific authenticated control session — and revoking it when that session dies is
  * what stops a stale Mac from holding a video socket open forever.
  */
-class SessionRegistry {
+class SessionRegistry<S : Any> {
 
     private val random = SecureRandom()
-    private val sessions = ConcurrentHashMap<String, ControlSession>()
+    private val sessions = ConcurrentHashMap<String, S>()
 
-    fun issue(session: ControlSession): String {
+    fun issue(session: S): String {
         val bytes = ByteArray(32).also(random::nextBytes)
         val token = bytes.joinToString("") { "%02x".format(it) }
         sessions[token] = session
         return token
     }
 
-    fun resolve(token: String): ControlSession? = sessions[token]
+    fun resolve(token: String): S? = sessions[token]
 
     fun revoke(token: String?) {
         if (token != null) sessions.remove(token)

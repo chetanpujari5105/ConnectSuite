@@ -166,7 +166,7 @@ class LinkServer(
         (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     val identity: DeviceIdentity = DeviceIdentity.get(appContext)
     val trustStore = TrustStore(appContext)
-    val sessions = SessionRegistry()
+    val sessions = SessionRegistry<ControlSession>()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handlers = ConcurrentHashMap<String, MessageHandler>()
@@ -572,7 +572,7 @@ class LinkServer(
                 // unauthorised video socket — a sentence about the wrong feature.
                 var cameraClaim = false
                 try {
-                    LinkTls.handshake(socket)
+                    val channelPeer = LinkTls.handshake(socket)
                     socket.tcpNoDelay = true
                     socket.soTimeout = Link.TOKEN_GRACE_MS.toInt()
                     val input = BufferedInputStream(socket.getInputStream())
@@ -582,8 +582,12 @@ class LinkServer(
                     cameraClaim = frameText.trim().contains(' ')
                     val claim = SideChannelClaim.parse(frameText)
                         ?: throw IOException("malformed channel claim")
-                    val session = sessions.resolve(claim.token)
-                        ?: throw IOException("unknown session token")
+                    // S2b: the token must belong to a live session **of this Mac** — a token is bound to its
+                    // session's peer, so another trusted Mac holding it authorises nothing.
+                    val session = when (val verdict = SideChannelAuth.authorize(claim.token, channelPeer, sessions::resolve) { it.peerFingerprint }) {
+                        is SideChannelAuth.Verdict.Authorized -> verdict.session
+                        is SideChannelAuth.Verdict.Refused -> throw IOException(verdict.reason)
+                    }
                     socket.soTimeout = 0
 
                     if (claim is SideChannelClaim.Webcam) {
