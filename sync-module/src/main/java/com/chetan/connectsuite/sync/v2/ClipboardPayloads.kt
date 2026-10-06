@@ -30,6 +30,27 @@ object ClipboardPayloads {
     const val SOURCE_MAC = "mac"
 
     /**
+     * `clip.push` → `origin` (S7, defect 185): how the text reached this phone's sender code. The Mac
+     * applies only [ORIGIN_CLIPBOARD] on arrival and **offers** everything else, including an absent
+     * field. Set by [ClipRoute], never read from an intent.
+     */
+    const val ORIGIN_CLIPBOARD = "clipboard"
+    const val ORIGIN_SELECTION = "selection"
+
+    /**
+     * The two code paths that build a `clip.push`, and the `origin` each one stamps. An enum rather than
+     * a string so the origin is a property of the **route**, not a value a caller passes — the exported
+     * selection activity cannot reach [FOCUS] by supplying anything.
+     */
+    enum class ClipRoute(val logName: String, val origin: String) {
+        /** `MainActivity` gained focus and this phone read its own clipboard — the documented sync. */
+        FOCUS("focus", ORIGIN_CLIPBOARD),
+
+        /** Another app handed text to `SendSelectionActivity` (`PROCESS_TEXT`, or `SEND` of a text type). */
+        SELECTION("selection", ORIGIN_SELECTION),
+    }
+
+    /**
      * 64 KB of UTF-8, and an entry over it is **refused, never truncated**.
      *
      * A silently truncated clipboard entry is a corrupt paste — the same *looks complete and is
@@ -65,11 +86,13 @@ object ClipboardPayloads {
         source: String,
         packageName: String? = null,
         appName: String? = null,
+        origin: String? = null,
     ): JsonObject = buildJsonObject {
         put("kind", kind)
         if (kind == KIND_TEXT && text != null) put("text", text)
         put("atMs", atMs)
         put("source", source)
+        if (origin != null) put("origin", origin)
         if (packageName != null) {
             put("package", packageName)
             put("appName", appName ?: packageName)

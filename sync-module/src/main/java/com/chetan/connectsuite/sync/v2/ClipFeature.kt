@@ -271,7 +271,7 @@ object ClipFeature {
             ClipEcho.Decision.Send -> Unit
         }
 
-        deliver(server, text, clip.packageName, clip.appName, "focus")
+        deliver(server, text, clip.packageName, clip.appName, ClipboardPayloads.ClipRoute.FOCUS)
     }
 
     /**
@@ -287,9 +287,11 @@ object ClipFeature {
         text: String,
         packageName: String?,
         appName: String?,
-        route: String,
+        route: ClipboardPayloads.ClipRoute,
     ) {
         val now = System.currentTimeMillis()
+        // S7: the origin is the route's, so the Mac can apply the phone's own clipboard and only *offer*
+        // what another app handed over. Nothing from the intent reaches this value.
         val payload = ClipboardPayloads.entry(
             kind = ClipboardPayloads.KIND_TEXT,
             text = text,
@@ -297,6 +299,7 @@ object ClipFeature {
             source = ClipboardPayloads.SOURCE_PHONE,
             packageName = packageName,
             appName = appName,
+            origin = route.origin,
         )
         history.add(
             ClipboardPayloads.History.Item(
@@ -323,7 +326,7 @@ object ClipFeature {
         // log must name the one that did.
         LinkLog.i(
             "clip",
-            "clip.push → Mac via $route: ${ClipboardPayloads.byteLength(text)} bytes from " +
+            "clip.push → Mac via ${route.logName} (origin ${route.origin}): ${ClipboardPayloads.byteLength(text)} bytes from " +
                 "${appName ?: "an unnamed app"} — ${tally()}",
         )
     }
@@ -362,7 +365,7 @@ object ClipFeature {
             // fallback is counted rather than a raw id being interpolated somewhere that never asks.
             // Defects 28 and 33.
             val label = fromPackage?.let { AppLabels.of(context, it) }
-            deliver(server, text.trim(), fromPackage, label, "selection")
+            deliver(server, text.trim(), fromPackage, label, ClipboardPayloads.ClipRoute.SELECTION)
         } else {
             LinkLog.i("clip", "selection not sent: ${outcome.javaClass.simpleName} — ${tally()}")
         }

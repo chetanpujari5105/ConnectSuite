@@ -69,7 +69,8 @@ object SelectionSend {
      * fault: a phone in a pocket away from its Mac is the *ordinary* case, not a broken one.
      */
     fun message(outcome: Outcome): String = when (outcome) {
-        is Outcome.Sent -> "Sent to your Mac"
+        // S7: the Mac offers a selection rather than applying it, so the toast says where the step is.
+        is Outcome.Sent -> "Sent to your Mac — choose Copy there"
         Outcome.NoLink -> "Your Mac isn’t connected — nothing was sent"
         Outcome.Empty -> "Nothing was selected"
         Outcome.TooLarge -> "That selection is too long to send"
