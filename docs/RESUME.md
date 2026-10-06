@@ -1,3 +1,42 @@
+# RELEASE PHASE 1 — 2026-10-06: S2, S6, S3, U1 fixed in source and committed; S1 drafted; NOTHING installed or relaunched
+
+**Read this first.** The canonical tracker is now `docs/release-tracker.md`; the audit is
+`docs/release-audit-2026-10-06.md`. **Sidekick is not ready to ship** — no signed build, S1 open, and
+nothing below is on the phone or in the running Mac app.
+
+1. **Built and proven (tests, mutations, isolated runs — no hardware):**
+   - **S2 (defect 178):** every Mac bulk and mirror-video socket is pinned to the session's phone before
+     a byte is written (`desktop/src/main/pinnedTls.ts`). Loopback TLS: a wrong peer, no session, or a
+     session ending mid-handshake → **0 application bytes** on push, pull, share pull and video (was
+     68–107). 21 tests; check disabled → 12 red, re-read removed → 4 red.
+   - **S6 (179):** notification tags log as per-process ordinals (HMAC-keyed table, capped, never
+     persisted) on both sides. The audit's FNV attack is a test, red against the old code on both sides.
+   - **S3 (180):** windows may show only the three app pages (`windowGuard.ts`, exact resolved paths);
+     `window.open`/`<webview>` denied; drops refused outside zones (`dropGuard.ts`); `sandbox: true`
+     explicit. Isolated Electron with the real preload: unguarded, an untrusted page reached 166 bridge
+     methods; guarded, it never loaded. **No real OS-level drag was done.**
+   - **U1/U2 (181):** Settings rows wrap, the nav compacts on short windows, notification rows never
+     shrink. Harness with a new control-versus-text check: Settings 2→0 / 5→0 at 1100×700 and 1.2×, both
+     themes. **Synthetic only.**
+   - **Docs:** defect 100 closed (not a code defect, its own 2026-09-10 reading); D4 closed (the
+     2026-09-19 package carries the icon, hash-matched); the FNV claim corrected; 182–189 registered.
+   - **Fresh:** Mac **1,812/0** (both typechecks clean); phone **1,370/0** (`--rerun-tasks`, results
+     ≤ 9 min old); Swift **140/0** via `node run-tests.mjs` (a bare `swift test` cannot find Testing
+     under the CLT, as its README says); every guard rc 0; fixture suites green.
+2. **Committed** (local, not pushed): `6dca964` (S2), `4161e70` (S6), `fc69776` (S3), `7d0d557` (U1),
+   `93a16d9` (tracker, audit, register, proposals), plus the commit carrying this entry.
+3. **Readable, not built:** `docs/pairing-v2-proposal.md` (S1 draft — not in `docs/protocol.md`),
+   `docs/phase-2-hardening-proposals.md` (S4, S5, S7, integrity inventory).
+4. **Needs your decision or hands:** approve the S1 draft (old peers will refuse to pair, never fall
+   back); S7 offer-vs-apply; ML Kit (capture F9, then disclose or replace); publisher name, contact and
+   privacy policy; the dependency audit (OSV offline recommended — a new tool to install); plan F step
+   by step (F2 runs the irreversible Activity rewrite); signing and enrollment.
+5. **Would do next, on approval:** S1 + S2b per the draft, contract first.
+6. **Left changed on your devices:** nothing. No phone or ADB; Sidekick not launched or relaunched;
+   `desktop/dist` not rebuilt (all builds were scratch copies); no profile read. Your uncommitted edits
+   (`PRODUCT.md`, this file's body, `docs/testing.md`, `camera-*.md`, `SidekickCamera/README.md`,
+   `skills-lock.json`) and untracked files are untouched.
+
 # OVERNIGHT 2026-10-05 → 06 (unsupervised): 14 commits, tests and a synthetic harness only — NOT release-ready, nothing installed or relaunched
 
 **Read this first.** Full report: `docs/overnight-2026-10-06.md`. Feature matrix and release blockers:
