@@ -141,6 +141,7 @@ import {
   mergeLegacyActivity,
   pairingRenameNotice,
 } from './legacyData';
+import { SourceGrants, dropConfirmation, grantRefusalText, type FileIdentity } from './sourceGrants';
 import { VideoClient, type VideoFrame } from './video';
 import { CameraController, openCameraSocket } from './camera';
 import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
@@ -164,8 +165,11 @@ const windows = new WindowRegistry();
 const ipc = guardIpc(ipcMain, windows, IPC_POLICY, { warn: (message) => log.warn('ipc', message) });
 /** Files this process pulled or saved — the only paths `fs-drag` may drag and `reveal-saved` reveal. */
 const producedFiles = new ResourceGrants();
-/** Local files the person chose (picker) or dropped (preload's `pathForFile`) — the only ones `fs-send` reads. */
-const chosenSources = new ResourceGrants();
+/**
+ * Local files the person chose in a native open panel, or confirmed in the native drop sheet — the only
+ * ones `fs-send` reads, and only for the window that asked, within the hour (`sourceGrants.ts`).
+ */
+const chosenSources = new SourceGrants();
 /** Tests only (`ipcWiring.test.ts`): register stand-in windows and grants against the real handlers. */
 export const ipcBoundaryForTests = { windows, producedFiles, chosenSources };
 
@@ -677,6 +681,7 @@ function createWindow(): void {
   window.on('blur', () => nativeNotifier.setWindowFocused(false));
   window.on('closed', () => {
     windows.unregister('main', mainContents);
+    chosenSources.revokeOwner(mainContents); // S4: a closed window's choices are not readable by its successor.
     // A closed window is not a focused one. Without this the app keeps suppressing banners for a
     // pane that is not on any screen — the app survives `window-all-closed` by design.
     nativeNotifier.setWindowFocused(false);
@@ -2567,14 +2572,48 @@ ipc.handle('activity-csv', async () => {
  * for, and `fs.transfer` moves one file. Sizes are read here so the confirmation can state a total.
  */
 /**
- * A file dropped on the window: the preload's `pathForFile` reports the path the OS gave for a real
- * dropped file (a page-made `File` has none), and only such a path — or a picked one — may be sent (S4).
+ * A file dropped on the window — **asked about in a native sheet, never trusted** (S4 follow-up).
+ *
+ * The renderer reports the paths it says were dropped; nothing in the main process can observe a drop,
+ * so those paths are only a request. The sheet below is drawn by this process and names every file (or
+ * every source folder, with counts), and only the person's **Send** grants them. **Cancel is the default
+ * button**, so a sheet that appears while someone is typing cannot be confirmed by Return. One sheet at
+ * a time: a second request while one is open is refused, not queued.
  */
-ipc.on('fs-grant-source', (_event, source: string) => {
-  void fsp.stat(source).then((info) => { if (info.isFile()) chosenSources.grant(source); }, () => undefined);
+let dropSheetOpen = false;
+ipc.handle('fs-confirm-drop', async (event, paths: string[]) => {
+  if (dropSheetOpen) return { ok: false, reason: 'busy' };
+  const regular: Array<{ source: string; name: string; size: number; identity: FileIdentity }> = [];
+  for (const source of new Set(paths)) {
+    try {
+      const info = await fsp.stat(source);
+      if (info.isFile()) regular.push({ source, name: basename(source), size: info.size, identity: { dev: info.dev, ino: info.ino } });
+    } catch {
+      // Gone or unreadable: counted as skipped, and the pane says how many.
+    }
+  }
+  const skipped = new Set(paths).size - regular.length;
+  if (regular.length === 0) return { ok: true, data: { files: [], skipped } };
+  const sheet = dropConfirmation(regular.map((f) => f.source), homedir());
+  if (sheet.kind === 'refuse') return { ok: false, reason: sheet.reason };
+  dropSheetOpen = true;
+  let answer: { response: number };
+  try {
+    const options = { type: 'question' as const, message: sheet.message, detail: sheet.detail, buttons: ['Send', 'Cancel'], defaultId: 1, cancelId: 1 };
+    answer = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+  } finally {
+    dropSheetOpen = false;
+  }
+  if (answer.response !== 0) {
+    log.info('files', `drop of ${regular.length} file(s) not confirmed — nothing granted`);
+    return { ok: false, reason: 'cancelled' };
+  }
+  for (const f of regular) chosenSources.grant(f.source, event.sender, f.identity);
+  log.info('files', `drop of ${regular.length} file(s) confirmed in the native sheet (${skipped} skipped)`);
+  return { ok: true, data: { files: regular.map(({ source, name, size }) => ({ source, name, size })), skipped } };
 });
 
-ipc.handle('fs-pick-send', async () => {
+ipc.handle('fs-pick-send', async (event) => {
   const picked = await dialog.showOpenDialog({
     title: 'Choose files to send to your phone',
     buttonLabel: 'Choose',
@@ -2587,7 +2626,7 @@ ipc.handle('fs-pick-send', async () => {
       const info = await fsp.stat(source);
       if (info.isFile()) {
         chosen.push({ source, name: basename(source), size: info.size });
-        chosenSources.grant(source); // S4: the person chose it, so `fs-send` may read it.
+        chosenSources.grant(source, event.sender, { dev: info.dev, ino: info.ino }); // S4: chosen in the native panel.
       }
     } catch {
       // Unreadable between the picker and here: left out, and the count the user sees says so.
@@ -2618,11 +2657,14 @@ const SEND_COLLISION_LIMIT = 50;
 const sendHashes = new Map<string, AbortController>();
 ipc.handle(
   'fs-send',
-  async (_event, options: { rootId: string; path: string; source: string }) => {
-    // S4: only a file the person picked or dropped this session may be read and sent to the phone.
-    if (!chosenSources.has(options.source)) {
-      log.warn('files', 'refused a send: that file was not chosen or dropped in this window');
-      return { ok: false, reason: 'That file was not chosen or dropped here, so it was not sent.' };
+  async (event, options: { rootId: string; path: string; source: string }) => {
+    // S4: only a file this window's person chose in a native panel or sheet, within the hour, and
+    // still the same file, may be read and sent. Checked before a single byte is opened.
+    const now = await fsp.stat(options.source).then((info) => (info.isFile() ? { dev: info.dev, ino: info.ino } : null), () => null);
+    const allowed = chosenSources.check(options.source, event.sender, now);
+    if (!allowed.ok) {
+      log.warn('files', `refused a send: ${allowed.refusal} — nothing was read`);
+      return { ok: false, reason: grantRefusalText(allowed.refusal) };
     }
     const original = basename(options.source ?? '');
     const abort = new AbortController();

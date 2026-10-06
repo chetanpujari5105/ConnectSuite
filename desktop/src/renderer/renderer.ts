@@ -287,6 +287,11 @@ interface ConnectBridge {
   onPushAgreed(callback: (agreed: { source: string; transferId: string; name: string }) => void): void;
   /** Defect 132: `File.path` does not exist in Electron ≥ 32. */
   pathForFile(file: File): string;
+  /** S4: a drop is confirmed in a native sheet in the main process; only its Send grants the files. */
+  fsConfirmDrop(paths: string[]): Promise<
+    | { ok: true; data: { files: Array<{ source: string; name: string; size: number }>; skipped: number } }
+    | { ok: false; reason?: string }
+  >;
   /** Every envelope the phone sends. The Files pane reads `fs.transfer.progress`/`done` from it. */
   onMessage(callback: (envelope: unknown) => void): void;
   fsPull(options: {

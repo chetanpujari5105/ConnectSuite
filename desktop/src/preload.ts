@@ -451,12 +451,17 @@ contextBridge.exposeInMainWorld('connect', {
    * disk (a drag from a browser, say), and the pane says so rather than sending zero bytes.
    */
   pathForFile: (file: File): string => {
-    const path = webUtils.getPathForFile(file);
-    // S4: a real dropped file has a path; tell the main process, which lets `fs-send` read only such
-    // paths (and picked ones). A File a page builds itself has no path, so it grants nothing.
-    if (path) ipcRenderer.send('fs-grant-source', path);
-    return path;
+    // S4: this grants nothing. A dropped path is only a request until the person confirms it in the
+    // main process's native sheet (`fsConfirmDrop`).
+    return webUtils.getPathForFile(file);
   },
+  /**
+   * Ask the main process to confirm a drop in a **native** sheet that names every file. Only the
+   * person's **Send** there lets `fsSend` read them; `cancelled` and `busy` grant nothing.
+   */
+  fsConfirmDrop: (paths: string[]): Promise<
+    PhoneResult<{ files: Array<{ source: string; name: string; size: number }>; skipped: number }>
+  > => ipcRenderer.invoke('fs-confirm-drop', paths),
   /** The multi-file picker for **Send to phone…**. Folders are not offered. */
   fsPickSend: (): Promise<
     PhoneResult<{ files: Array<{ source: string; name: string; size: number }>; skipped: number }>

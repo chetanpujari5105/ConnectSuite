@@ -99,7 +99,9 @@ an equivalent guard, explained in the evidence). Hardware: `docs/pairing-v2-hard
 S4 (defect 183): every IPC handler behind a main-process guard — sender identity, main frame, exact page,
 role, payload — with three narrowed preloads and events scoped per window (`docs/ipc-authorization.md`,
 133 channels). Tests through the real `main.ts` registrations and an isolated Electron run with the real
-preloads and pages; 9 mutations red. Phone pairing wording: *Code scanned. Verifying your Mac…* until the
+preloads and pages; 9 mutations red. **Follow-up (defect 190, 2026-10-06):** the drop grant still trusted the renderer —
+measured, a forged grant let `fs-send` read a synthetic file in full. Now a native sheet confirms every
+drop; grants are bound to window, file identity and one hour (`docs/evidence/s4-file-grant-2026-10-06/`). Phone pairing wording: *Code scanned. Verifying your Mac…* until the
 phone verified the Mac, *Paired* only then (`ConnectStage.pairingOutcome`); 2 mutations red.
 Still to come: S7 (`docs/phase-2-hardening-proposals.md` §S7, the next proposal); the dependency audit.
 **Acceptance for S7:** a selection push leaves the Mac clipboard untouched until a person presses Copy.

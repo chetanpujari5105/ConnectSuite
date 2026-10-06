@@ -28205,3 +28205,35 @@ dispatch to the activity and `WebcamActivity`'s forwarding, as for every other e
 
 **Fresh on the final tree:** Swift **140 / 0**, Mac **1,686 / 0**, phone **1,349 / 0** (clean
 `--rerun-tasks`), scripts **287 / 0**, hook fixtures pass, both typechecks clean, spec guard green.
+
+## Release Phase 2 — S4 follow-up: the file-grant boundary (defect 190), 2026-10-06
+
+**Code and isolated tests only. Nothing installed, no app launched, no real drop, synthetic temp files.**
+
+**The question:** can a compromised main renderer, using raw IPC, make `fs-send` read a file nobody
+chose? **Original result: yes.** Through the production `main.ts` handlers (Electron stubbed,
+`desktop/src/main/ipcWiring.test.ts`): `fs-grant-source` with an arbitrary synthetic path, then
+`fs-send` — the read observer (`fs.createReadStream`) recorded the path and the log says
+`synthetic-secret.txt: hashed 34 bytes`. Only the harness's missing phone stopped the upload.
+`docs/evidence/s4-file-grant-2026-10-06/red-before-fix.txt`.
+
+**Fix:** `fs-grant-source` removed. A drop is a request (`fs-confirm-drop`) answered by a **native sheet**
+in the main process naming every file (or every source folder with its count), Cancel the default
+button, one sheet at a time. Grants from the open panel or the sheet are bound to the window, the
+file's `dev`/`ino` and one hour (`desktop/src/main/sourceGrants.ts`), checked before a byte is opened.
+
+**Controls:** a picked file and a confirmed drop **are** read (positive control that the observer sees a
+read); forged drop with Cancel, the verbatim original sequence, an expired grant, a replaced file, a
+replaced window, the float and receive windows — **0 opens** each. Mutations: 9 red, catching test named
+(`mutations.txt`). **Instrument faults in the run, kept:** a first mutation pass handed both test files
+to `node --test` as one zsh word, so all eight "reds" were a missing-file exit with no test run — the
+same shape as the stale-XML row, an exit code standing in for a reading; one mutation was malformed by
+operator precedence and left the check alive; one hung instead of failing until the test got a 3 s
+timeout.
+
+**Product consequences:** one native confirmation per drop; batch items starting more than an hour
+after the choice must be re-chosen; a drop from more than 12 folders must use **Send to phone…**.
+
+**Not reached:** a real OS drag and the sheet on the real window — H10, rewritten for this.
+
+**Fresh:** Mac **1,872 / 0**; typecheck clean.

@@ -166,7 +166,7 @@ export const IPC_POLICY: Readonly<Record<string, ChannelPolicy>> = {
   'fs-list': p(M, 'sensitive-read', [obj({ rootId: id, path: opt(str({ max: 4_096 })), limit, afterName: opt(str({ max: 1_024 })), afterId: opt(id) })]),
   'fs-thumb': p(M, 'sensitive-read', [obj({ rootId: id, ids: arr(id, { max: 5_000 }), maxEdge: opt(num({ min: 16, max: 1_024 })) })]),
   'fs-pick-send': p(M, 'action'),
-  'fs-grant-source': p(M, 'action', [localPath]),
+  'fs-confirm-drop': p(M, 'action', [arr(localPath, { min: 1, max: 500 })]),
   'fs-send': p(M, 'action', [obj({ rootId: id, path: str({ max: 4_096 }), source: localPath })]),
   'fs-send-abort': p(M, 'action', [obj({ source: localPath })]),
   'fs-pull': p(M, 'action', [obj({ rootId: id, id, name: str({ min: 1, max: 1_024 }), size: num({ min: 0, max: 1e15, int: true }) })]),

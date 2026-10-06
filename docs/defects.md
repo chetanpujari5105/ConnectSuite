@@ -205,6 +205,7 @@ own heading there, and its own row here.
 | **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open** — a release decision; proposed, §Integrity | — | see below |
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
 | **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
+| **190** | **S4's drop grant trusted the renderer: a compromised main window could make `fs-send` read any local file.** `fs-grant-source` granted whatever path the preload — or raw IPC — sent; the sender and preload checks were working and are not a statement about who chose the file. Found by the S4 follow-up, Medium (needs a renderer compromise). | **fixed in source 2026-10-06 — not installed, no real drop performed.** Red first through the production handlers: a forged grant, then `fs-send`, opened and hashed all 34 bytes of a synthetic file. `fs-grant-source` removed; a drop is confirmed in a **native sheet** (`fs-confirm-drop`, Cancel default, one at a time, every file or every source folder named); grants bound to window, `dev`/`ino` and one hour (`sourceGrants.ts`). 9 mutations red (one malformed and one hanging first attempt recorded and rerun). | — | see below |
 
 ---
 
@@ -3716,3 +3717,31 @@ Ended sessions and reconnects are covered because the token is revoked with its 
 **Fix direction for what is left:** one hardware reading — mirror and a pull after a re-pair (plan
 in `docs/pairing-v2-hardware-test-proposal.md`). A second trusted Mac is not available to test the
 refusal on hardware.
+
+### 190 — the drop grant trusted the renderer · **fixed in source**
+
+The S4 batch narrowed the preload and checked the sender, and `fs-send` read only "chosen" paths — but a
+dropped path was made "chosen" by the renderer telling the main process about it. Nothing in the main
+process can observe a drop, so that was the renderer vouching for itself. Original result, through the
+real `main.ts` handlers with a synthetic temp file: `fs-grant-source` then `fs-send` → the file opened
+and **hashed in full (34 bytes)**; the push then stopped only because the harness has no phone.
+
+**Fix:** the channel is gone. A drop is a *request* (`fs-confirm-drop`); the main process shows a native
+sheet naming every file — or, above 12 files, every source folder with its count, and refuses a drop
+from more than 12 folders with a pointer to **Send to phone…** — with **Cancel as the default button**,
+one sheet at a time. Only **Send** grants. Every grant (picker or sheet) is bound to the asking window,
+the file's `dev`/`ino`, and one hour, checked before a byte is opened.
+
+**Product consequences, stated:** a drop now costs one native confirmation (the in-page card is no
+longer drawn for drops — the sheet *is* the confirmation, so the drop's "N items were left out" line is
+no longer shown); a batch item that starts more than an hour after its choice must be chosen again; a
+drop from more than 12 folders needs the picker.
+
+**Not reached:** a real OS drag (as in S3); the sheet's appearance as a sheet on the real window.
+**Residual, by design:** the sheet is a person's judgement — a compromised renderer can still *ask*.
+
+**Fix direction for what is left:** H10 in `docs/pairing-v2-hardware-test-proposal.md` — one real drop
+of a synthetic file, the sheet read, Cancel then Send. **The wrong fix** is trusting a second renderer
+signal (a token, a timestamp from the drop event): anything the renderer can produce, a compromised
+renderer can produce.
+

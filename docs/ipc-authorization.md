@@ -87,15 +87,15 @@ was still refused by the main process (`docs/evidence/s4-ipc-2026-10-06/results.
 | `forget-device` | main:forgetDevice | main | action | none | main window only; acts on the one stored phone |
 | `fs-cancel` | main:fsCancel | main | action | `[obj({ transferId: id })]` | — |
 | `fs-cancel-paused` | main:fsCancelPaused | main | action | `[obj({ rootId: id, id })]` | — |
+| `fs-confirm-drop` | main:fsConfirmDrop | main | action | `[arr(localPath, { min: 1, max: 500 })]` | the paths are only a **request**: main shows a native sheet naming every file (or every source folder with its count), **Cancel is the default button**, one sheet at a time; only **Send** grants them to the asking window |
 | `fs-drag` | main:fsDrag | main | action | `[arr(localPath, { min: 1, max: 500 })]` | every path must be one this process produced this session (pull result) — `producedFiles` |
-| `fs-grant-source` | main:pathForFile | main | action | `[localPath]` | grants only an existing regular file; reached from the preload's `pathForFile`, which yields a path only for a real dropped file |
 | `fs-list` | main:fsList | main | reads personal data | `[obj({ rootId: id, path: opt(str({ max: 4_096 })), limit, afterName: opt(str({ max: 1_024 })), afterId: opt(id) })]` | — |
 | `fs-paused-pulls` | main:fsPausedPulls | main | read | none | — |
 | `fs-pick-send` | main:fsPickSend | main | action | none | — |
 | `fs-pull` | main:fsPull | main | action | `[obj({ rootId: id, id, name: str({ min: 1, max: 1_024 }), size: num({ min: 0, max: 1e15, int: true }) })]` | — |
 | `fs-pull-stop` | main:fsPullStop | main | action | `[obj({ transferId: id, how: oneOf('pause', 'cancel') })]` | — |
 | `fs-roots` | main:fsRoots | main | read | none | — |
-| `fs-send` | main:fsSend | main | action | `[obj({ rootId: id, path: str({ max: 4_096 }), source: localPath })]` | source must be picked (`fs-pick-send`) or dropped (`fs-grant-source`) this session — `chosenSources` |
+| `fs-send` | main:fsSend | main | action | `[obj({ rootId: id, path: str({ max: 4_096 }), source: localPath })]` | **checked before any byte is read** (`sourceGrants.ts`): the path must have been chosen in a native open panel (`fs-pick-send`) or confirmed in the native drop sheet (`fs-confirm-drop`), **by this same window**, **within the hour**, and still be **the same file** (`dev`/`ino`) |
 | `fs-send-abort` | main:fsSendAbort | main | action | `[obj({ source: localPath })]` | — |
 | `fs-thumb` | main:fsThumbs | main | reads personal data | `[obj({ rootId: id, ids: arr(id, { max: 5_000 }), maxEdge: opt(num({ min: 16, max: 1_024 })) })]` | — |
 | `input-global` | main:inputGlobal, float:inputGlobal | main, float | action | `[str({ min: 1, max: 32 })]` | — |
@@ -199,7 +199,7 @@ rendered any string the renderer supplied, is removed.
 | Item | Status |
 |---|---|
 | Handlers registered after `app.whenReady()` (receive window's `share-*`, webcam's) | guarded by the same `ipc` object; **not driven through `main.ts` in a test** (starting the app would start discovery on the network). Covered by `shareWindowBinding.test.ts`, the source checks in `shareDecision.test.ts` / `webcamWiring.test.ts`, and the isolated Electron run |
-| `fs-grant-source` trusts the preload's `pathForFile` | a page cannot construct a path (a page-made `File` has none), but code running **inside the preload's isolated world** (a renderer compromise beyond the page) could send any path. Bounded by: the main window only, regular files only |
+| ~~`fs-grant-source` trusts the preload's `pathForFile`~~ | **removed 2026-10-06 (defect 190).** Measured through the production handlers: raw IPC from the main window granted an arbitrary synthetic path and `fs-send` then opened and hashed all of it. A drop is now confirmed in a native sheet the renderer cannot press (`fs-confirm-drop`); grants are bound to window, file identity and one hour. **What remains:** the sheet is a person's judgement — a compromised renderer can still *ask*, and a person who reads *Send “id_rsa”* and presses Send has chosen it. The picker has the same property. Evidence: `docs/evidence/s4-file-grant-2026-10-06/` |
 | `mirror-config` / `mirror-start` options | validated to `maxResolution` and `frameRate`; the phone re-validates |
 | Development probes (`debug-*`, `mark-moment`, `webcam-spike-*`) | main window only, flat primitive objects; registered only when unpackaged |
 | A real OS-level file drag onto the window | not performed (as in S3) |

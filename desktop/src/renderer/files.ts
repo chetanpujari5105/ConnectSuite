@@ -82,6 +82,14 @@ interface FilesBridge {
   fsSendAbort?(options: { source: string }): Promise<{ aborted: boolean }>;
   /** Defect 132 — the supported way to get a dropped file's path. */
   pathForFile?(file: File): string;
+  /**
+   * S4: a drop is confirmed in the main process's **native** sheet, which names every file; only its
+   * **Send** lets `fsSend` read them. Optional for doubles — without it a drop sends nothing.
+   */
+  fsConfirmDrop?(paths: string[]): Promise<
+    | { ok: true; data: { files: Array<{ source: string; name: string; size: number }>; skipped: number } }
+    | { ok: false; reason?: string }
+  >;
   fsPull(options: {
     rootId: string;
     id: string;
@@ -296,7 +304,7 @@ class FilesView {
       this.drop.classList.remove('is-over');
       if (!this.pushAvailable) return;
       const files = Array.from((event as DragEvent).dataTransfer?.files ?? []);
-      this.offerDropped(files);
+      void this.offerDropped(files);
     });
 
     this.table.addEventListener('scroll', () => {
@@ -526,9 +534,9 @@ class FilesView {
    * file with no path on disk — a drag out of a browser — is counted as skipped and named on the card
    * rather than sent as zero bytes.
    */
-  private offerDropped(files: File[]): void {
+  private async offerDropped(files: File[]): Promise<void> {
     if (!files.length) return;
-    const offered: Array<{ source: string; name: string; size: number }> = [];
+    const paths: string[] = [];
     let skipped = 0;
     for (const file of files) {
       const source = this.bridge.pathForFile?.(file) ?? '';
@@ -536,9 +544,26 @@ class FilesView {
         skipped += 1;
         continue;
       }
-      offered.push({ source, name: file.name, size: file.size });
+      paths.push(source);
     }
-    this.offer(offered, skipped);
+    if (paths.length === 0) {
+      this.offer([], skipped);
+      return;
+    }
+    // S4: this page cannot vouch for a drop — the main process asks in a native sheet naming every
+    // file, and that sheet is the confirmation. Cancel there: nothing changes and nothing is said.
+    if (!this.bridge.fsConfirmDrop) return;
+    const confirmed = await this.bridge.fsConfirmDrop(paths).catch(() => null);
+    if (!confirmed) return;
+    if (!confirmed.ok) {
+      if (confirmed.reason && confirmed.reason !== 'cancelled' && confirmed.reason !== 'busy') {
+        this.lastPull = { ok: false, text: confirmed.reason };
+        this.render();
+      }
+      return;
+    }
+    this.offer(confirmed.data.files, skipped + confirmed.data.skipped);
+    if (this.pendingSend && this.pendingSend.length > 0) await this.confirmSend();
   }
 
   private offer(files: Array<{ source: string; name: string; size: number }>, skipped: number): void {
@@ -2149,6 +2174,7 @@ interface FilesConnect {
   fsCancel: NonNullable<FilesBridge['fsCancel']>;
   fsSendAbort: NonNullable<FilesBridge['fsSendAbort']>;
   pathForFile: NonNullable<FilesBridge['pathForFile']>;
+  fsConfirmDrop: NonNullable<FilesBridge['fsConfirmDrop']>;
   fsPull: FilesBridge['fsPull'];
   fsPullStop: NonNullable<FilesBridge['fsPullStop']>;
   fsPausedPulls: NonNullable<FilesBridge['fsPausedPulls']>;
@@ -2179,6 +2205,7 @@ function filesBridgeFrom(connect: FilesConnect): FilesBridge {
     fsCancel: (options) => connect.fsCancel(options),
     fsSendAbort: (options) => connect.fsSendAbort(options),
     pathForFile: (file) => connect.pathForFile(file),
+    fsConfirmDrop: (paths) => connect.fsConfirmDrop(paths),
     fsPull: (options) => connect.fsPull(options),
     fsPullStop: (options) => connect.fsPullStop(options),
     fsPausedPulls: () => connect.fsPausedPulls(),

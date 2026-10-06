@@ -21,6 +21,13 @@ const userData = mkdtempSync(join(tmpdir(), 'ipc-wiring-'));
 const storeData = new Map<string, unknown>();
 const listeners = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
 const effects: string[] = [];
+/** What the native panel and sheet will answer — the person, in these tests. */
+const dialogScript = {
+  open: { canceled: true, filePaths: [] as string[] },
+  sheets: [] as Array<{ message: string; detail: string; defaultId: number; cancelId: number }>,
+  sheetResponse: 1,
+  sheetGate: Promise.resolve(),
+};
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const noop: any = new Proxy(function () {}, {
   get: (_t, k) => (k === 'then' ? undefined : k === Symbol.toPrimitive || k === 'toString' ? () => '' : noop),
@@ -40,6 +47,14 @@ const electron = stub({
     showItemInFolder: (p: string) => effects.push(`reveal ${p}`),
     openExternal: (u: string) => { effects.push(`open ${u}`); return Promise.resolve(); },
     openPath: (p: string) => { effects.push(`openPath ${p}`); return Promise.resolve(''); },
+  }),
+  dialog: stub({
+    showOpenDialog: () => Promise.resolve(dialogScript.open),
+    showMessageBox: (...args: unknown[]) => {
+      const options = args[args.length - 1] as { message: string; detail: string; defaultId: number; cancelId: number };
+      dialogScript.sheets.push(options);
+      return dialogScript.sheetGate.then(() => ({ response: dialogScript.sheetResponse }));
+    },
   }),
   clipboard: stub({ writeText: (t: string) => effects.push(`clipboard ${t}`), readText: () => '', availableFormats: () => [], has: () => false, read: () => '' }),
 });
@@ -172,19 +187,164 @@ test('fs-drag drags only files this app produced; reveal-saved reveals only thos
   assert.equal((call('reveal-saved', from(mainWin, PAGE.main), { path: produced }) as { ok: boolean }).ok, true);
 });
 
-test('fs-send reads only a file the person picked or dropped', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ipc-wiring-send-'));
-  const secret = join(dir, 'id_rsa');
-  writeFileSync(secret, 'not really a key');
-  const r = (await call('fs-send', from(mainWin, PAGE.main), { rootId: 'r', path: '', source: secret })) as { ok: boolean; reason?: string };
-  assert.equal(r.ok, false);
-  assert.match(r.reason ?? '', /not chosen or dropped/);
-  call('fs-grant-source', from(floatWin, PAGE.float), secret);
+/*
+ * S4 follow-up (A): the file-grant boundary, end to end through the real handlers. The renderer is
+ * assumed compromised — it has raw IPC and can send any path. "Read" is observed where the bytes
+ * would be read (`fs.createReadStream`, which `digestOf` and the push both use), not inferred from a
+ * return value.
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodeFs = require('node:fs') as typeof import('node:fs');
+const opened: string[] = [];
+const realCreateReadStream = nodeFs.createReadStream;
+(nodeFs as { createReadStream: unknown }).createReadStream = (path: unknown, ...rest: unknown[]) => {
+  opened.push(String(path));
+  return (realCreateReadStream as (...a: unknown[]) => unknown)(path, ...rest);
+};
+
+test('A, verbatim: a compromised main renderer grants an arbitrary path, then fs-send reads none of its bytes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ipc-forged-grant-'));
+  const target = join(dir, 'synthetic-secret.txt');
+  writeFileSync(target, 'synthetic bytes, not a real secret');
+  opened.length = 0;
+  // Raw IPC: `ipcRenderer.send('fs-grant-source', path)`. On an unregistered channel Electron delivers it
+  // to nothing, which is what the optional call models; before the fix this granted the path.
+  listeners.get('fs-grant-source')?.(from(mainWin, PAGE.main), target);
   await settle();
-  assert.equal(chosenSources.has(secret), false, 'the float window cannot grant a source');
-  call('fs-grant-source', from(mainWin, PAGE.main), secret);
+  await Promise.resolve(call('fs-send', from(mainWin, PAGE.main), { rootId: 'r', path: '', source: target })).catch(() => undefined);
   await settle();
-  assert.equal(chosenSources.has(secret), true, 'control: the main window’s drop grant');
-  const after = (await call('fs-send', from(mainWin, PAGE.main), { rootId: 'r', path: '', source: secret }).catch?.((e: Error) => ({ ok: false, reason: e.message }))) as { reason?: string } | undefined;
-  assert.doesNotMatch(after?.reason ?? '', /not chosen or dropped/, 'control: a granted source passes the gate');
+  assert.deepEqual(opened.filter((p) => p === target), [], `the forged grant let fs-send open ${target}`);
+});
+
+/** Sends [source] from [win] and returns the refusal sentence (or '' when the gate let it through). */
+async function sendFrom(win: Contents, source: string): Promise<string> {
+  const r = (await Promise.resolve(call('fs-send', from(win, PAGE.main), { rootId: 'r', path: '', source })).catch(
+    (e: Error) => ({ ok: false, reason: e.message }),
+  )) as { reason?: string };
+  await settle();
+  return r?.reason ?? '';
+}
+const synthetic = (name: string, body = 'synthetic bytes') => {
+  const path = join(mkdtempSync(join(tmpdir(), 'ipc-grant-')), name);
+  writeFileSync(path, body);
+  return path;
+};
+const GATE = /not chosen here|chosen in a window|more than an hour|changed or moved/;
+
+test('A: the fs-grant-source channel no longer exists, and raw IPC on it reaches nothing', () => {
+  assert.equal(listeners.has('fs-grant-source'), false);
+  assert.ok(listeners.has('fs-confirm-drop'), 'control: the replacement is registered');
+});
+
+test('A: valid selection — a file chosen in the native open panel is read, by that window only', async () => {
+  const picked = synthetic('picked.txt');
+  dialogScript.open = { canceled: false, filePaths: [picked] };
+  const r = (await call('fs-pick-send', from(mainWin, PAGE.main))) as { ok: boolean; data: { files: unknown[] } };
+  assert.equal(r.ok, true);
+  opened.length = 0;
+  assert.doesNotMatch(await sendFrom(mainWin, picked), GATE, 'control: a picked file passes the gate');
+  assert.ok(opened.includes(picked), 'control: and its bytes are read — the observer can see a read');
+});
+
+test('A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send', async () => {
+  const target = synthetic('synthetic-secret.txt');
+  dialogScript.sheets.length = 0;
+  dialogScript.sheetResponse = 1; // the person presses Cancel (also the default button)
+  const r = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [target])) as { ok: boolean; reason?: string };
+  assert.deepEqual(r, { ok: false, reason: 'cancelled' });
+  assert.equal(dialogScript.sheets.length, 1, 'the request reached a native sheet the renderer cannot press');
+  const sheet = dialogScript.sheets[0]!;
+  assert.equal(sheet.defaultId, 1, 'Cancel is the default button, so Return cannot confirm it');
+  assert.equal(sheet.cancelId, 1);
+  assert.ok(sheet.detail.includes('synthetic-secret.txt'), 'the sheet names the exact file');
+  opened.length = 0;
+  assert.match(await sendFrom(mainWin, target), /not chosen here/);
+  assert.deepEqual(opened.filter((p) => p === target), [], 'not one byte read');
+});
+
+test('A: a drop confirmed in the native sheet is read; a drop of a non-file grants nothing', async () => {
+  const dropped = synthetic('dropped.txt');
+  dialogScript.sheetResponse = 0; // Send
+  const r = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [dropped, '/nonexistent/x'])) as {
+    ok: boolean; data: { files: Array<{ source: string }>; skipped: number };
+  };
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.data.files.map((f) => f.source), [dropped]);
+  assert.equal(r.data.skipped, 1);
+  opened.length = 0;
+  assert.doesNotMatch(await sendFrom(mainWin, dropped), GATE);
+  assert.ok(opened.includes(dropped), 'control: a confirmed drop is read');
+  dialogScript.sheetResponse = 1;
+});
+
+test('A: one sheet at a time — a second request while one is open is refused, not queued', { timeout: 3_000 }, async () => {
+  const a = synthetic('a.txt');
+  let release!: () => void;
+  dialogScript.sheetGate = new Promise((r) => { release = r; });
+  dialogScript.sheetResponse = 0;
+  const first = call('fs-confirm-drop', from(mainWin, PAGE.main), [a]) as Promise<{ ok: boolean }>;
+  await settle();
+  const second = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [synthetic('b.txt')])) as { ok: boolean; reason?: string };
+  assert.deepEqual(second, { ok: false, reason: 'busy' });
+  release();
+  assert.equal((await first).ok, true, 'control: the open sheet still answers');
+  dialogScript.sheetGate = Promise.resolve();
+  dialogScript.sheetResponse = 1;
+});
+
+test('A: expired grant — a choice older than an hour is refused before any read', async () => {
+  const picked = synthetic('old.txt');
+  dialogScript.open = { canceled: false, filePaths: [picked] };
+  await call('fs-pick-send', from(mainWin, PAGE.main));
+  const realNow = Date.now;
+  Date.now = () => realNow() + 60 * 60 * 1_000 + 1;
+  try {
+    opened.length = 0;
+    assert.match(await sendFrom(mainWin, picked), /more than an hour/);
+    assert.deepEqual(opened.filter((p) => p === picked), []);
+  } finally {
+    Date.now = realNow;
+  }
+  assert.match(await sendFrom(mainWin, picked), /not chosen here/, 'an expired grant is removed, not revived');
+});
+
+test('A: a different file put at a chosen path is not the chosen file', async () => {
+  const picked = synthetic('swap.txt', 'original');
+  dialogScript.open = { canceled: false, filePaths: [picked] };
+  await call('fs-pick-send', from(mainWin, PAGE.main));
+  nodeFs.rmSync(picked);
+  nodeFs.writeFileSync(join(picked, '..', 'other'), 'a different file');
+  nodeFs.renameSync(join(picked, '..', 'other'), picked);
+  opened.length = 0;
+  assert.match(await sendFrom(mainWin, picked), /changed or moved/);
+  assert.deepEqual(opened.filter((p) => p === picked), []);
+});
+
+test('A: replaced window — grants belong to the window that chose them', async () => {
+  const picked = synthetic('owned.txt');
+  dialogScript.open = { canceled: false, filePaths: [picked] };
+  await call('fs-pick-send', from(mainWin, PAGE.main));
+  const replacement = new Contents();
+  windows.register('main', replacement, PAGE.main);
+  try {
+    opened.length = 0;
+    assert.match(await sendFrom(replacement, picked), /chosen in a window/, 'the new window cannot spend the old one’s grant');
+    const old = (await call('fs-send', from(mainWin, PAGE.main), { rootId: 'r', path: '', source: picked })) as { refused?: boolean };
+    assert.equal(old.refused, true, 'the old window is a stranger to the guard');
+    await settle();
+    assert.deepEqual(opened.filter((p) => p === picked), []);
+  } finally {
+    windows.register('main', mainWin, PAGE.main);
+  }
+  assert.doesNotMatch(await sendFrom(mainWin, picked), GATE, 'control: the owning window still may');
+});
+
+test('A: the float and receive windows cannot ask for a drop sheet or spend a grant', async () => {
+  const target = synthetic('float.txt');
+  dialogScript.sheets.length = 0;
+  for (const [win, page] of [[floatWin, PAGE.float], [shareWin, PAGE.share]] as const) {
+    assert.ok(refused(await call('fs-confirm-drop', from(win, page), [target])));
+    assert.ok(refused(await call('fs-send', from(win, page), { rootId: 'r', path: '', source: target })));
+  }
+  assert.equal(dialogScript.sheets.length, 0, 'no sheet was even drawn');
 });

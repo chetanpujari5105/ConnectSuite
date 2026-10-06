@@ -1,0 +1,73 @@
+2026-10-06T14:30:15.346+05:30 W [ipc] refused forget-device: not allowed from the float window — 1 refused / 1 allowed since launch
+2026-10-06T14:30:15.346+05:30 W [ipc] refused pairing-qr: not allowed from the float window — 2 refused / 1 allowed since launch
+2026-10-06T14:30:15.346+05:30 W [ipc] refused sms-send: not allowed from the float window — 3 refused / 1 allowed since launch
+2026-10-06T14:30:15.346+05:30 W [ipc] refused call-dial: not allowed from the float window — 4 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused clip-use: not allowed from the float window — 5 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused settings: not allowed from the float window — 6 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused log-tail: not allowed from the float window — 7 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused forget-device: not allowed from the share window — 8 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused pairing-qr: not allowed from the share window — 9 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused sms-send: not allowed from the share window — 10 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused call-dial: not allowed from the share window — 11 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused clip-use: not allowed from the share window — 12 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused settings: not allowed from the share window — 13 refused / 1 allowed since launch
+2026-10-06T14:30:15.347+05:30 W [ipc] refused log-tail: not allowed from the share window — 14 refused / 1 allowed since launch
+✔ control: main.ts registered its handlers through the guard, and the main window with a valid payload works (0.551458ms)
+2026-10-06T14:30:15.379+05:30 W [ipc] refused clip-use: an unknown sender — 15 refused / 1 allowed since launch
+2026-10-06T14:30:15.379+05:30 W [ipc] refused clip-use: a subframe — 16 refused / 1 allowed since launch
+2026-10-06T14:30:15.379+05:30 W [ipc] refused clip-use: not the window's own page — 17 refused / 1 allowed since launch
+2026-10-06T14:30:15.379+05:30 W [ipc] refused clip-use: an unknown sender — 18 refused / 1 allowed since launch
+✔ the float and receive windows cannot Forget, pair, send SMS, dial, use the clipboard or read settings (33.360708ms)
+2026-10-06T14:30:15.410+05:30 I [clipboard] Applied an entry to this Mac's clipboard: 12 bytes — 0 sent / 0 received / 0 of 0 applied / 0 refused since launch
+2026-10-06T14:30:15.410+05:30 W [ipc] refused set-manual-address: argument 1 must be a string — 19 refused / 2 allowed since launch
+2026-10-06T14:30:15.410+05:30 W [ipc] refused set-manual-address: argument 1 is longer than 255 — 20 refused / 2 allowed since launch
+2026-10-06T14:30:15.410+05:30 W [ipc] refused appearance-set: argument 1 is not one of the allowed values — 21 refused / 2 allowed since launch
+2026-10-06T14:30:15.410+05:30 W [ipc] refused login-item-set: argument 1 must be true or false — 22 refused / 2 allowed since launch
+2026-10-06T14:30:15.410+05:30 W [ipc] refused clip-open: argument 1 must be a string — 23 refused / 2 allowed since launch
+✔ an unknown sender, a subframe of the main window and a replaced main window are refused (30.805916ms)
+2026-10-06T14:30:15.442+05:30 W [ipc] refused pairing-qr: not allowed from the float window — 24 refused / 3 allowed since launch
+2026-10-06T14:30:15.442+05:30 W [ipc] refused pairing-qr: not allowed from the share window — 25 refused / 3 allowed since launch
+2026-10-06T14:30:15.444+05:30 W [files] refused a drag of 1 file(s): 1 not produced by this app — 0 started / 1 refused
+2026-10-06T14:30:15.444+05:30 W [files] refused a drag of 1 file(s): 1 not produced by this app — 0 started / 2 refused
+✔ an invalid payload causes zero side effects (31.601084ms)
+✔ only the main window may arm a pairing code; the floating and receive windows never reach it (0.607125ms)
+2026-10-06T14:30:15.476+05:30 I [files] dragged 1 file(s) to Finder — pulled.bin — 1 started / 2 refused
+2026-10-06T14:30:15.507+05:30 W [files] refused a drag of 2 file(s): 1 not produced by this app — 1 started / 3 refused
+2026-10-06T14:30:15.542+05:30 W [files] refused a send: that file was not chosen or dropped in this window
+2026-10-06T14:30:15.542+05:30 W [ipc] refused fs-grant-source: not allowed from the float window — 26 refused / 10 allowed since launch
+✔ fs-drag drags only files this app produced; reveal-saved reveals only those (96.904167ms)
+2026-10-06T14:30:15.608+05:30 I [files] id_rsa: hashed 16 bytes in 3 ms before sending
+✔ fs-send reads only a file the person picked or dropped (69.699625ms)
+2026-10-06T14:30:15.643+05:30 I [files] synthetic-secret.txt: hashed 34 bytes in 1 ms before sending
+✖ A, verbatim: a compromised main renderer grants an arbitrary path, then fs-send reads none of its bytes (66.66975ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 7
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 546.201
+
+✖ failing tests:
+
+test at src/main/ipcWiring.test.ts:207:1
+✖ A, verbatim: a compromised main renderer grants an arbitrary path, then fs-send reads none of its bytes (66.66975ms)
+  AssertionError [ERR_ASSERTION]: the forged grant let fs-send open /var/folders/nl/cqz56mls6p1_x_kn8fnbfcsh0000gn/T/ipc-forged-grant-P2Gd4z/synthetic-secret.txt
+  + actual - expected
+  
+  + [
+  +   '/var/folders/nl/cqz56mls6p1_x_kn8fnbfcsh0000gn/T/ipc-forged-grant-P2Gd4z/synthetic-secret.txt'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/ipcWiring.test.ts:216:10)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ '/var/folders/nl/cqz56mls6p1_x_kn8fnbfcsh0000gn/T/ipc-forged-grant-P2Gd4z/synthetic-secret.txt' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,43 @@
+Instrument note: a first run passed both test files as ONE zsh word ($T is not split in zsh), so node --test found no file and every mutation read RED (exit 1) with no failing test named. Those readings were discarded; this is the rerun with two arguments.
+Control (unmutated, same invocation):
+GREEN (exit 0)
+M1 owner check removed
+RED (exit 1)
+  ✖ A: replaced window — grants belong to the window that chose them
+  ✖ a grant is for one window, one file identity, and one hour
+M2 TTL removed
+RED (exit 1)
+  ✖ A: expired grant — a choice older than an hour is refused before any read
+  ✖ a grant is for one window, one file identity, and one hour
+M3 identity removed — MALFORMED, see the corrected M3 below
+RED (exit 1)
+  ✖ a grant is for one window, one file identity, and one hour
+M4 Send is default
+RED (exit 1)
+  ✖ A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send
+M5 sheet answer ignored
+RED (exit 1)
+  ✖ A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send
+M6 send gate removed
+RED (exit 1)
+  ✖ A, verbatim: a compromised main renderer grants an arbitrary path, then fs-send reads none of its bytes
+  ✖ A: a different file put at a chosen path is not the chosen file
+  ✖ A: expired grant — a choice older than an hour is refused before any read
+  ✖ A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send
+  ✖ A: replaced window — grants belong to the window that chose them
+M7 folder grouping off
+RED (exit 1)
+  ✖ a drop from more folders than the sheet can show is refused, with the picker named
+  ✖ a file cannot hide as the thirteenth of a long drop: every source folder is shown with its count
+M8 one-at-a-time off
+M8 one-at-a-time off (rerun: the first attempt HUNG — the second request awaited the held sheet forever and the test had no timeout; it now has 3 s)
+RED (exit 1)
+  ✖ A: one sheet at a time — a second request while one is open is refused, not queued
+M9 the original hole restored — fs-grant-source policy AND handler re-added (two files)
+RED (exit 1)
+  ✖ A, verbatim: a compromised main renderer grants an arbitrary path, then fs-send reads none of its bytes
+  ✖ A: the fs-grant-source channel no longer exists, and raw IPC on it reaches nothing
+M3 (corrected) identity check removed entirely. The first M3 was malformed — 'false && a.dev !== b.dev || a.ino !== b.ino' still evaluates the inode clause by precedence, so the check stayed live; only the unit test's null-identity case went red, by throwing. Discarded.
+RED (exit 1)
+  ✖ A: a different file put at a chosen path is not the chosen file
+  ✖ a grant is for one window, one file identity, and one hour

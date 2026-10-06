@@ -81,6 +81,14 @@ class FakeBridge {
   pathForFile(file: { name: string; path?: string }) {
     return file.path ?? '';
   }
+  /** S4: what the native drop sheet was asked about, and how the person answered it. */
+  readonly sheetAsked: string[][] = [];
+  sheetAnswer: 'send' | 'cancel' = 'cancel';
+  async fsConfirmDrop(paths: string[]) {
+    this.sheetAsked.push(paths);
+    if (this.sheetAnswer === 'cancel') return { ok: false as const, reason: 'cancelled' };
+    return { ok: true as const, data: { files: paths.map((source) => ({ source, name: source.split('/').pop()!, size: 5 })), skipped: 0 } };
+  }
   async fsPull() {
     return { ok: true as const, path: '/tmp/x' };
   }
@@ -506,10 +514,12 @@ test('the bar and "arrived" come from the phone’s events, never from the Mac f
   }
 });
 
-test('a drop is an offer too, and a file with no path on disk is counted rather than sent', async () => {
+test('S4: a drop asks the main process’s native sheet; Cancel there sends nothing and draws nothing', async () => {
   const pane = mount();
   try {
     await readyToSend(pane);
+    pane.bridge.sheetAnswer = 'cancel';
+    const before = pane.detail.textContent;
     pane.drop.dispatch('drop', {
       dataTransfer: {
         files: [
@@ -518,10 +528,30 @@ test('a drop is an offer too, and a file with no path on disk is counted rather 
         ],
       },
     });
-    assert.deepEqual(pane.bridge.sent, [], 'dropping is not sending');
-    const text = pane.detail.textContent;
-    assert.ok(text.includes('Send 1 file to'), text);
-    assert.ok(text.includes('1 item was left out'), 'the pathless file is named, not dropped silently');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(pane.bridge.sheetAsked, [['/m/real.txt']], 'only the file with a path is asked about');
+    assert.deepEqual(pane.bridge.sent, [], 'cancelled in the sheet: nothing sent');
+    assert.equal(pane.detail.textContent, before, 'and nothing drawn — the in-page card is not a second confirmation');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('S4: Send in the native sheet sends exactly the confirmed files; a pathless file is not sent', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.sheetAnswer = 'send';
+    pane.drop.dispatch('drop', {
+      dataTransfer: {
+        files: [
+          { name: 'real.txt', size: 5, path: '/m/real.txt' },
+          { name: 'from-a-browser.png', size: 9 },
+        ],
+      },
+    });
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(pane.bridge.sent, ['/m/real.txt']);
   } finally {
     pane.restore();
   }
