@@ -3,7 +3,7 @@ import { constants as fsConstants, createReadStream, createWriteStream, promises
 import { basename, dirname, join } from 'node:path';
 import type { FileHandle } from 'node:fs/promises';
 import { Writable, type Duplex } from 'node:stream';
-import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import { publishExclusive, realFs, type PublishResult } from './shareDestination';
 import { candidateName } from '../shared/shareNames';
 import { recordIntentFrom, type ShareLedger } from './shareLedger';
@@ -11,6 +11,7 @@ import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
 import type { Identity } from './identity';
 import { log } from './logger';
+import { PINNED_EVENT, pinnedTlsConnect } from './pinnedTls';
 import { MAX_BULK_FRAME, MAX_BULK_HEADER_FRAME, PORT_BULK } from '../shared/protocol';
 import { FrameTally } from '../shared/frameTally';
 import { TransferDigest } from '../shared/transferDigest';
@@ -93,28 +94,37 @@ export const BLOCK_DONE_WAIT_MS = 30_000;
 export const LATE_VERDICT_WAIT_MS = 3_000;
 
 export class BulkClient {
-  constructor(private readonly identity: Identity) {}
+  /**
+   * [expectedPeer] is the control session's phone fingerprint (`LinkClient.peerFingerprint`), or null
+   * with no session. Every bulk socket is pinned to it before a byte is written — audit S2,
+   * `pinnedTls.ts`. [port] exists for loopback tests only; the product always uses [PORT_BULK].
+   */
+  constructor(
+    private readonly identity: Identity,
+    private readonly expectedPeer: () => string | null,
+    private readonly port: number = PORT_BULK,
+  ) {}
+
+  /** A pinned TLS connection to the phone's bulk port, writable on [PINNED_EVENT] and not before. */
+  private connectPinned(host: string): { socket: TLSSocket; readyEvent: string } {
+    const socket = pinnedTlsConnect({
+      host,
+      port: this.port,
+      identity: this.identity,
+      expectedPeer: this.expectedPeer,
+      timeoutMs: CANDIDATE_TIMEOUT_MS,
+    });
+    socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => socket.destroy(new Error('the phone did not answer on the file port')));
+    socket.once(PINNED_EVENT, () => {
+      socket.setTimeout(0);
+      socket.setNoDelay(true);
+    });
+    return { socket, readyEvent: PINNED_EVENT };
+  }
 
   /** A share pull over TLS to the phone's bulk port. See [pullShareWith] for every rule it holds. */
   pullShare(options: Parameters<typeof pullShareWith>[0] & { host: string }): Promise<SharePullResult> {
-    return pullShareWith(options, () => {
-      const socket = tlsConnect({
-        host: options.host,
-        port: PORT_BULK,
-        cert: this.identity.certPem,
-        key: this.identity.keyPem,
-        minVersion: 'TLSv1.3',
-        // Same as `pull`: pinning is the control channel's; there is no CA in this system.
-        rejectUnauthorized: false,
-        timeout: CANDIDATE_TIMEOUT_MS,
-      });
-      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => socket.destroy(new Error('the phone did not answer on the file port')));
-      socket.once('secureConnect', () => {
-        socket.setTimeout(0);
-        socket.setNoDelay(true);
-      });
-      return { socket, readyEvent: 'secureConnect' };
-    });
+    return pullShareWith(options, () => this.connectPinned(options.host));
   }
 
   private transfers = 0;
@@ -153,23 +163,7 @@ export class BulkClient {
   async push(options: PushOptions & { host: string }): Promise<BulkResult> {
     return pushWith(
       options,
-      () => {
-        const socket = tlsConnect({
-          host: options.host,
-          port: PORT_BULK,
-          cert: this.identity.certPem,
-          key: this.identity.keyPem,
-          minVersion: 'TLSv1.3',
-          rejectUnauthorized: false,
-          timeout: CANDIDATE_TIMEOUT_MS,
-        });
-        socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => socket.destroy(new Error('the phone did not answer on the file port')));
-        socket.once('secureConnect', () => {
-          socket.setTimeout(0);
-          socket.setNoDelay(true);
-        });
-        return { socket, readyEvent: 'secureConnect' };
-      },
+      () => this.connectPinned(options.host),
       {
         tallyLine: () => this.tallyLine(),
         onSettled: (ok, sent) => {
@@ -566,19 +560,7 @@ export class BulkClient {
 
       const connection = options.connect
         ? options.connect()
-        : {
-            socket: tlsConnect({
-              host,
-              port: PORT_BULK,
-              cert: this.identity.certPem,
-              key: this.identity.keyPem,
-              minVersion: 'TLSv1.3',
-              // Same as the control and video channels: pinning is ours, there is no CA in this system.
-              rejectUnauthorized: false,
-              timeout: CANDIDATE_TIMEOUT_MS,
-            }),
-            readyEvent: 'secureConnect',
-          };
+        : this.connectPinned(host);
       socket = connection.socket;
 
       // Defect 158: every way a **claimed** block pull's connection ends short — a close or an error, which
@@ -630,7 +612,9 @@ export class BulkClient {
         log.info('bulk', `${transferId} claimed on ${host}:${PORT_BULK}, offset ${offset}`);
       });
 
-      socket.on('data', (chunk: Buffer) => reader.push(chunk));
+      // Only a claimed socket is read: before the claim the peer is unverified (audit S2), and a phone
+      // sends nothing before it reads the claim.
+      socket.on('data', (chunk: Buffer) => { if (claimed) reader.push(chunk); });
       socket.on('close', () => {
         if (settled) return;
         if (received === expectedBytes - offset) { void complete(); return; }
@@ -671,7 +655,7 @@ export type SharePullResult =
 /** A connected stream to the phone's bulk port. Injectable so tests can serve it from a local socket. */
 export interface ShareConnection {
   socket: Duplex & { destroy(error?: Error): void };
-  /** The event after which the socket may be written: `secureConnect` for TLS, `connect` for TCP. */
+  /** The event after which the socket may be written: [PINNED_EVENT] for the product's TLS, `connect` for a test's TCP. */
   readyEvent: string;
 }
 
@@ -1122,14 +1106,17 @@ async function pullShareWith(
         'Bulk header',
       );
       conn.socket.once('error', (error: Error) => fail('interrupted', error.message));
+      let claimed = false;
       conn.socket.once(conn.readyEvent, () => {
+        claimed = true;
         writeFrame(conn.socket, Buffer.from(token, 'utf8'));
         writeFrame(conn.socket, Buffer.from(JSON.stringify({ transferId, offset: 0 }), 'utf8'), MAX_BULK_HEADER_FRAME, tally, 'Bulk header');
         reader.setMaxLength(MAX_BULK_FRAME, 'Bulk chunk');
         armIdle();
         log.info('bulk', `share ${transferId} claimed, offset 0, expecting ${expectedBytes} bytes`);
       });
-      conn.socket.on('data', (chunk: Buffer) => reader.push(chunk));
+      // Read only once claimed: before that the peer is unverified (audit S2).
+      conn.socket.on('data', (chunk: Buffer) => { if (claimed) reader.push(chunk); });
       conn.socket.on('close', () => {
         if (settled) return;
         // The close only completes a transfer that already has every byte (a zero-byte file, or the

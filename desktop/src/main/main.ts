@@ -1126,8 +1126,9 @@ app.whenReady().then(() => {
   link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }));
   // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).
   void files.sweepResumeRecords().then((n) => log.info('files', `resume records: ${n} expired at start (limit 7 days, 16 records)`));
-  video = new VideoClient(identity);
-  bulk = new BulkClient(identity);
+  video = new VideoClient(identity, () => link?.peerFingerprint() ?? null);
+  // Both side channels are pinned to the control session's phone (audit S2, `pinnedTls.ts`).
+  bulk = new BulkClient(identity, () => link?.peerFingerprint() ?? null);
 
   // Camera v1. The controller owns the requests and the stream socket; the renderer only draws the
   // state it is sent and decodes the JPEGs it is handed. The socket is pinned to the phone that holds

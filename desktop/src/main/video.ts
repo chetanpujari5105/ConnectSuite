@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events';
-import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import type { Identity } from './identity';
 import { log } from './logger';
 import { writeFrame } from './framing';
+import { PINNED_EVENT, pinnedTlsConnect } from './pinnedTls';
 import { PORT_VIDEO, MAX_FRAME } from '../shared/protocol';
 
 /** Header size and flags from docs/protocol.md. Must match VideoChannel.kt. */
@@ -59,7 +60,15 @@ export class VideoClient extends EventEmitter {
    */
   private recent: Array<{ at: number; bytes: number }> = [];
 
-  constructor(private readonly identity: Identity) {
+  /**
+   * [expectedPeer] is the control session's phone fingerprint, or null with no session; the video
+   * socket is pinned to it (audit S2). [port] is for loopback tests; the product uses [PORT_VIDEO].
+   */
+  constructor(
+    private readonly identity: Identity,
+    private readonly expectedPeer: () => string | null,
+    private readonly port: number = PORT_VIDEO,
+  ) {
     super();
   }
 
@@ -128,33 +137,32 @@ export class VideoClient extends EventEmitter {
         reject(new Error(reason));
       };
 
-      const socket = tlsConnect({
+      // Pinned to the control session's phone before the token is written (audit S2, `pinnedTls.ts`).
+      const socket = pinnedTlsConnect({
         host,
-        port: PORT_VIDEO,
-        cert: this.identity.certPem,
-        key: this.identity.keyPem,
-        minVersion: 'TLSv1.3',
-        // Same reasoning as the control channel: pinning is ours, there is no CA in this system.
-        rejectUnauthorized: false,
-        timeout: CANDIDATE_TIMEOUT_MS,
+        port: this.port,
+        identity: this.identity,
+        expectedPeer: this.expectedPeer,
+        timeoutMs: CANDIDATE_TIMEOUT_MS,
       });
       this.socket = socket;
 
       socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => fail('the phone did not answer on the video port'));
       socket.once('error', (error) => fail(error.message));
 
-      socket.once('secureConnect', () => {
+      socket.once(PINNED_EVENT, () => {
         socket.setTimeout(0);
         socket.setNoDelay(true);
         // The token proves this socket belongs to a live control session. The phone drops it
         // after TOKEN_GRACE_MS if this does not arrive.
         writeFrame(socket, Buffer.from(token, 'utf8'));
-        log.info('video', `Video socket open to ${host}:${PORT_VIDEO}`);
+        log.info('video', `Video socket open to ${host}:${this.port}`);
+        // Frames are read only from a verified peer: nothing an unverified one sent is decoded.
+        socket.on('data', (chunk: Buffer) => this.consume(chunk));
         settled = true;
         resolve();
       });
 
-      socket.on('data', (chunk: Buffer) => this.consume(chunk));
       socket.on('close', () => {
         if (this.socket === socket) {
           this.socket = null;
