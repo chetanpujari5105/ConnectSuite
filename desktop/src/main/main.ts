@@ -25,6 +25,7 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipOfferNotifier, offerBannerGuidance } from './clipOfferNotifier';
+import { ReceivedQuarantine } from './quarantine';
 import { arrivalAction } from './clipOffers';
 import { ClipboardWatcher } from './clipboardWatcher';
 import {
@@ -303,6 +304,14 @@ const contacts = new ContactsClient(() => link);
  * S7: the banner for a clipboard **offer** — fixed copy, no clipboard content, posted only when the window
  * is not focused, and a click only opens the Clipboard pane. `clipOfferNotifier.ts`.
  */
+/**
+ * S8 (defect 186): reads and reports the quarantine attribute on every file received from the phone. The
+ * attribute itself is macOS's, from `LSFileQuarantineEnabled` in the packaged Info.plist; this never writes it.
+ */
+const receivedQuarantine = new ReceivedQuarantine(app.isPackaged, (line, level) =>
+  level === 'warn' ? log.warn('files', line) : log.info('files', line),
+);
+
 const clipOfferNotifier = new ClipOfferNotifier(
   createNativeNotification,
   () => nativeNotifier.view().windowFocused,
@@ -1202,6 +1211,7 @@ app.whenReady().then(() => {
   video = new VideoClient(identity, () => link?.peerFingerprint() ?? null);
   // Both side channels are pinned to the control session's phone (audit S2, `pinnedTls.ts`).
   bulk = new BulkClient(identity, () => link?.peerFingerprint() ?? null);
+  bulk.onPublished = (path) => void receivedQuarantine.report(path, `pulled ${basename(path)}`);
 
   // Camera v1. The controller owns the requests and the stream socket; the renderer only draws the
   // state it is sent and decodes the JPEGs it is handed. The socket is pinned to the phone that holds
@@ -1296,7 +1306,11 @@ app.whenReady().then(() => {
       if (!host) return Promise.resolve({ ok: false as const, reason: 'interrupted' as const, detail: 'no phone address', bytes: 0 });
       return liveBulk.pullShare({ ...options, host });
     },
-    publish: (part, folder, name) => publishExclusive(part, folder, name),
+    publish: async (part, folder, name) => {
+      const published = await publishExclusive(part, folder, name);
+      if (published.ok) void receivedQuarantine.report(published.path, `shared ${published.savedAs}`);
+      return published;
+    },
     ledger: shareLedger,
     // `receiverMode` is the one place the two gates become the receiver's behaviour, and the only route
     // by which the development allowlist reaches it: with `share.ask` open it is empty, whatever the

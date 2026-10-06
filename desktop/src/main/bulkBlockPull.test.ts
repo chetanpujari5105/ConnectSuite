@@ -184,3 +184,58 @@ test('low space during the pull pauses it with the sentence, keeps the partial, 
   assert.equal(existsSync(join(dir, 'clip.bin')), false, 'nothing published');
   assert.ok(existsSync(pullPartPathFor(join(dir, 'clip.bin'))), 'the partial is kept for a resume');
 });
+
+// ---- S8 (defect 186): the publish hook that main uses to report quarantine ---------------------------
+
+async function pullWith(client: BulkClient, served: Buffer, size: number, verifier: BlockPullVerifier, folderPath: string) {
+  const p = await phone(served);
+  try {
+    return await client.pull({
+      host: '127.0.0.1', token: 'tok', transferId: 't-q', destination: join(folderPath, 'q.bin'),
+      expectedBytes: size, expectedSha256: null, blocks: verifier, blockDoneWaitMs: 2000,
+      connect: () => ({ socket: createConnection({ host: '127.0.0.1', port: p.port }) as unknown as TLSSocket, readyEvent: 'connect' }),
+    });
+  } finally {
+    await p.close();
+  }
+}
+
+test('S8: a published pull is reported once, by its final path; a refused one is not reported', T, async () => {
+  const s = source();
+  const dir = folder();
+  const seen: string[] = [];
+  const client = new BulkClient({} as never);
+  client.onPublished = (path) => seen.push(path);
+  const ok = new BlockPullVerifier(s.bytes.length, BS, s.count);
+  ok.onBlocks({ first: 0, sha256: s.digests });
+  setTimeout(() => ok.onDone(s.done), 50);
+  const r = await pullWith(client, s.bytes, s.bytes.length, ok, dir);
+  assert.equal(r.ok, true, r.reason);
+  assert.deepEqual(seen, [join(dir, 'q.bin')]);
+
+  // Control: a flipped byte is never published, so nothing is reported.
+  const bad = Buffer.from(s.bytes);
+  bad[5] = bad[5]! ^ 0xff;
+  const v2 = new BlockPullVerifier(s.bytes.length, BS, s.count);
+  v2.onBlocks({ first: 0, sha256: s.digests });
+  setTimeout(() => v2.onDone(s.done), 50);
+  const dir2 = folder();
+  const r2 = await pullWith(client, bad, s.bytes.length, v2, dir2);
+  assert.equal(r2.ok, false);
+  assert.equal(seen.length, 1, 'a refused pull must not be reported as received');
+});
+
+test('S8: a reporting hook that throws never turns a saved file into a failed pull', T, async () => {
+  const s = source();
+  const dir = folder();
+  const client = new BulkClient({} as never);
+  client.onPublished = () => {
+    throw new Error('reporter broke');
+  };
+  const v = new BlockPullVerifier(s.bytes.length, BS, s.count);
+  v.onBlocks({ first: 0, sha256: s.digests });
+  setTimeout(() => v.onDone(s.done), 50);
+  const r = await pullWith(client, s.bytes, s.bytes.length, v, dir);
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(sha(readFileSync(join(dir, 'q.bin'))), sha(s.bytes));
+});

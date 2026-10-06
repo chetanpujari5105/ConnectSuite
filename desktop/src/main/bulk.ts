@@ -105,6 +105,12 @@ export class BulkClient {
     private readonly port: number = PORT_BULK,
   ) {}
 
+  /**
+   * S8 (defect 186): told the path of every file a pull publishes, so main can read and report its
+   * quarantine attribute (`quarantine.ts`). Never awaited by the pull: the file is already saved.
+   */
+  onPublished: (path: string) => void = () => undefined;
+
   /** A pinned TLS connection to the phone's bulk port, writable on [PINNED_EVENT] and not before. */
   private connectPinned(host: string): { socket: TLSSocket; readyEvent: string } {
     const socket = pinnedTlsConnect({
@@ -531,6 +537,11 @@ export class BulkClient {
         }
         if (published.path !== destination) {
           log.info('bulk', `${transferId}: ${basename(destination)} appeared in the folder during the transfer; saved as ${basename(published.path)} instead`);
+        }
+        try {
+          this.onPublished(published.path);
+        } catch {
+          // A reporting hook must never turn a saved file into a failed transfer.
         }
         const stale = await removeStaleSidecar(published.path);
         if (stale !== 'none') log.info('bulk', `${transferId}: the .failed marker at ${basename(published.path)} ${stale === 'removed' ? 'was an earlier failed attempt\'s and was removed, now that the file is whole' : 'is not one this app wrote, so it was kept'}`);

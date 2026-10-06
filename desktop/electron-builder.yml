@@ -74,6 +74,17 @@ mac:
       Sidekick connects to your phone on this network. Nothing leaves your local network and
       there is no server involved.
     LSMinimumSystemVersion: '11.0'
+    # S8 (defect 186): files this app creates are quarantined **by macOS** — Apple's documented key, so a
+    # file pulled or shared from the phone is assessed by Gatekeeper when opened as an app or script.
+    # Quarantine is not a scan and makes no file safe. The app's own profile is excluded: settings,
+    # identity, logs, resume records and Chromium's caches are not downloads. Whether `*` covers nested
+    # folders is a reading still owed (morning plan); `src/main/quarantine.ts` reports every received file.
+    LSFileQuarantineEnabled: true
+    LSFileQuarantineExcludedPathPatterns:
+      - '~/Library/Application Support/Sidekick/*'
+      - '~/Library/Application Support/sidekick-desktop/*'
+      - '~/Library/Caches/Sidekick/*'
+      - '~/Library/Caches/com.chetan.sidekick.desktop/*'
 
   # ---- Signing. Blank on purpose; see the header. ------------------------------------------------
   #
