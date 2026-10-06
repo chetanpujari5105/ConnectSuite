@@ -206,6 +206,7 @@ own heading there, and its own row here.
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
 | **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
 | **190** | **S4's drop grant trusted the renderer: a compromised main window could make `fs-send` read any local file.** `fs-grant-source` granted whatever path the preload — or raw IPC — sent; the sender and preload checks were working and are not a statement about who chose the file. Found by the S4 follow-up, Medium (needs a renderer compromise). | **fixed in source 2026-10-06 — not installed, no real drop performed.** Red first through the production handlers: a forged grant, then `fs-send`, opened and hashed all 34 bytes of a synthetic file. `fs-grant-source` removed; a drop is confirmed in a **native sheet** (`fs-confirm-drop`, Cancel default, one at a time, every file or every source folder named); grants bound to window, `dev`/`ino` and one hour (`sourceGrants.ts`). 9 mutations red (one malformed and one hanging first attempt recorded and rerun). | — | see below |
+| **191** | **The one-time Activity call-data rewrite re-serialised every call row from its five parsed fields**: an extra field on a call row was lost, and a call row in another key order was rewritten with nothing to redact. Found by the synthetic preflight run before any relaunch; the live file was never read or rewritten. | **fixed in source 2026-10-06 (`4661015`) — not run on the live profile.** A call row changes only when its `detail` must be redacted, and then only `detail`; an unknown field that may hold call data is kept and reported by name, never deleted. Red first 4 of 5; 6 mutations red; synthetic production run repeated. | — | see below |
 
 ---
 
@@ -3767,4 +3768,24 @@ drop from more than 12 folders needs the picker.
 of a synthetic file, the sheet read, Cancel then Send. **The wrong fix** is trusting a second renderer
 signal (a token, a timestamp from the drop event): anything the renderer can produce, a compromised
 renderer can produce.
+
+### 191 — the Activity rewrite rewrote more than the call detail · **fixed in source**
+
+Found by `docs/evidence/verification-prep-2026-10-06/activity-rewrite-synthetic.txt`, a synthetic run of the
+current `ActivityStore` before any relaunch. The live `activity.jsonl` was never read, copied or rewritten.
+
+**Fix (`4661015`):** `planStoredRewrite` decides; `readStored` writes. A call row is kept **byte for byte**
+unless its non-empty `detail` is one the call-history rule turns into "Unknown number"; then only `detail`
+is replaced in the row's own parsed object, so other fields, values and key order survive. An empty
+`detail` or `unknown` is no longer rewritten on disk (it holds no number; the screen still shows "Unknown
+number"). A call row with an unknown field that may hold call data (a name like `number`/`phone`/`caller`,
+or a 5+ digit run) is **kept unchanged and reported** — `N call row(s) … carry an unknown field that may
+hold call data (fieldNames) — kept unchanged, not redacted: a policy decision is needed` — by field name and
+count, never value. Non-call rows, the malformed-call-line policy, refused-write handling and idempotence
+are unchanged (`activity-rewrite-synthetic-after-fix.txt`).
+
+**Fix direction for what is left:** whether an unknown call-row field that may hold call data should be
+redacted is an **owner decision**, raised by the warning when such a row exists. Whether the live file has
+any is unknown until the approved relaunch (or an approved read-only dry run). **The wrong fix** is deleting
+unknown fields: the file has had more than one writer.
 

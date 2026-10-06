@@ -1,3 +1,21 @@
+# SUPERVISED VERIFICATION — 2026-10-06: A0 done (watcher off); defect 191 fixed in code; NOTHING installed or relaunched
+
+**Read first:** `docs/supervised-verification-plan-2026-10-06.md` (stages A0–G, §8 is A0's record).
+
+1. **Built and proven:** A0 — the live Mac app's clipboard watcher is **off** (`watchClipboard=false`,
+   `watching=false`, stop logged 18:23:46), verified three ways; no clipboard content read or changed.
+   Defect 191 — the pending Activity rewrite now changes only a redacted call `detail`; unknown fields
+   kept and reported (`4661015`; red first, 6 mutations red; Mac 1,898/0).
+2. **Committed** (local): `4ee586b` (plan), `4661015` (fix), plus the commit carrying this entry.
+3. **Ready, not used:** Mac artifact from `4661015` (manifest `bb594168…`) and the debug APK from `286e2b0`
+   (`5f014e9e…`), pinned in the session scratch directory. The `286e2b0` Mac build is superseded.
+4. **Needs your hands / approval:** M1 chosen — you copy harmless test text on the Mac and the phone; plug the
+   phone into USB for the read-only checks (pin, `dumpsys package`, `pm path`, signer); then A1's APK pull,
+   A2 (optional private Activity copy), A3, A4 — each separately.
+5. **Next:** the read-only USB checks as soon as the phone is attached; nothing that writes.
+6. **Left changed on your devices:** the Mac watcher setting (off; undo = the same toggle) and the main window
+   now showing the Clipboard pane. Nothing on the phone. Your uncommitted edits untouched.
+
 # S4 FILE-GRANT FOLLOW-UP + S7 CLIPBOARD PROVENANCE — 2026-10-06: built, tested, committed; NOTHING installed or relaunched
 
 **Read this first.** Defects **190** (new) and **185** in `docs/defects.md`. Evidence:

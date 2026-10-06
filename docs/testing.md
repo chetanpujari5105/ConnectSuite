@@ -28273,3 +28273,24 @@ hardware — `docs/s7-hardware-verification-proposal.md` V0–V11, for separate 
 
 **Fresh:** Mac **1,893 / 0**, both typechecks clean; phone **1,405 / 0** (`--rerun-tasks`, all six
 modules, every results file from this run); every guard exit 0.
+
+## Supervised verification — A0 and defect 191, 2026-10-06
+
+**A0 (approved, done 18:23 IST).** The clipboard watcher of the live Mac app (PID 91450, re-identified) was
+switched off through `#clip-watch` by name via `scripts/probe.mjs`, premise re-checked in the same call.
+Verified three ways: `sidekick.json` `watchClipboard` True → False; log `Stopped watching this Mac's
+clipboard` (0 before, 1 after; 0 `[clipboard]` lines since); main process `clip-watching` → `watching=false`
+(control: `login-item-get` answered). Neither clipboard's contents were read or changed.
+
+**Defect 191 (code only).** The synthetic preflight run of the pending Activity rewrite showed call rows
+re-serialised from five fields — an extra field lost, a different key order rewritten with nothing to
+redact. Fixed in `4661015`: a call row changes only when its `detail` must be redacted, and then only
+`detail`; an unknown field that may hold call data is kept and reported by name. Red first 4 of 5 on the
+exact rows; 6 mutations red with a green control; synthetic production run repeated
+(`docs/evidence/verification-prep-2026-10-06/`). Mac **1,898 / 0**, both typechecks, guards green. **The
+live `activity.jsonl`, its backups and the old profile were not read, copied or changed.**
+
+**Artifacts.** Mac rebuilt in scratch from `4661015`: manifest `bb594168…a524d` (308 files; only
+`main/activity.js` and its map differ from the superseded `286e2b0` build). Android APK from `286e2b0`
+unchanged and still valid (no phone, Gradle, contract or shared change since). Live `desktop/dist` unchanged
+(`4f40b0e9…`, 2026-10-04 17:09).

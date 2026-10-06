@@ -1,7 +1,9 @@
 # Supervised verification — preflight and staged plan (2026-10-06)
 
-> **Status: PREPARATION ONLY.** Nothing here has been run on a device. No install, relaunch, Activity
-> rewrite, clipboard change, Forget or re-pair has happened. Every stage below needs its own approval;
+> **Status (updated 2026-10-06 18:45): A0 DONE; everything else still preparation.** A0 turned the Mac
+> clipboard watcher off (§8). No install, relaunch, Activity rewrite, clipboard change, Forget or re-pair
+> has happened. **Clipboard method chosen: M1.** **The Mac artifact was rebuilt after defect 191** — the
+> `286e2b0` Mac build below is **SUPERSEDED** and must not be installed. Every stage below needs its own approval;
 > approving one approves nothing after it. Supersedes the *order* of `docs/pairing-v2-hardware-test-proposal.md`
 > (H1–H12) and `docs/s7-hardware-verification-proposal.md` (V0–V11); their pass criteria still apply.
 > Evidence for this file: `docs/evidence/verification-prep-2026-10-06/`.
@@ -17,13 +19,26 @@
 | Phone | **Not on USB** (`adb devices` answered with an empty list; no cold-start banner). Installed version, `lastUpdateTime`, signer and grants **could not be read** this sitting. Last recorded installs in the docs are 2026-09-29; the camera runs of 10-02/10-05 installed builds too |
 | Legacy migration marker | `legacy-migration.json`: settings, activity merge and re-pair decision all recorded (2026-09-18) — none run again |
 
-## 2. Artifacts (from `286e2b0`, a clean tree: no modified or untracked source files)
+## 2. Artifacts
+
+**Current, to be used:**
+
+| | Mac | Android |
+|---|---|---|
+| Source revision | **`46610155eb31a796b9ffb475b2c9345ed36df8cb`** (`4661015`, defect 191 fixed) | `286e2b0` — **unchanged and still valid**: no phone module, Gradle, contract (`docs/protocol.md`) or `desktop/src/shared` file changed between `286e2b0` and `4661015` |
+| Hash | manifest `bb5941689b8ef4e6d9137cd13e5db0bf28732bba360a6c2441b0b50fd39a524d` (`mac-dist-manifest-4661015.sha256`), 308 files; differs from the superseded build **only** in `main/activity.js` and its map | APK SHA-256 `5f014e9e0b0172ae8ff8cadf3551f5847f9682699535323947607bfd642530ad` |
+| Pinned copy | `<scratch>/mac-build-4661015/desktop/dist` | `<scratch>/artifacts/sidekick-debug-286e2b0.apk` |
+
+**Superseded (kept for the record, do not install):** the first table below describes the `286e2b0` Mac
+build; its manifest is now `mac-dist-manifest-286e2b0-SUPERSEDED.sha256`.
+
+### 2a. First build, from `286e2b0` (Mac half SUPERSEDED by `4661015`; Android half current)
 
 | | Mac | Android |
 |---|---|---|
 | What | compiled `dist/` (308 files), the dev-Electron app the live instance runs | `app-debug.apk` |
 | Built by | `git archive HEAD desktop` into scratch, `node_modules` symlinked, `npm run build` (exit 0) | `./gradlew :app:assembleDebug --rerun-tasks` (150/150 executed, exit 0) |
-| Hash | manifest of per-file SHA-256: `0051f15b91be8bc1c00597d0c6357cc8cb1e7f7cc842e23f6db1b64cba8bb67d` (`mac-dist-manifest.sha256`) | SHA-256 `5f014e9e0b0172ae8ff8cadf3551f5847f9682699535323947607bfd642530ad`, 94,856,261 bytes |
+| Hash | manifest of per-file SHA-256: `0051f15b91be8bc1c00597d0c6357cc8cb1e7f7cc842e23f6db1b64cba8bb67d` (`mac-dist-manifest-286e2b0-SUPERSEDED.sha256`) | SHA-256 `5f014e9e0b0172ae8ff8cadf3551f5847f9682699535323947607bfd642530ad`, 94,856,261 bytes |
 | Pinned copy | `<scratch>/mac-build-286e2b0/desktop/dist` | `<scratch>/artifacts/sidekick-debug-286e2b0.apk` |
 | Identity | — | `com.chetan.connectsuite.debug`, versionCode **1**, 2.0.0, target 36, **debuggable**; v2 signer `CN=Android Debug`, SHA-256 `d3a505d2…7d26` = `~/.android/debug.keystore` (2026-04-08) = the installed APK's signer as recorded earlier in `docs/testing.md`. No key was created |
 
@@ -61,7 +76,10 @@ Files a relaunch writes, by name (everything else in the profile is read-only to
 the old folder's `logs/activity.jsonl` may still hold call numbers; this rewrite does not reach them
 (S11b, an owner decision).
 
-**The rewrite, measured on synthetic fixtures through the current `ActivityStore`**
+**Superseded by defect 191 (`4661015`).** The behaviour measured below is the `286e2b0` build's, and it is
+why the Mac was rebuilt. The current behaviour is in §3a.
+
+**The rewrite as first measured, on synthetic fixtures through the `286e2b0` `ActivityStore`**
 (`activity-rewrite-synthetic.txt`; 9 lines including a call row with a number, names, an unknown
 field, a different key order, digits in an SMS row and two broken lines):
 
@@ -82,6 +100,22 @@ original call details, the extra fields on call rows and any dropped broken call
 recovered from this Mac. **How many live rows it changes is unknown** — counting them means reading the
 live file, which needs your separate approval (a read-only dry run on a private copy, counts only, copy
 deleted afterwards). No personal-data backup has been or will be made automatically.
+
+### 3a. The rewrite in the current Mac artifact (`4661015`, defect 191)
+
+Same synthetic fixtures plus two more rows (`activity-rewrite-synthetic-after-fix.txt`):
+
+- a call row is changed **only** when its non-empty `detail` is a number (or carries one): only `detail`
+  becomes "Unknown number"; every other field, value and the key order stay;
+- every other call row is kept **byte for byte** — names, extra fields, other key orders, empty or
+  `unknown` details;
+- a call row with an **unknown field that may hold call data** is kept unchanged and **reported** on every
+  load (`… carry an unknown field that may hold call data (fieldNames) — kept unchanged, not redacted: a
+  policy decision is needed`), names and count only;
+- unchanged: non-call rows exact; broken lines that may hold call data dropped, others kept; a refused
+  write leaves the file byte-identical and is retried; a second launch is a no-op.
+
+Still irreversible for the rows it does redact, and still unknown how many live rows that is.
 
 ## 4. Install and signing compatibility
 
@@ -129,6 +163,9 @@ during the run:
    the phone (e.g. `S7-PHONE-PLACEHOLDER`) — we cannot read, save or clear the phone clipboard.
 3. **The test itself** writes the Mac clipboard on purpose (D: Copy, Restore).
 
+**Chosen: M1** (owner, 2026-10-06). No snapshot, no helper, no clipboard data saved. The options are kept
+below for the record.
+
 For the **Mac clipboard**, choose one:
 
 - **M1 — nothing read (recommended).** Before A, you move anything you care about out of the clipboard
@@ -150,10 +187,10 @@ appear there too. They are harmless, but it is worth knowing.
 
 | Stage | Steps | Changes | Pass criterion |
 |---|---|---|---|
-| **A0** | Switch *Watch this Mac's clipboard* off in the live app (by name over CDP) | `watchClipboard=false`; forwarding stops | toggle reads off; log `Stopped watching` |
-| **A1** | Your clipboard method (§6) done; you copy the phone placeholder; plug the phone into USB. Read-only: pin, `dumpsys package` (version, `lastUpdateTime`, grants), `pm path` + pull installed `base.apk`, `apksigner` on it | a read; a copy of the installed APK on this Mac | installed signer = `d3a505d2…7d26`, versionCode ≤ 1; grants recorded |
+| **A0** | ~~Switch *Watch this Mac's clipboard* off~~ **DONE 18:23:46** — see §8 | `watchClipboard=false`; forwarding stopped | met |
+| **A1** | You copy harmless test text on the Mac and on the phone (M1); you copy the phone placeholder; plug the phone into USB. Read-only: pin, `dumpsys package` (version, `lastUpdateTime`, grants), `pm path` + pull installed `base.apk`, `apksigner` on it | a read; a copy of the installed APK on this Mac | installed signer = `d3a505d2…7d26`, versionCode ≤ 1; grants recorded |
 | **A2** | Optional, your decision: private pre-rewrite copy of `activity.jsonl` | a personal-data file | — |
-| **A3** | Keep current `desktop/dist` as a code copy; quit Sidekick **from its menu**; copy the scratch `dist` in; verify the manifest hash; relaunch with the two flags | Mac code; **Activity rewrite runs** | `Rewrote activity.jsonl: N…` or no rewrite line; pane loads; `pairing: legacy` |
+| **A3** | Keep current `desktop/dist` as a code copy; quit Sidekick **from its menu**; copy the **`4661015`** scratch `dist` in; verify manifest `bb594168…`; relaunch with the two flags | Mac code; **Activity rewrite runs** (§3a) | `Rewrote activity.jsonl: N…` or no rewrite line; any `unknown field … policy decision` warning recorded as a count; pane loads; `pairing: legacy`; watcher still off |
 | **A4** | `adb install -r` the pinned APK; `am start -n …debug/…MainActivity`; `scripts/link-up.sh` | phone app | three OKs; grants unchanged vs A1 |
 | **B** | H1 state; H4 Forget both sides, pair by QR; H4b cancel once | trust on both sides | "Code scanned. Verifying your Mac…", then "Paired" only after the Mac's `pairing v2, both sides proved the code` |
 | **C** | H5: disconnect/reconnect from the Mac; phone Wi-Fi off/on once | none persistent | reconnects with no pairing request |
@@ -164,3 +201,19 @@ appear there too. They are harmless, but it is worth knowing.
 
 **Not in this run:** calls, SMS, Bluetooth, camera/microphone, the incoming-call banner, any gate change,
 signing, publishing. H7 (impostor stand-in) and H8 (old QR) stay optional and separate.
+
+## 8. A0 — done, 2026-10-06 18:23 IST
+
+- **Instance re-identified:** PID 91450, started 2026-10-05 12:51:08 (unchanged); one page target,
+  `index.html`; port 9222 owned by PID 91450.
+- **Action:** `scripts/probe.mjs` routed to Clipboard by the nav row's accessible name (landed), read
+  `#clip-watch` checked = **true** (control: 1 element), clicked it with the premise re-checked inside the
+  same call (landed: the toggle and the pane's own status line agreed), read it back **false**.
+- **Verified independently:** `sidekick.json` `watchClipboard` **True → False**; log
+  `18:23:46.529 [clipboard] Stopped watching this Mac's clipboard` (0 such lines before; 119,452 polls
+  in the stopped watcher's tally); main process over the read-only `clip-watching` IPC → **`watching=false`**
+  (control: `login-item-get` answered); **0** `[clipboard]` log lines after the stop.
+- **Not read or changed:** either clipboard's contents; no pane text was read. **Side effect:** the main
+  window now shows the Clipboard pane.
+- **Undo:** the same toggle.
+
