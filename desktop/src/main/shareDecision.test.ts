@@ -134,11 +134,11 @@ test('the receive window appears without focus, at the normal level — only a p
 
 test('only the receive window may decide; the main window may only ask to Show', () => {
   const code = codeOf(readFileSync(join(__dirname, 'main.ts'), 'utf8'));
-  const decide = bodyAfter(code, "ipcMain.handle('share-decide'");
+  const decide = bodyAfter(code, "ipc.handle('share-decide'");
   assert.ok(decide.includes('handleShareDecision('), 'control: the decide handler was read');
   assert.match(decide, /event\.sender !== receiveWindow\.webContents\(\)/);
   assert.match(decide, /receiveWindow\.facts\(\)/, 'the Accept gate reads the window that was clicked');
-  const show = bodyAfter(code, "ipcMain.handle('share-window-show'");
+  const show = bodyAfter(code, "ipc.handle('share-window-show'");
   assert.ok(show.includes('parseOfferRequest('), 'control: the Show handler was read');
   assert.match(show, /event\.sender !== window\.webContents/);
   assert.doesNotMatch(show, /decide\(/);
@@ -153,19 +153,19 @@ test('the folder is shown with ~ for the home folder, and only for a real prefix
 test('Open, Show in Finder, Cancel and Try again: receive window only, {offerId} only, the path looked up in main', () => {
   const code = codeOf(readFileSync(join(__dirname, 'main.ts'), 'utf8'));
   // Sliced between two markers: `bodyAfter` would take the arrow's return *type* as its body.
-  const gate = code.slice(code.indexOf('const fromReceiveWindow = ('), code.indexOf("ipcMain.handle('share-cancel'"));
+  const gate = code.slice(code.indexOf('const fromReceiveWindow = ('), code.indexOf("ipc.handle('share-cancel'"));
   assert.ok(gate.length > 60 && gate.length < 800, `control: the gate was read (${gate.length} chars)`);
   assert.match(gate, /event\.sender !== receiveWindow\.webContents\(\)/);
   assert.match(gate, /parseOfferRequest\(raw\)/);
   for (const channel of ['share-cancel', 'share-retry', 'share-open', 'share-reveal']) {
-    const body = bodyAfter(code, `ipcMain.handle('${channel}'`);
+    const body = bodyAfter(code, `ipc.handle('${channel}'`);
     assert.match(body, /fromReceiveWindow\(event, raw\)/, channel);
     assert.doesNotMatch(body, /raw\s*\.|raw\[|as \{ path/, `${channel} reads nothing else from the page`);
   }
   for (const channel of ['share-open', 'share-reveal']) {
-    const body = bodyAfter(code, `ipcMain.handle('${channel}'`);
+    const body = bodyAfter(code, `ipc.handle('${channel}'`);
     assert.match(body, /shareReceiver\.publishedFile\(r\.offerId\)/, `${channel} acts only on the re-verified publication`);
     assert.match(body, /if \(!file\.ok\)/, `${channel} refuses when the file changed`);
   }
-  assert.match(bodyAfter(code, "ipcMain.handle('share-retry'"), /acceptAllowed\(receiveWindow\.facts\(\)\)/, 'a retry pulls, so it is gated like Accept');
+  assert.match(bodyAfter(code, "ipc.handle('share-retry'"), /acceptAllowed\(receiveWindow\.facts\(\)\)/, 'a retry pulls, so it is gated like Accept');
 });

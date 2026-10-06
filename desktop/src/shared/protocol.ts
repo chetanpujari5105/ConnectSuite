@@ -851,7 +851,9 @@ export type RemoteActionName = (typeof RemoteAction)[keyof typeof RemoteAction];
 /** What the Mac shows in its QR code. The phone scans exactly this. */
 /**
  * The pairing QR — `docs/protocol.md` → Pairing (version 2). `secret` is the pairing secret `K`: it
- * exists only inside the QR image and this process's memory, and never crosses IPC to the renderer.
+ * lives in the main process's memory; the raw field never crosses IPC. The QR image the main window shows
+ * encodes it, as a scannable code must — so this protects against accidental exposure and other windows,
+ * not against a compromised main renderer.
  */
 export interface PairingQrPayload {
   v: 2;

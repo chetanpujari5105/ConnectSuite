@@ -109,6 +109,8 @@ import { initLogger, log, tailLog } from './logger';
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
 import { guardWindow } from './windowGuard';
+import { ResourceGrants, WindowRegistry, guardIpc } from './ipcAuth';
+import { EVENT_ROLES, IPC_POLICY } from './ipcPolicy';
 import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
@@ -147,6 +149,25 @@ import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armPairingCode } from './pairingArm';
 import { fitWindow, DESIGN } from '../shared/windowGeometry';
+
+const [MAIN_PAGE, FLOAT_PAGE, SHARE_PAGE] = ['index.html', 'float.html', 'share-window.html'].map((page) =>
+  join(__dirname, '..', 'renderer', page),
+) as [string, string, string];
+
+/**
+ * Audit S4: the IPC authorization boundary. Every handler below is registered through `ipc`, which
+ * identifies the sending window by object identity (registered here when each window is created),
+ * refuses unknown senders, subframes and replaced windows, checks the window's role against
+ * `IPC_POLICY`, and validates the arguments — all before the handler runs. See `ipcAuth.ts`.
+ */
+const windows = new WindowRegistry();
+const ipc = guardIpc(ipcMain, windows, IPC_POLICY, { warn: (message) => log.warn('ipc', message) });
+/** Files this process pulled or saved — the only paths `fs-drag` may drag and `reveal-saved` reveal. */
+const producedFiles = new ResourceGrants();
+/** Local files the person chose (picker) or dropped (preload's `pathForFile`) — the only ones `fs-send` reads. */
+const chosenSources = new ResourceGrants();
+/** Tests only (`ipcWiring.test.ts`): register stand-in windows and grants against the real handlers. */
+export const ipcBoundaryForTests = { windows, producedFiles, chosenSources };
 
 let window: BrowserWindow | null = null;
 /**
@@ -647,11 +668,15 @@ function createWindow(): void {
         `; fits work area: ${fits}`,
     );
   });
+  // S4: the main window is the only `main` sender the IPC guard accepts, and only from its own page.
+  const mainContents = window.webContents;
+  windows.register('main', mainContents, MAIN_PAGE);
   window.webContents.on('did-finish-load', () => window?.webContents.setZoomLevel(0));
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   window.on('focus', () => nativeNotifier.setWindowFocused(true));
   window.on('blur', () => nativeNotifier.setWindowFocused(false));
   window.on('closed', () => {
+    windows.unregister('main', mainContents);
     // A closed window is not a focused one. Without this the app keeps suppressing banners for a
     // pane that is not on any screen — the app survives `window-all-closed` by design.
     nativeNotifier.setWindowFocused(false);
@@ -836,12 +861,12 @@ nativeTheme.on('updated', () => {
   broadcastTheme();
 });
 
-ipcMain.handle('appearance-get', () => ({
+ipc.handle('appearance-get', () => ({
   ok: true,
   data: { appearance: storedAppearance(), theme: currentTheme() },
 }));
 
-ipcMain.handle('appearance-set', (_event, value: unknown) => {
+ipc.handle('appearance-set', (_event, value: unknown) => {
   applyAppearance(appearanceRules.asAppearance(value));
   return { ok: true, data: { appearance: storedAppearance(), theme: currentTheme() } };
 });
@@ -863,12 +888,14 @@ function send(channel: string, payload: unknown): void {
  * replays the retained config frame and asks for an IDR. See [openFloatWindow].
  */
 function sendAll(channel: string, payload: unknown = null): void {
-  send(channel, payload);
+  // S4: an event reaches only the windows `EVENT_ROLES` names (the main window for anything unlisted),
+  // so a clipboard entry, a message or a transfer never enters the float or receive window's process.
+  const roles = EVENT_ROLES[channel] ?? ['main'];
+  if (roles.includes('main')) send(channel, payload);
   const detached = float?.webContents();
-  if (detached && !detached.isDestroyed()) detached.webContents.send(channel, payload);
-  // The receive window listens only for `appearance`; any other channel is ignored by its page.
+  if (roles.includes('float') && detached && !detached.isDestroyed()) detached.webContents.send(channel, payload);
   const receive = shareWindow?.webContents();
-  if (receive && !receive.isDestroyed()) receive.send(channel, payload);
+  if (roles.includes('share') && receive && !receive.isDestroyed()) receive.send(channel, payload);
 }
 
 /**
@@ -984,7 +1011,7 @@ function installAppMenu(routes: MenuRoute[], commands: MenuRoute[] = []): void {
   );
 }
 
-ipcMain.handle('menu-routes', (_event, routes: unknown, commands: unknown) => {
+ipc.handle('menu-routes', (_event, routes: unknown, commands: unknown) => {
   if (!Array.isArray(routes)) return;
   installAppMenu(routes as MenuRoute[], Array.isArray(commands) ? (commands as MenuRoute[]) : []);
 });
@@ -1172,7 +1199,7 @@ app.whenReady().then(() => {
     link: cameraLink,
     sessionEndedEvent: SESSION_ENDED_EVENT,
     openSocket: (host, claim) => openCameraSocket(identity, host, claim, cameraLink.peerFingerprint()),
-    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    handle: (channel, listener) => ipc.handle(channel, listener),
     send,
     power: powerMonitor,
   });
@@ -1201,7 +1228,7 @@ app.whenReady().then(() => {
     sessionEndedEvent: SESSION_ENDED_EVENT,
     openSocket: (host, claim) => openCameraSocket(identity, host, claim, cameraLink.peerFingerprint()),
     webcamBusy: () => liveWebcam.controller.current().session !== null,
-    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    handle: (channel, listener) => ipc.handle(channel, listener),
     send,
     power: powerMonitor,
   });
@@ -1260,8 +1287,9 @@ app.whenReady().then(() => {
    * reads this handler and that method and fails on anything that raises, focuses or notifies.
    */
   const receiveWindow = new ShareReceiveWindow(
-    join(__dirname, '..', 'preload.js'),
-    join(__dirname, '..', 'renderer', 'share-window.html'),
+    // S4: the receive window's own narrow bridge — its offers and their actions only.
+    join(__dirname, '..', 'preloadShare.js'),
+    SHARE_PAGE,
     (subject) => ({
       subject,
       offers: forRenderer(shareReceiver.snapshots(), homedir()),
@@ -1270,7 +1298,14 @@ app.whenReady().then(() => {
     }),
     // Transparent: the window's material is AppKit's vibrancy, and the page paints the chrome token.
     () => '#00000000',
+    // S4: registered before its page loads; a replaced window's renderer is forgotten at once.
+    (target) => {
+      const contents = target.webContents;
+      windows.register('share', contents, SHARE_PAGE);
+      target.on('closed', () => windows.unregister('share', contents));
+    },
   );
+
   shareWindow = receiveWindow;
   const presenter = new ShareWindowPresenter();
   /*
@@ -1310,20 +1345,22 @@ app.whenReady().then(() => {
       if ((s.state === 'saved' || s.state === 'saved-unacknowledged') && !shareThumbs.has(s.offerId)) void makeThumb(s.offerId, s.mime);
     }
   });
-  ipcMain.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
-  ipcMain.handle('share-window-state', (event) => {
+  ipc.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
+  ipc.handle('share-window-state', (event) => {
     if (event.sender !== receiveWindow.webContents()) return null;
     return receiveWindow.state();
   });
-  ipcMain.handle('share-decide', async (event, raw: unknown) => {
+  ipc.handle('share-decide', async (event, raw: unknown) => {
     // Only the receive window decides. The main window's card has no Accept to send, and a page
     // that sends one anyway is refused here rather than trusted to have drawn the right thing.
     if (event.sender !== receiveWindow.webContents()) return { ok: false, reason: 'refused: only the receive window decides' };
+    const shown = parseOfferRequest(raw);
+    if (!shown.ok || !receiveWindow.showsOffer(event.sender, shown.offerId)) return { ok: false, reason: 'refused: that offer is not on this window' };
     const result = await handleShareDecision(raw, receiveWindow.facts(), shareReceiver);
-    log.info('share', `receive window decision ${JSON.stringify(raw)?.slice(0, 120)} → ${JSON.stringify(result)}`);
+    log.info('share', `receive window decision for ${shown.offerId} → ${JSON.stringify(result)}`);
     return result;
   });
-  ipcMain.handle('share-window-show', (event, raw: unknown) => {
+  ipc.handle('share-window-show', (event, raw: unknown) => {
     // A person pressed Show on the main window's card — the one path that may focus the window.
     if (!window || window.isDestroyed() || event.sender !== window.webContents) return { ok: false, reason: 'refused: not the main window' };
     const parsed = parseOfferRequest(raw);
@@ -1341,14 +1378,18 @@ app.whenReady().then(() => {
   const fromReceiveWindow = (event: Electron.IpcMainInvokeEvent, raw: unknown): { ok: true; offerId: string } | { ok: false; reason: string } => {
     if (event.sender !== receiveWindow.webContents()) return { ok: false, reason: 'refused: not the receive window' };
     const parsed = parseOfferRequest(raw);
-    return parsed.ok ? parsed : { ok: false, reason: `refused: ${parsed.why}` };
+    if (!parsed.ok) return { ok: false, reason: `refused: ${parsed.why}` };
+    // S4: an action is bound to the offers last shown in THIS window — a replaced or stale window, or
+    // an offer it never displayed, gets nothing.
+    if (!receiveWindow.showsOffer(event.sender, parsed.offerId)) return { ok: false, reason: 'refused: that offer is not on this window' };
+    return parsed;
   };
-  ipcMain.handle('share-cancel', async (event, raw: unknown) => {
+  ipc.handle('share-cancel', async (event, raw: unknown) => {
     const r = fromReceiveWindow(event, raw);
     if (!r.ok) return r;
     return (await shareReceiver.cancel(r.offerId)) ? { ok: true } : { ok: false, reason: 'There is nothing running to cancel.' };
   });
-  ipcMain.handle('share-retry', async (event, raw: unknown) => {
+  ipc.handle('share-retry', async (event, raw: unknown) => {
     const r = fromReceiveWindow(event, raw);
     if (!r.ok) return r;
     const gate = acceptAllowed(receiveWindow.facts());
@@ -1358,7 +1399,7 @@ app.whenReady().then(() => {
     void shareReceiver.retry(r.offerId);
     return { ok: true };
   });
-  ipcMain.handle('share-open', async (event, raw: unknown) => {
+  ipc.handle('share-open', async (event, raw: unknown) => {
     const r = fromReceiveWindow(event, raw);
     if (!r.ok) return r;
     const file = await shareReceiver.publishedFile(r.offerId);
@@ -1370,7 +1411,7 @@ app.whenReady().then(() => {
     log.info('share', `Open ${r.offerId} → ${error === '' ? 'opened' : `failed: ${error}`}`);
     return error === '' ? { ok: true } : { ok: false, reason: `macOS could not open it: ${error}` };
   });
-  ipcMain.handle('share-reveal', async (event, raw: unknown) => {
+  ipc.handle('share-reveal', async (event, raw: unknown) => {
     const r = fromReceiveWindow(event, raw);
     if (!r.ok) return r;
     const file = await shareReceiver.publishedFile(r.offerId);
@@ -1382,10 +1423,10 @@ app.whenReady().then(() => {
     log.info('share', `Show in Finder ${r.offerId}`);
     return { ok: true };
   });
-  ipcMain.on('share-window-close', (event) => {
+  ipc.on('share-window-close', (event) => {
     if (event.sender === receiveWindow.webContents()) receiveWindow.close();
   });
-  ipcMain.on('share-window-height', (event, height: unknown) => {
+  ipc.on('share-window-height', (event, height: unknown) => {
     if (event.sender === receiveWindow.webContents()) receiveWindow.setContentHeight(height);
   });
 
@@ -1462,7 +1503,8 @@ app.whenReady().then(() => {
   if (globalShortcut.register(MARK_ACCELERATOR, () => {
     const at = new Date().toISOString();
     log.warn('mark', `MARK at ${at} — asking the mirror window for the stages around it`);
-    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('mark-requested', at));
+    // The main window's mirror pane is the only listener; no other window receives it (S4).
+    send('mark-requested', at);
   })) {
     log.info('mark', `Press ${MARK_ACCELERATOR} when the mirror feels wrong; the stages around it go in this log`);
   } else {
@@ -1470,7 +1512,7 @@ app.whenReady().then(() => {
     log.warn('mark', `Could not register ${MARK_ACCELERATOR} — another app holds it. Use scripts/mirror-mark.mjs instead`);
   }
 
-  ipcMain.handle('mark-moment', (_event, summary: unknown) => {
+  ipc.handle('mark-moment', (_event, summary: unknown) => {
     // One line, so a run of marks reads as a table in the log rather than as prose to reassemble.
     const s = summary as Record<string, unknown> | null;
     if (!s) return;
@@ -1487,13 +1529,13 @@ app.whenReady().then(() => {
   });
 
   /** What a renderer is allowed to know about the debug switches. Never on in a packaged build. */
-  ipcMain.handle('debug-switches', () =>
+  ipc.handle('debug-switches', () =>
     app.isPackaged ? { delayFloatListeners: false } : { delayFloatListeners: debugSwitches().delayFloatListeners },
   );
 
   // The shape is declared here and interpreted in renderer/streamStart.ts. Nothing type-checks
   // across IPC, so a shared type would imply a guarantee it cannot give; both sides name the other.
-  ipcMain.handle('stream-start', (event): {
+  ipc.handle('stream-start', (event): {
     config: { ptsUs: number; bytes: number } | null;
     sessionRunning: boolean;
     capture: typeof lastCaptureGeometry;
@@ -1565,8 +1607,9 @@ app.whenReady().then(() => {
   keyframeRequester = requestKeyframe;
 
   float = new FloatMirrorWindow(
-    join(__dirname, '..', 'preload.js'),
-    join(__dirname, '..', 'renderer', 'float.html'),
+    // S4: the float window's own narrow bridge — mirror, input and window controls only.
+    join(__dirname, '..', 'preloadFloat.js'),
+    FLOAT_PAGE,
     (state) => sendAll('float-changed', state),
     (target) => {
       /*
@@ -1581,7 +1624,14 @@ app.whenReady().then(() => {
       // and no idea whether input is advertised. Replay the last one rather than leaving it blank.
       if (lastStatus) target.webContents.send('status', lastStatus);
     },
+    // S4: registered before its page loads; a closed window's renderer is forgotten at once.
+    (target) => {
+      const contents = target.webContents;
+      windows.register('float', contents, FLOAT_PAGE);
+      target.on('closed', () => windows.unregister('float', contents));
+    },
   );
+
 
   // Access units go straight to the renderer, which owns the WebCodecs decoder and the canvas.
   // Buffer -> Uint8Array because a Node Buffer does not survive structured cloning as one.
@@ -2019,7 +2069,7 @@ app.on('before-quit', () => {
  *
  * The video socket is therefore opened by {@link onMirrorState} on `running`, not here.
  */
-ipcMain.handle('mirror-start', async (_event, options: Record<string, unknown> = {}) => {
+ipc.handle('mirror-start', async (_event, options: Record<string, unknown> = {}) => {
   if (!link || !link.isConnected()) throw new Error('Not connected to the phone');
   if (!link.token() || !link.status().address) throw new Error('No live session with the phone');
 
@@ -2062,7 +2112,7 @@ ipcMain.handle('mirror-start', async (_event, options: Record<string, unknown> =
  * session, and stopping the *session* always closes the window. A detached window over a stopped
  * mirror would be a frame with nothing in it and no way to explain itself.
  */
-ipcMain.handle('mirror-stop', async () => {
+ipc.handle('mirror-stop', async () => {
   float?.closeFloat();
   video?.close('stopped by the user');
   if (link?.isConnected()) {
@@ -2080,7 +2130,7 @@ ipcMain.handle('mirror-stop', async () => {
  * nothing — no second consent tap. The new SPS/PPS that follows makes the renderer's decoder
  * reconfigure itself.
  */
-ipcMain.handle('mirror-config', async (_event, options: Record<string, unknown> = {}) => {
+ipc.handle('mirror-config', async (_event, options: Record<string, unknown> = {}) => {
   if (!link?.isConnected()) throw new Error('Not connected to the phone');
   await link.request('mirror.config', options, 10_000);
   log.info('video', `Mirror reconfigured: ${JSON.stringify(options)}`);
@@ -2093,7 +2143,7 @@ ipcMain.handle('mirror-config', async (_event, options: Record<string, unknown> 
  * The float window is the reason this exists: it could fail through an entire demo with nothing
  * durable to read afterwards.
  */
-ipcMain.on('renderer-log', (_event, where: unknown, line: unknown) => {
+ipc.on('renderer-log', (_event, where: unknown, line: unknown) => {
   if (typeof where !== 'string' || typeof line !== 'string') return;
   // The tag is bounded rather than passed through, so a renderer cannot invent log namespaces.
   const tag = where === 'float' || where === 'mirror' ? where : 'renderer';
@@ -2121,7 +2171,7 @@ const keyframeTrace = new KeyframeTrace();
  */
 let keyframeRequester: ((reason: string) => Promise<void>) | null = null;
 
-ipcMain.handle('mirror-keyframe', async (_event, reason?: unknown) => {
+ipc.handle('mirror-keyframe', async (_event, reason?: unknown) => {
   await keyframeRequester?.(typeof reason === 'string' ? reason : 'renderer, unspecified');
 });
 
@@ -2136,7 +2186,7 @@ ipcMain.handle('mirror-keyframe', async (_event, reason?: unknown) => {
  * The name carries a second-resolution timestamp so two captures a second apart cannot collide and
  * silently overwrite each other.
  */
-ipcMain.handle('mirror-capture', async (_event, dataUrl: string) => {
+ipc.handle('mirror-capture', async (_event, dataUrl: string) => {
   // A data URL is the only shape accepted. Anything else is a bug or a hostile renderer, and
   // either way it must not reach `writeFile` with a path in it.
   const prefix = 'data:image/png;base64,';
@@ -2176,22 +2226,22 @@ const captureTally = (): string =>
  * renderer could use to set a width without re-clamping Y. That is the isolation the README asks
  * for, expressed as the shape of the wire rather than as a rule someone has to remember.
  */
-ipcMain.handle('float-open', () => {
+ipc.handle('float-open', () => {
   float?.openFloat();
   return float?.state() ?? null;
 });
-ipcMain.handle('float-close', () => float?.closeFloat());
-ipcMain.handle('float-minimize', () => float?.minimize());
-ipcMain.handle('float-smart-fit', () => float?.smartFit());
-ipcMain.handle('float-set-width', (_event, width: number) => float?.setWidth(width));
-ipcMain.handle('float-set-pinned', (_event, pinned: boolean) => float?.setPinned(pinned === true));
-ipcMain.handle(
+ipc.handle('float-close', () => float?.closeFloat());
+ipc.handle('float-minimize', () => float?.minimize());
+ipc.handle('float-smart-fit', () => float?.smartFit());
+ipc.handle('float-set-width', (_event, width: number) => float?.setWidth(width));
+ipc.handle('float-set-pinned', (_event, pinned: boolean) => float?.setPinned(pinned === true));
+ipc.handle(
   'float-move',
   (_event, drag: { pointer: { x: number; y: number }; grab: { x: number; y: number } }) =>
     float?.moveTo(drag.pointer, drag.grab),
 );
-ipcMain.handle('float-resize', (_event, pointer: { x: number }) => float?.resizeCorner(pointer));
-ipcMain.handle('float-state', () => float?.state() ?? null);
+ipc.handle('float-resize', (_event, pointer: { x: number }) => float?.resizeCorner(pointer));
+ipc.handle('float-state', () => float?.state() ?? null);
 
 /**
  * The float window asking for the main window. Defect 117.
@@ -2201,7 +2251,7 @@ ipcMain.handle('float-state', () => float?.state() ?? null);
  * value is read after the reveal rather than assumed, so a future change that did close the float
  * would be reported rather than denied.
  */
-ipcMain.handle('main-window-show', () => {
+ipc.handle('main-window-show', () => {
   revealMainWindow('float rail');
   return { floatStillOpen: float?.state().open ?? false };
 });
@@ -2210,20 +2260,20 @@ ipcMain.handle('main-window-show', () => {
  * Camera v1. Each handler answers with a result rather than throwing (defect 22), and none of them
  * can open the phone's camera: `camera-request` asks, and the phone's owner decides on the phone.
  */
-ipcMain.handle('camera-request', async (_event, facing: unknown) => {
+ipc.handle('camera-request', async (_event, facing: unknown) => {
   if (!camera) return { ok: false, reason: 'The camera is not ready yet' };
   const result = await camera.request(facing);
   if (result.ok) activity.record('system', 'Camera requested', 'waiting for approval on the phone');
   return result;
 });
-ipcMain.handle('camera-stop', async () => (camera ? camera.stop() : { ok: true }));
-ipcMain.handle('camera-switch', async (_event, facing: unknown) =>
+ipc.handle('camera-stop', async () => (camera ? camera.stop() : { ok: true }));
+ipc.handle('camera-switch', async (_event, facing: unknown) =>
   camera ? camera.switchCamera(facing) : { ok: false, reason: 'No live camera stream' });
-ipcMain.handle('camera-current', () => camera?.current() ?? { kind: 'idle' });
+ipc.handle('camera-current', () => camera?.current() ?? { kind: 'idle' });
 // The page says which stream the frame was for and whether it was drawn; the controller checks both.
-ipcMain.on('camera-frame-ack', (_event, streamId: unknown, outcome: unknown) => camera?.frameAck(streamId, outcome));
+ipc.on('camera-frame-ack', (_event, streamId: unknown, outcome: unknown) => camera?.frameAck(streamId, outcome));
 
-ipcMain.handle('mirror-stats', () => ({
+ipc.handle('mirror-stats', () => ({
   ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),
   clockOffsetMs: link?.clockOffset(),
   phone: lastPhoneMirrorStats,
@@ -2238,18 +2288,18 @@ ipcMain.handle('mirror-stats', () => ({
  * is capturing right now, and second-guessing it here is how a tap ends up somewhere the user did
  * not click. A rejection carries the phone's own sentence, which the canvas shows verbatim.
  */
-ipcMain.handle('input-tap', (_event, payload: Record<string, unknown>) => input.tap(payload));
-ipcMain.handle('input-swipe', (_event, payload: Record<string, unknown>) => input.swipe(payload));
-ipcMain.handle('input-scroll', (_event, payload: Record<string, unknown>) => input.scroll(payload));
-ipcMain.handle('input-key', (_event, key: string) => input.key(key));
-ipcMain.handle('input-text', (_event, payload: { text: string; mode?: 'replace' | 'append' }) =>
+ipc.handle('input-tap', (_event, payload: Record<string, unknown>) => input.tap(payload));
+ipc.handle('input-swipe', (_event, payload: Record<string, unknown>) => input.swipe(payload));
+ipc.handle('input-scroll', (_event, payload: Record<string, unknown>) => input.scroll(payload));
+ipc.handle('input-key', (_event, key: string) => input.key(key));
+ipc.handle('input-text', (_event, payload: { text: string; mode?: 'replace' | 'append' }) =>
   input.text(payload.text, payload.mode ?? 'replace'),
 );
-ipcMain.handle('input-global', (_event, action: string) => input.global(action));
+ipc.handle('input-global', (_event, action: string) => input.global(action));
 
 // ---- Phase 4: notifications ------------------------------------------------------------------
 let currentRoute = '';
-ipcMain.on('route-changed', (_event, screen: unknown) => {
+ipc.on('route-changed', (_event, screen: unknown) => {
   if (typeof screen !== 'string') return;
   nativeNotifier.setCurrentScreen(screen);
   // Pairing v2: the code is valid only while it is on screen. Leaving the pairing screen discards it;
@@ -2261,27 +2311,27 @@ ipcMain.on('route-changed', (_event, screen: unknown) => {
   currentRoute = screen;
 });
 
-ipcMain.handle('notif-permission', () => nativeNotifier.permissionState());
-ipcMain.handle('notif-sound-get', () => store.get('notificationSound'));
-ipcMain.handle('notif-sound-set', (_event, on: unknown) => {
+ipc.handle('notif-permission', () => nativeNotifier.permissionState());
+ipc.handle('notif-sound-get', () => store.get('notificationSound'));
+ipc.handle('notif-sound-set', (_event, on: unknown) => {
   const value = on === true;
   store.set('notificationSound', value);
   log.info('native-notif', `Notification sound ${value ? 'on' : 'off'}`);
   return value;
 });
 
-ipcMain.handle('notif-list', () => notifications.all());
-ipcMain.handle('notif-reply', (_event, payload: { key: string; text: string }) =>
+ipc.handle('notif-list', () => notifications.all());
+ipc.handle('notif-reply', (_event, payload: { key: string; text: string }) =>
   notifications.reply(payload.key, payload.text),
 );
-ipcMain.handle('notif-action', (_event, payload: { key: string; index: number }) =>
+ipc.handle('notif-action', (_event, payload: { key: string; index: number }) =>
   notifications.action(payload.key, payload.index),
 );
-ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(key));
+ipc.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(key));
 
 // The manual override, kept: a click is a `user` trigger and is never argued with by the
 // unchanged rule, so pressing it after copying the same thing twice still sends.
-ipcMain.handle('clip-send', async () => {
+ipc.handle('clip-send', async () => {
   // R8 (clipboard).
   const result = await clip.send('user');
   if (result?.ok && result.data.applied === false) {
@@ -2294,16 +2344,16 @@ ipcMain.handle('clip-send', async () => {
   else activity.record('clipboard', 'Send refused', describeFailure(result));
   return result;
 });
-ipcMain.handle('clip-watching', () => ({ ok: true, data: { watching: clipWatcher.isRunning } }));
-ipcMain.handle('clip-set-watching', (_event, on: boolean) => {
+ipc.handle('clip-watching', () => ({ ok: true, data: { watching: clipWatcher.isRunning } }));
+ipc.handle('clip-set-watching', (_event, on: boolean) => {
   if (on) clipWatcher.start();
   else clipWatcher.stop();
   store.set('watchClipboard', clipWatcher.isRunning);
   return { ok: true, data: { watching: clipWatcher.isRunning } };
 });
-ipcMain.handle('clip-request', () => clip.request());
-ipcMain.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
-ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
+ipc.handle('clip-request', () => clip.request());
+ipc.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
+ipc.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
 /**
  * Settings → General: **Start on login**.
  *
@@ -2316,11 +2366,11 @@ ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHisto
  * `openAtLogin` is the only field read. `wasOpenedAtLogin` and friends describe *this* launch and
  * would be a different question.
  */
-ipcMain.handle('login-item-get', () => ({
+ipc.handle('login-item-get', () => ({
   ok: true,
   data: { openAtLogin: app.getLoginItemSettings().openAtLogin },
 }));
-ipcMain.handle('login-item-set', (_event, on: boolean) => {
+ipc.handle('login-item-set', (_event, on: boolean) => {
   app.setLoginItemSettings({ openAtLogin: on, openAsHidden: true });
   const actual = app.getLoginItemSettings().openAtLogin;
   if (actual !== on) {
@@ -2332,7 +2382,7 @@ ipcMain.handle('login-item-set', (_event, on: boolean) => {
 });
 
 /** Settings → File transfer: the real destination, from the one place that owns it. */
-ipcMain.handle('downloads-folder', () => ({
+ipc.handle('downloads-folder', () => ({
   ok: true,
   data: {
     path: downloadsFolder(),
@@ -2348,7 +2398,7 @@ ipcMain.handle('downloads-folder', () => ({
  * The folder is checked for writability **before** it is stored, so the setting can never hold a
  * destination the next pull would refuse. A cancelled picker changes nothing and says so.
  */
-ipcMain.handle('downloads-choose', async () => {
+ipc.handle('downloads-choose', async () => {
   const picked = await dialog.showOpenDialog({
     title: 'Choose where files from your phone are saved',
     buttonLabel: 'Use this folder',
@@ -2368,7 +2418,7 @@ ipcMain.handle('downloads-choose', async () => {
 });
 
 /** Back to `~/Downloads/Sidekick`. Nothing already saved is moved. */
-ipcMain.handle('downloads-use-default', () => {
+ipc.handle('downloads-use-default', () => {
   store.set('receiveFolder', null);
   log.info('files', `receive folder reset to the default ${defaultDownloadsFolder()}`);
   return { ok: true, data: { path: defaultDownloadsFolder() } };
@@ -2381,7 +2431,7 @@ ipcMain.handle('downloads-use-default', () => {
  * that does nothing on a fresh install, with no way to tell that from a broken button, is the
  * silent-no-op shape this project rules out everywhere else.
  */
-ipcMain.handle('downloads-reveal', async () => {
+ipc.handle('downloads-reveal', async () => {
   // The default is created on demand; a chosen folder that has gone is refused with its name,
   // never recreated — see `ensureReceiveFolder`.
   const ready = await ensureReceiveFolder();
@@ -2398,16 +2448,16 @@ ipcMain.handle('downloads-reveal', async () => {
  * since the pane was drawn is refused with a sentence rather than recreated.
  */
 /** The pairing screen's rename notice: the approved sentence while the re-pair is owed, else null. */
-ipcMain.handle('rename-notice', () => ({ ok: true, data: { notice: pairingRenameNotice(rePairPending) } }));
+ipc.handle('rename-notice', () => ({ ok: true, data: { notice: pairingRenameNotice(rePairPending) } }));
 
-ipcMain.handle('downloads-reveal-legacy', () => {
+ipc.handle('downloads-reveal-legacy', () => {
   const folder = legacyDownloadsFolder(homedir());
   if (!folder) return { ok: false, reason: 'The ConnectSuite downloads folder is no longer there.' };
   shell.showItemInFolder(folder);
   return { ok: true, data: { path: folder } };
 });
 
-ipcMain.handle('clip-clear', () => {
+ipc.handle('clip-clear', () => {
   const had = clip.clearHistory();
   activity.record('clipboard', 'History cleared', `${had} entr${had === 1 ? 'y' : 'ies'} removed from this Mac`);
   return { ok: true, data: { cleared: had } };
@@ -2422,7 +2472,7 @@ ipcMain.handle('clip-clear', () => {
  * rule as everywhere else in this repo: the check runs where the action is, and it is the same
  * function the pane used to decide whether to draw the button, so the two cannot disagree.
  */
-ipcMain.handle('clip-open', async (_event, text: string) => {
+ipc.handle('clip-open', async (_event, text: string) => {
   const url = openableUrl(text);
   if (!url) {
     return {
@@ -2437,16 +2487,16 @@ ipcMain.handle('clip-open', async (_event, text: string) => {
 });
 // A click on an older row, or Restore on a displaced entry. Arriving entries are applied by
 // `ClipboardClient.receive` without coming through here.
-ipcMain.handle('clip-use', (_event, text: string) => {
+ipc.handle('clip-use', (_event, text: string) => {
   clip.use(text);
   return { ok: true, data: null };
 });
 
-ipcMain.handle(
+ipc.handle(
   'contacts-list',
   (_event, options: { query?: string; limit?: number } = {}) => contacts.list(options),
 );
-ipcMain.handle(
+ipc.handle(
   'contacts-get',
   (_event, options: { id?: string; number?: string; withPhoto?: boolean }) => contacts.get(options),
 );
@@ -2471,7 +2521,7 @@ const FALLBACK_DRAG_ICON = nativeImage.createFromDataURL(
     'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
 );
 
-ipcMain.handle('fs-roots', () => files.roots());
+ipc.handle('fs-roots', () => files.roots());
 
 /*
  * The Activity screen's three reads.
@@ -2492,11 +2542,11 @@ ipcMain.handle('fs-roots', () => files.roots());
  */
 activity.onRecorded = (event) => sendAll('activity-recorded', event);
 
-ipcMain.handle('activity-events', () => ({
+ipc.handle('activity-events', () => ({
   ok: true,
   data: { events: activity.all(), error: activity.error(), stats: activity.stats() },
 }));
-ipcMain.handle('activity-csv', async () => {
+ipc.handle('activity-csv', async () => {
   const target = await dialog.showSaveDialog({
     title: 'Export activity log',
     defaultPath: join(app.getPath('downloads'), `Sidekick activity ${new Date().toISOString().slice(0, 10)}.csv`),
@@ -2516,7 +2566,15 @@ ipcMain.handle('activity-csv', async () => {
  * **Send to phone…** — the multi-file picker. Files only; a folder is a loop of pushes nobody asked
  * for, and `fs.transfer` moves one file. Sizes are read here so the confirmation can state a total.
  */
-ipcMain.handle('fs-pick-send', async () => {
+/**
+ * A file dropped on the window: the preload's `pathForFile` reports the path the OS gave for a real
+ * dropped file (a page-made `File` has none), and only such a path — or a picked one — may be sent (S4).
+ */
+ipc.on('fs-grant-source', (_event, source: string) => {
+  void fsp.stat(source).then((info) => { if (info.isFile()) chosenSources.grant(source); }, () => undefined);
+});
+
+ipc.handle('fs-pick-send', async () => {
   const picked = await dialog.showOpenDialog({
     title: 'Choose files to send to your phone',
     buttonLabel: 'Choose',
@@ -2527,7 +2585,10 @@ ipcMain.handle('fs-pick-send', async () => {
   for (const source of picked.filePaths) {
     try {
       const info = await fsp.stat(source);
-      if (info.isFile()) chosen.push({ source, name: basename(source), size: info.size });
+      if (info.isFile()) {
+        chosen.push({ source, name: basename(source), size: info.size });
+        chosenSources.grant(source); // S4: the person chose it, so `fs-send` may read it.
+      }
     } catch {
       // Unreadable between the picker and here: left out, and the count the user sees says so.
     }
@@ -2555,9 +2616,14 @@ const SEND_COLLISION_LIMIT = 50;
  * the old 64 MiB ceiling was guarding against.
  */
 const sendHashes = new Map<string, AbortController>();
-ipcMain.handle(
+ipc.handle(
   'fs-send',
   async (_event, options: { rootId: string; path: string; source: string }) => {
+    // S4: only a file the person picked or dropped this session may be read and sent to the phone.
+    if (!chosenSources.has(options.source)) {
+      log.warn('files', 'refused a send: that file was not chosen or dropped in this window');
+      return { ok: false, reason: 'That file was not chosen or dropped here, so it was not sent.' };
+    }
     const original = basename(options.source ?? '');
     const abort = new AbortController();
     sendHashes.set(options.source, abort);
@@ -2614,23 +2680,23 @@ ipcMain.handle(
 );
 
 /** Stop a send that is still being hashed — it has no `transferId` yet, so `fs-cancel` cannot reach it. */
-ipcMain.handle('fs-send-abort', (_event, options: { source: string }) => {
+ipc.handle('fs-send-abort', (_event, options: { source: string }) => {
   const abort = sendHashes.get(options?.source ?? '');
   abort?.abort();
   return { aborted: abort !== undefined };
 });
 
 /** `fs.blocks` pulls: Pause keeps the owned partial and record; Cancel deletes only those. */
-ipcMain.handle('fs-pull-stop', (_event, options: { transferId: string; how: string }) =>
+ipc.handle('fs-pull-stop', (_event, options: { transferId: string; how: string }) =>
   files.stopPull(String(options?.transferId ?? ''), options?.how === 'cancel' ? 'cancel' : 'pause'),
 );
-ipcMain.handle('fs-paused-pulls', () => files.pausedPulls());
-ipcMain.handle('fs-cancel-paused', (_event, options: { rootId: string; id: string }) =>
+ipc.handle('fs-paused-pulls', () => files.pausedPulls());
+ipc.handle('fs-cancel-paused', (_event, options: { rootId: string; id: string }) =>
   files.cancelPaused(String(options?.rootId ?? ''), String(options?.id ?? '')),
 );
 
 /** Stop a send in flight. The phone keeps the partial as `.part`, resumable by sending it again. */
-ipcMain.handle('fs-cancel', async (_event, options: { transferId: string }) => {
+ipc.handle('fs-cancel', async (_event, options: { transferId: string }) => {
   const result = await ask(
     link,
     'files',
@@ -2645,10 +2711,12 @@ ipcMain.handle('fs-cancel', async (_event, options: { transferId: string }) => {
 // R6 and R7 (files). Recorded here rather than inside `FilesClient` so every recording site is in
 // one file — see the note on `ActivityStore`. Both outcomes are written: a transfer that failed is
 // exactly the row somebody comes to the Activity screen looking for.
-ipcMain.handle(
+ipc.handle(
   'fs-pull',
   async (_event, options: { rootId: string; id: string; name: string; size: number }) => {
     const result = await files.pull(options);
+    // S4: the saved file is something this process produced — the only kind `fs-drag` will drag.
+    if (result?.ok && typeof result.path === 'string') producedFiles.grant(result.path);
     if (result?.ok) {
       activity.record('files', 'Saved to Mac', `${options.name} (${sharedVitals.humanBytes(options.size)})`);
     }
@@ -2669,9 +2737,14 @@ ipcMain.handle(
  * same reason `bulk.pull` writes to `.part` — handing Finder a path to nothing is a failure with no
  * error attached to it.
  */
-ipcMain.on('fs-drag', (event, paths: string[]) => {
-  if (!Array.isArray(paths) || paths.length === 0) return;
-  if (!paths.every((p) => typeof p === 'string' && p.length > 0)) return;
+ipc.on('fs-drag', (event, paths: string[]) => {
+  // S4: shape is checked by the guard; here, every path must be one this process produced.
+  const ungranted = paths.filter((p) => !producedFiles.has(p)).length;
+  if (ungranted > 0) {
+    dragsRefused += 1;
+    log.warn('files', `refused a drag of ${paths.length} file(s): ${ungranted} not produced by this app — ${dragsStarted} started / ${dragsRefused} refused`);
+    return;
+  }
 
   // Every path is checked before any of them is dragged. A partial multi-file drag would hand
   // Finder some of what the user selected with nothing saying which — the same shape as reporting
@@ -2717,7 +2790,7 @@ ipcMain.on('fs-drag', (event, paths: string[]) => {
     .then((icon) => start(icon.isEmpty() ? FALLBACK_DRAG_ICON : icon))
     .catch(() => start(FALLBACK_DRAG_ICON));
 });
-ipcMain.handle(
+ipc.handle(
   'fs-thumb',
   (_event, options: { rootId: string; ids: string[]; maxEdge?: number }) =>
     files
@@ -2730,7 +2803,7 @@ ipcMain.handle(
           : { ok: false as const, reason: result.reason, code: result.code },
       ),
 );
-ipcMain.handle(
+ipc.handle(
   'fs-list',
   (
     _event,
@@ -2738,13 +2811,13 @@ ipcMain.handle(
   ) => files.list(options),
 );
 
-ipcMain.handle('media-buckets', () => photos.buckets());
-ipcMain.handle(
+ipc.handle('media-buckets', () => photos.buckets());
+ipc.handle(
   'media-list',
   (_event, options: { bucketId?: string; limit?: number; before?: number; beforeId?: string } = {}) =>
     photos.list(options),
 );
-ipcMain.handle(
+ipc.handle(
   'media-thumbs',
   async (_event, options: { ids: string[]; maxEdge?: number }) => {
     const result = await photos.thumbsFor(options.ids, options.maxEdge);
@@ -2755,7 +2828,12 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('media-original', (_event, options: { id: string }) => photos.original(options.id));
+ipc.handle('media-original', async (_event, options: { id: string }) => {
+  const result = await photos.original(options.id);
+  // S4: a saved original is something this process produced — the only kind `reveal-saved` reveals.
+  if (result.ok) producedFiles.grant(result.data.path);
+  return result;
+});
 
 /**
  * Feature C: the detail preview's two sources, neither of which is a save.
@@ -2766,8 +2844,8 @@ ipcMain.handle('media-original', (_event, options: { id: string }) => photos.ori
  * an opaque token. The `transferId` is announced at the ack so the pane can draw the phone's own
  * `fs.transfer.progress` while a video is on its way.
  */
-ipcMain.handle('media-preview-thumb', (_event, options: { id: string }) => photos.previewThumb(options.id));
-ipcMain.handle('media-preview-original', async (_event, options: { id: string }) => {
+ipc.handle('media-preview-thumb', (_event, options: { id: string }) => photos.previewThumb(options.id));
+ipc.handle('media-preview-original', async (_event, options: { id: string }) => {
   const hit = cachedPreview(options.id);
   if (hit) return { ok: true, data: hit };
   const folder = await previewFolder();
@@ -2790,18 +2868,18 @@ ipcMain.handle('media-preview-original', async (_event, options: { id: string })
  * path it was handed by a pull; refusing anything outside that folder keeps this from being a way
  * to open Finder on an arbitrary path.
  */
-ipcMain.handle('reveal-saved', (_event, options: { path: string }) => {
-  const folder = downloadsFolder();
-  const target = String(options?.path ?? '');
-  if (!target.startsWith(folder + '/') || target.includes('/../') || !existsSync(target)) {
+ipc.handle('reveal-saved', (_event, options: { path: string }) => {
+  const target = options.path;
+  // S4: only a file this process saved this session — never a renderer-supplied path or prefix.
+  if (!producedFiles.has(target) || !existsSync(target)) {
     return { ok: false, reason: 'That file is not in the receive folder any more.' };
   }
   shell.showItemInFolder(target);
   return { ok: true, data: { path: target } };
 });
 
-ipcMain.handle('apps-list', () => apps.list());
-ipcMain.handle(
+ipc.handle('apps-list', () => apps.list());
+ipc.handle(
   'apps-icons',
   async (_event, options: { packages: string[]; maxEdge?: number }) => {
     const result = await apps.iconsFor(options.packages, options.maxEdge);
@@ -2817,7 +2895,7 @@ ipcMain.handle(
  * can creep back in, and it would creep back in here first — this is the one name in the feature
  * that no protocol checker reads.
  */
-ipcMain.handle('apps-open-ask', (_event, options: { package: string }) => apps.openAsk(options.package));
+ipc.handle('apps-open-ask', (_event, options: { package: string }) => apps.openAsk(options.package));
 
 /**
  * The resume probe — **debug builds only**, registered beside `debugSwitches` for the same reason.
@@ -2852,7 +2930,7 @@ if (!app.isPackaged) {
    * So the probe splits at exactly the point the process dies, and neither half changes what the
    * shipping code does; only where the run stops.
    */
-  ipcMain.handle('debug-push-resume-probe', async (_event, options: {
+  ipc.handle('debug-push-resume-probe', async (_event, options: {
     rootId: string;
     path: string;
     source: string;
@@ -2957,7 +3035,7 @@ if (!app.isPackaged) {
     };
   });
 
-  ipcMain.handle('debug-resume-probe', async (_event, options: { id: string }) => {
+  ipc.handle('debug-resume-probe', async (_event, options: { id: string }) => {
     if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
     const host = link.status().address;
     const token = link.token();
@@ -3044,7 +3122,7 @@ if (!app.isPackaged) {
    * a listing, but **not** through the children query. So stat succeeding where a listing returns 0
    * puts the loss in the children query, not in the grant or the document id. Read-only.
    */
-  ipcMain.handle('debug-fs-stat', async (_event, options: { rootId: string; id: string }) => {
+  ipc.handle('debug-fs-stat', async (_event, options: { rootId: string; id: string }) => {
     if (!link?.isConnected()) return { ok: false, reason: 'not connected' };
     try {
       const reply = await link.request(MessageType.FS_STAT, { rootId: options.rootId, id: options.id }, 15_000);
@@ -3054,7 +3132,7 @@ if (!app.isPackaged) {
     }
   });
 
-  ipcMain.handle('debug-fs-probe', async (_event, options: {
+  ipc.handle('debug-fs-probe', async (_event, options: {
     rootId?: string;
     path?: string;
     limit?: number;
@@ -3188,7 +3266,7 @@ if (!app.isPackaged) {
    * protocol itself is a second client, and the difference between it and the product is where this
    * class of bug lives.
    */
-  ipcMain.handle('debug-fs-pull-probe', async (_event, options: {
+  ipc.handle('debug-fs-pull-probe', async (_event, options: {
     rootId: string;
     path?: string;
     name: string;
@@ -3275,7 +3353,7 @@ if (!app.isPackaged) {
    * that reported success for something it did not do — and nothing in the ack could tell the
    * difference, which is why the refusal is the assertion rather than the ack.
    */
-  ipcMain.handle('debug-fs-cancel-probe', async (_event, options: {
+  ipc.handle('debug-fs-cancel-probe', async (_event, options: {
     rootId: string;
     path?: string;
     name: string;
@@ -3323,7 +3401,7 @@ if (!app.isPackaged) {
     };
   });
 
-  ipcMain.handle('debug-fs-delete-probe', async (_event, options: {
+  ipc.handle('debug-fs-delete-probe', async (_event, options: {
     rootId: string;
     path?: string;
     name: string;
@@ -3384,41 +3462,41 @@ if (!app.isPackaged) {
   });
 }
 
-ipcMain.handle('call-current', () => calls.currentCall());
-ipcMain.handle('call-log', (_event, options: { limit?: number; before?: number } = {}) =>
+ipc.handle('call-current', () => calls.currentCall());
+ipc.handle('call-log', (_event, options: { limit?: number; before?: number } = {}) =>
   calls.log(options),
 );
 // No arguments, deliberately: the call acted on is the one the main process holds, and its id is
 // sent explicitly. See calls.ts and step 61.
-ipcMain.handle('call-answer', () => calls.answer());
-ipcMain.handle('call-reject', () => calls.reject());
-ipcMain.handle('call-dial', (_event, number: string) => calls.dial(number));
+ipc.handle('call-answer', () => calls.answer());
+ipc.handle('call-reject', () => calls.reject());
+ipc.handle('call-dial', (_event, number: string) => calls.dial(number));
 
-ipcMain.handle(
+ipc.handle(
   'sms-threads',
   (_event, options: { limit?: number; before?: number } = {}) => sms.listThreads(options),
 );
-ipcMain.handle(
+ipc.handle(
   'sms-messages',
   (_event, payload: { threadId: string; options?: { limit?: number; before?: number } }) =>
     sms.listMessages(payload.threadId, payload.options ?? {}),
 );
 // No recipient parameter, deliberately. See sms.ts and the send rule in docs/protocol.md.
-ipcMain.handle('sms-send', (_event, payload: { threadId: string; body: string }) =>
+ipc.handle('sms-send', (_event, payload: { threadId: string; body: string }) =>
   sms.send(payload.threadId, payload.body),
 );
 // The one channel that carries a recipient, and it carries no thread id — defect 30. Two channels
 // rather than one optional field, so a send into an existing thread cannot supply its own
 // recipient and skip the check that stops a message reaching the wrong person.
-ipcMain.handle('sms-send-new', (_event, payload: { addresses: string[]; body: string }) =>
+ipc.handle('sms-send-new', (_event, payload: { addresses: string[]; body: string }) =>
   sms.sendNew(payload.addresses, payload.body),
 );
 
-ipcMain.handle('remote-state', () => remote.current());
+ipc.handle('remote-state', () => remote.current());
 // O4. The renderer asks once when Overview opens, because a pane that routes in after the phone
 // reported would otherwise sit at "waiting" until the next tick.
-ipcMain.handle('device-vitals', () => ({ battery: lastBatteryState, storage: lastStorageState }));
-ipcMain.handle(
+ipc.handle('device-vitals', () => ({ battery: lastBatteryState, storage: lastStorageState }));
+ipc.handle(
   'remote-command',
   (_event, payload: { action: string; extra?: Record<string, unknown> }) =>
     remote.command(payload.action, payload.extra ?? {}),
@@ -3427,11 +3505,11 @@ ipcMain.handle(
 // it survives a route change and a window reload — the renderer redraws far more often than the
 // track changes, and re-fetching an image on every repaint of the Overview pane is the shape this
 // key/bytes split exists to avoid in the first place.
-ipcMain.handle('remote-artwork', (_event, payload: { key: string; maxEdge?: number }) =>
+ipc.handle('remote-artwork', (_event, payload: { key: string; maxEdge?: number }) =>
   remote.artworkFor(payload.key, payload.maxEdge),
 );
 
-ipcMain.handle('status', () => link?.status() ?? null);
+ipc.handle('status', () => link?.status() ?? null);
 
 /**
  * This Mac's own name and key, for the sidebar's account block.
@@ -3445,7 +3523,7 @@ ipcMain.handle('status', () => link?.status() ?? null);
  * Read-only and side-effect-free, unlike `pairing-qr`, which is the other place the device name is
  * reachable and which *arms a pairing token* as it goes.
  */
-ipcMain.handle('self-identity', () => ({
+ipc.handle('self-identity', () => ({
   name: selfName,
   // The first 16 hex characters, matching how the phone's Paired Macs list abbreviates it, so the
   // two can be compared by eye when somebody is working out which Mac is which.
@@ -3462,16 +3540,11 @@ ipcMain.handle('self-identity', () => ({
  */
 const QR_OPTIONS = { errorCorrectionLevel: 'M', margin: 1, width: 320 } as const;
 
-/**
- * Renders a QR for a payload that is **already armed**.
- *
- * Distinct from `pairing-qr` on purpose: that one arms a token as it goes, so calling it to redraw
- * after a rejection would rotate the code a second time and invalidate the one the main process
- * just told the user to scan.
- */
+
 /**
  * A fresh pairing code after a refusal, as an image — or null when none is wanted or it could not be
- * armed. Rendered here so the pairing secret never crosses IPC (docs/protocol.md → Pairing (version 2)).
+ * armed. Rendered here so the raw secret field never crosses IPC — the image encodes it, as a scannable
+ * code must (docs/protocol.md → Pairing (version 2)).
  */
 async function freshCodeFor(wanted: boolean, why: string): Promise<string | null> {
   if (!wanted || !link) return null;
@@ -3486,11 +3559,6 @@ async function freshCodeFor(wanted: boolean, why: string): Promise<string | null
   }
 }
 
-ipcMain.handle('pairing-qr-render', async (_event, payload: unknown) => {
-  if (typeof payload !== 'string' || payload.length === 0) return null;
-  return QRCode.toDataURL(payload, QR_OPTIONS);
-});
-
 /**
  * The mDNS watch for a phone that has scanned this Mac's code — F6 / P3.
  *
@@ -3504,12 +3572,13 @@ function stopPairIntentWatch(): void {
   pairIntentWatch = null;
 }
 
-ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
+ipc.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
   const reachable = pairingReachable();
   const armed = armPairingCode(link, localAddress(), rotate === true);
   const dataUrl = await QRCode.toDataURL(JSON.stringify(armed), QR_OPTIONS);
-  // The pairing secret stays in this process: the renderer gets the image and the public fields only.
+  // The raw secret field stays in this process: the renderer gets the image and the public fields. The image
+  // encodes the secret (it is a QR code) — this keeps it out of payloads and away from other windows only.
   const payload = { host: armed.host, name: armed.name };
   // Both halves on one line, because a count of armed codes with no reachability beside it reads
   // as whichever story the reader already believes — and for a whole phase it read as the good one.
@@ -3525,28 +3594,28 @@ ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   return { payload, dataUrl, reachable };
 });
 
-ipcMain.handle('connect', () => link?.start());
-ipcMain.handle('disconnect', () => {
+ipc.handle('connect', () => link?.start());
+ipc.handle('disconnect', () => {
   // Noted so the Activity row can say who ended the session. Without it a Disconnect the user
   // pressed is recorded with the link classifier's generic "The connection to your phone failed",
   // which is a failure sentence about something nobody failed at.
   userStoppedLink = true;
   link?.stop('user disconnected');
 });
-ipcMain.handle('retry-now', () => link?.retryNow('user'));
+ipc.handle('retry-now', () => link?.retryNow('user'));
 
-ipcMain.handle('set-manual-address', (_event, address: string) => {
+ipc.handle('set-manual-address', (_event, address: string) => {
   const trimmed = address.trim();
   store.set('manualAddress', trimmed.length > 0 ? trimmed : null);
   link?.retryNow('manual address changed');
 });
 
-ipcMain.handle('set-tailscale-address', (_event, address: string) => {
+ipc.handle('set-tailscale-address', (_event, address: string) => {
   const trimmed = address.trim();
   store.set('tailscaleAddress', trimmed.length > 0 ? trimmed : null);
 });
 
-ipcMain.handle('forget-device', () => {
+ipc.handle('forget-device', () => {
   const forgotten = store.get('paired')?.fingerprint ?? null;
   if (forgotten) {
     void files.forgetPhone(forgotten).then((n) => log.info('files', `${n} paused transfer record(s) dropped with the forgotten phone`));
@@ -3558,7 +3627,7 @@ ipcMain.handle('forget-device', () => {
   log.info('pairing', 'Forgot the paired phone');
 });
 
-ipcMain.handle('settings', () => ({
+ipc.handle('settings', () => ({
   paired: store.get('paired'),
   lastAddress: store.get('lastAddress'),
   manualAddress: store.get('manualAddress'),
@@ -3566,4 +3635,4 @@ ipcMain.handle('settings', () => ({
   lastDiscoveryVia: store.get('lastDiscoveryVia'),
 }));
 
-ipcMain.handle('log-tail', (_event, lines: number) => tailLog(lines ?? 200));
+ipc.handle('log-tail', (_event, lines: number) => tailLog(lines ?? 200));

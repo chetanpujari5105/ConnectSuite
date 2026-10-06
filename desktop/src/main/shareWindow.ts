@@ -47,6 +47,8 @@ export class ShareReceiveWindow {
     private readonly page: string,
     private readonly payload: (subject: string | null) => SharePagePayload,
     private readonly ground: () => string,
+    /** Told about each new window before its page loads, so the IPC guard knows it (audit S4). */
+    private readonly onCreated: (target: BrowserWindow) => void = () => undefined,
   ) {}
 
   /** An offer has come to need attention. Shown **without focus**; nothing else. */
@@ -79,12 +81,36 @@ export class ShareReceiveWindow {
 
   push(): void {
     const w = this.window;
-    if (w && !w.isDestroyed()) w.webContents.send('share-window', this.payload(this.subject));
+    if (w && !w.isDestroyed()) w.webContents.send('share-window', this.remember(w.webContents, this.payload(this.subject)));
   }
 
   state(): SharePagePayload {
-    return this.payload(this.subject);
+    const w = this.window;
+    const payload = this.payload(this.subject);
+    return w && !w.isDestroyed() ? this.remember(w.webContents, payload) : payload;
   }
+
+  /**
+   * Whether [sender] is this window's live renderer AND [offerId] was in the last payload it was given
+   * (audit S4). Actions are bound to what a window was shown: a closed and replaced window's renderer, or
+   * an offer that has not reached this one, authorises nothing.
+   */
+  showsOffer(sender: unknown, offerId: string): boolean {
+    const w = this.window;
+    if (!w || w.isDestroyed() || sender !== w.webContents || this.shownTo !== w.webContents) return false;
+    return this.shownOffers.has(offerId);
+  }
+
+  /** The offers [payload] shows, recorded against the renderer it is sent to. */
+  private remember(contents: Electron.WebContents, payload: SharePagePayload): SharePagePayload {
+    this.shownTo = contents;
+    this.shownOffers = new Set(payload.offers.map((o) => o.offerId));
+    if (payload.subject) this.shownOffers.add(payload.subject);
+    return payload;
+  }
+
+  private shownTo: Electron.WebContents | null = null;
+  private shownOffers = new Set<string>();
 
   webContents(): Electron.WebContents | null {
     const w = this.window;
@@ -155,6 +181,9 @@ export class ShareReceiveWindow {
       },
     });
     this.window = w;
+    this.shownTo = null;
+    this.shownOffers = new Set();
+    this.onCreated(w);
     this.reveal = how;
     w.webContents.on('did-finish-load', () => w.webContents.setZoomLevel(0));
     // A page that never reports its height must not leave an offer invisible: appear anyway.

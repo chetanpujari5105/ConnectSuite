@@ -48,14 +48,14 @@ test('every channel preload uses has its other end in the main process', () => {
   assert.deepEqual(invokes.sort(), ['camera-current', 'camera-request', 'camera-stop', 'camera-switch']);
   assert.deepEqual(sends, ['camera-frame-ack']);
   assert.deepEqual(listens.sort(), ['camera-frame', 'camera-state']);
-  for (const c of invokes) assert.ok(main.includes(`ipcMain.handle('${c}'`), `no handler for ${c}`);
-  for (const c of sends) assert.ok(main.includes(`ipcMain.on('${c}'`), `nothing receives ${c}`);
+  for (const c of invokes) assert.ok(main.includes(`ipc.handle('${c}'`), `no handler for ${c}`);
+  for (const c of sends) assert.ok(main.includes(`ipc.on('${c}'`), `nothing receives ${c}`);
   for (const c of listens) assert.ok(main.includes(`send('${c}'`), `main never sends ${c}`);
 });
 
 test('the frame ack carries the stream and the outcome all the way through (defect 172)', () => {
   assert.ok(preload.includes("ipcRenderer.send('camera-frame-ack', streamId, outcome)"));
-  assert.ok(main.includes("ipcMain.on('camera-frame-ack', (_event, streamId: unknown, outcome: unknown) => camera?.frameAck(streamId, outcome))"));
+  assert.ok(main.includes("ipc.on('camera-frame-ack', (_event, streamId: unknown, outcome: unknown) => camera?.frameAck(streamId, outcome))"));
   assert.ok(renderer.includes('cameraFrameAck: (streamId, outcome) => connect.cameraFrameAck(streamId, outcome)'));
   assert.ok(renderer.includes('new CameraCanvasPainter(el<HTMLCanvasElement>(\'camera-canvas\'), (streamId, outcome) => connect.cameraFrameAck(streamId, outcome))'));
 });

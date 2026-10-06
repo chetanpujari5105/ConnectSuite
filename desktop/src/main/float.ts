@@ -106,6 +106,8 @@ export class FloatMirrorWindow {
      * callback rather than a direct call because this file must not know what a video socket is.
      */
     private readonly onReady: (target: BrowserWindow) => void,
+    /** Told about each new window before its page loads, so the IPC guard knows it (audit S4). */
+    private readonly onCreated: (target: BrowserWindow) => void = () => undefined,
   ) {}
 
   // ---- The four methods the README names --------------------------------------------------------
@@ -167,6 +169,7 @@ export class FloatMirrorWindow {
     });
 
     this.window = float;
+    this.onCreated(float);
     void float.loadFile(this.page);
 
     float.once('ready-to-show', () => {

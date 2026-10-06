@@ -3325,8 +3325,11 @@ The Mac renders a QR code; the phone scans it. Payload, UTF-8 JSON:
 - `fp` — colon-separated uppercase hex of SHA-256 over the Mac's DER certificate (any punctuation is
   tolerated on read; it is compared as 32 bytes).
 - `secret` — **the pairing secret `K`**: 32 bytes from the Mac's CSPRNG (`crypto.randomBytes`), as 64
-  lowercase hex. It is shown only inside the QR and is **never** sent on the wire, logged, persisted or
-  handed to the renderer.
+  lowercase hex. It is **never** sent on the wire, logged or persisted. The main window's renderer is
+  never sent the raw `secret` field over IPC — only the rendered QR image and the public `host` and
+  `name` — **but that image encodes the secret**, as it must for a phone to scan it. A compromised main
+  renderer could decode it from the image. What the IPC rule buys is narrower and real: no other window
+  can ask for a code (audit S4), and nothing reads the secret by accident from a payload.
 
 ### The exchange
 
@@ -3423,7 +3426,8 @@ present only while the Mac is pairing. It is a field of `hello`, not a message t
   draws a fresh code on request).
 - **Phone:** held in memory only, from the scan until the earliest of 5 minutes after the scan, Cancel,
   a completed pairing, or **5** failed Mac proofs.
-- Neither side writes `K` to a log, a file, preferences, a database or the renderer.
+- Neither side writes `K` to a log, a file, preferences or a database. The Mac sends the main window the
+  QR **image** only, which encodes `K` by necessity; see *What each side knows before it starts*.
 
 ### Failures
 

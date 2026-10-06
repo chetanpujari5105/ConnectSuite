@@ -490,7 +490,7 @@ test('main.ts wires the production factory with the real link, ipcMain, powerMon
   assert.ok(call.includes('plan: webcamPlan'));
   assert.ok(call.includes('sessionEndedEvent: SESSION_ENDED_EVENT'));
   assert.ok(call.includes('openCameraSocket(identity, host, claim, cameraLink.peerFingerprint())'));
-  assert.ok(call.includes('ipcMain.handle(channel, listener)'));
+  assert.ok(call.includes('ipc.handle(channel, listener)'), 'through the S4 IPC guard');
   assert.ok(call.includes('power: powerMonitor'));
   assert.ok(main.includes('devSwitch: !app.isPackaged && debugSwitches().webcamDev'), 'the switch is forced off when packaged');
   assert.ok(main.includes('...filesAdvert, ...webcamPlan.ext }'), 'the advertisement is the plan’s');

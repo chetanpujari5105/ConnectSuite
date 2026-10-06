@@ -63,12 +63,13 @@ interface ConnectBridge {
       body: string;
       refreshCode: boolean;
       reason: string;
-      /** A fresh code, already rendered by the main process — the secret never reaches this page. */
+      /**
+       * A fresh code, already rendered by the main process. The raw secret field is not sent; the image
+       * itself encodes it, as a scannable code must (docs/protocol.md → Pairing (version 2)).
+       */
       qrDataUrl: string | null;
     }) => void,
   ): void;
-  /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
-  pairingQrRender(payload: string): Promise<string | null>;
   menuSetRoutes(
     routes: { id: string; label: string; shortcut: string }[],
     commands?: { id: string; label: string; shortcut: string }[],
@@ -990,8 +991,8 @@ function hidePairRejection(): void {
 }
 
 connect.onPairRejected((info) => {
-  // Drawn by the main process, so the code on screen is the one it armed and the pairing secret
-  // never crosses into this page (docs/protocol.md → Pairing (version 2)).
+  // Drawn by the main process, so the code on screen is the one it armed. This page gets the image, not
+  // the raw secret field — though the image encodes the secret (docs/protocol.md → Pairing (version 2)).
   if (info.qrDataUrl) el<HTMLImageElement>('qr').src = info.qrDataUrl;
   const box = el('pair-rejection');
   box.replaceChildren();

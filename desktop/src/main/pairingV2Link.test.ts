@@ -418,7 +418,7 @@ test('a legacy record (stored before v2) keeps working, is reported as legacy, a
   assert.equal('pair' in real.hellos[0]!, false);
 });
 
-test('no log call in the pairing paths mentions the secret, and the renderer gets the QR image and public fields only', async () => {
+test('no log call in the pairing paths mentions the secret, and the renderer gets the QR image and public fields, not the raw secret field', async () => {
   const { readFileSync } = await import('node:fs');
   const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   for (const file of ['link.ts', 'main.ts']) {

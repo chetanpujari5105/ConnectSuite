@@ -58,23 +58,8 @@ contextBridge.exposeInMainWorld('connect', {
   shareOffers: (): Promise<ShareCardSnapshot[]> => ipcRenderer.invoke('share-offers'),
   onShareOffers: (callback: (offers: ShareCardSnapshot[]) => void) =>
     ipcRenderer.on('share-offers', (_event, offers: ShareCardSnapshot[]) => callback(offers)),
-  shareDecide: (offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }> =>
-    ipcRenderer.invoke('share-decide', { offerId, decision }),
-  /**
-   * The receive window (docs/feature-a-receive-window.md). Its page reads its state and reports its
-   * height; the main window's card may only ask for it to be shown. Every request is an `offerId` at
-   * most — the main process refuses these from any page but the one each belongs to.
-   */
-  shareWindowState: (): Promise<SharePagePayload | null> => ipcRenderer.invoke('share-window-state'),
-  onShareWindow: (callback: (state: SharePagePayload) => void) =>
-    ipcRenderer.on('share-window', (_event, state: SharePagePayload) => callback(state)),
-  shareWindowClose: (): void => ipcRenderer.send('share-window-close'),
-  shareWindowHeight: (height: number): void => ipcRenderer.send('share-window-height', height),
   shareWindowShow: (offerId: string): Promise<{ ok: boolean; reason?: string }> =>
     ipcRenderer.invoke('share-window-show', { offerId }),
-  /** Cancel, Try again, Open, Show in Finder — from the receive window only; the path stays in main. */
-  shareAct: (action: 'cancel' | 'retry' | 'open' | 'reveal', offerId: string): Promise<{ ok: boolean; reason?: string }> =>
-    ipcRenderer.invoke(`share-${action}`, { offerId }),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   retryNow: () => ipcRenderer.invoke('retry-now'),
@@ -88,15 +73,6 @@ contextBridge.exposeInMainWorld('connect', {
   mirrorStop: () => ipcRenderer.invoke('mirror-stop'),
   /** `reason` is carried so the log can say which of the three callers asked, and why. */
   mirrorKeyframe: (reason?: string) => ipcRenderer.invoke('mirror-keyframe', reason),
-  /**
-   * One line from a renderer into the Mac's own log file.
-   *
-   * The float window had no way to say anything durable. Its decode path could fail for an entire
-   * session and leave nothing behind but a devtools console nobody opens — which is the debt-list
-   * failure in a different medium: a record that exists and is never read costs what no record
-   * costs. `send`, not `invoke`: a log line must never make the caller wait, and it has no answer.
-   */
-  logLine: (where: string, line: string) => ipcRenderer.send('renderer-log', where, line),
   /** Main → this window: "summarise the stages around now." See renderer/markWindow.ts. */
   onMarkRequested: (callback: (label: string) => void) =>
     ipcRenderer.on('mark-requested', (_event, label: string) => callback(label)),
@@ -262,8 +238,6 @@ contextBridge.exposeInMainWorld('connect', {
    */
   onPairRejected: (callback: (info: unknown) => void) =>
     ipcRenderer.on('pair-rejected', (_event, info) => callback(info)),
-  pairingQrRender: (payload: string): Promise<string | null> =>
-    ipcRenderer.invoke('pairing-qr-render', payload),
   routeChanged: (screen: string): void => {
     ipcRenderer.send('route-changed', screen);
   },
@@ -476,7 +450,13 @@ contextBridge.exposeInMainWorld('connect', {
    * works in the preload, which is why it is here. An empty string means the file has no path on
    * disk (a drag from a browser, say), and the pane says so rather than sending zero bytes.
    */
-  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+  pathForFile: (file: File): string => {
+    const path = webUtils.getPathForFile(file);
+    // S4: a real dropped file has a path; tell the main process, which lets `fs-send` read only such
+    // paths (and picked ones). A File a page builds itself has no path, so it grants nothing.
+    if (path) ipcRenderer.send('fs-grant-source', path);
+    return path;
+  },
   /** The multi-file picker for **Send to phone…**. Folders are not offered. */
   fsPickSend: (): Promise<
     PhoneResult<{ files: Array<{ source: string; name: string; size: number }>; skipped: number }>
@@ -721,47 +701,10 @@ contextBridge.exposeInMainWorld('connect', {
   callDial: (number: string): Promise<PhoneAck> => ipcRenderer.invoke('call-dial', number),
   onCallChanged: (callback: (call: IncomingCall | null) => void) =>
     ipcRenderer.on('call-changed', (_event, call) => callback(call)),
-
-  /**
-   * The detached mirror window.
-   *
-   * Every one of these is a *lifecycle or a pointer position*, never a window rectangle. The
-   * geometry invariant lives in `shared/floatGeometry.ts` and is applied in the main process, so a
-   * renderer is never in a position to set a width without re-clamping Y — there is no channel that
-   * would let it. The README asks for the lifecycle to sit behind four methods precisely so the
-   * window can become an `NSWindow` later without a renderer change; this is the wire that keeps
-   * that true.
-   */
-  /**
-   * The start contract's asking half: "my listeners are up, what is the stream?"
-   *
-   * Replaces a push from `main.ts` on a window event that said nothing about whether this page was
-   * listening yet. See shared/streamStart.ts — defect 105.
-   */
-  streamStart: () => ipcRenderer.invoke('stream-start'),
-  /** Debug switches the renderer needs — currently only `delayFloatListeners`. Empty in a package. */
-  debugSwitches: () => ipcRenderer.invoke('debug-switches'),
   floatOpen: () => ipcRenderer.invoke('float-open'),
   floatClose: () => ipcRenderer.invoke('float-close'),
-  floatMinimize: () => ipcRenderer.invoke('float-minimize'),
-  floatSmartFit: () => ipcRenderer.invoke('float-smart-fit'),
   floatSetWidth: (width: number) => ipcRenderer.invoke('float-set-width', width),
-  floatSetPinned: (pinned: boolean) => ipcRenderer.invoke('float-set-pinned', pinned),
-  /** Title-bar drag. `pointer` is in screen points; `grab` is its offset inside the window. */
-  floatMove: (pointer: { x: number; y: number }, grab: { x: number; y: number }) =>
-    ipcRenderer.invoke('float-move', { pointer, grab }),
-  /** Corner drag. X only — see `boundsForCornerDrag` for why Y is not offered. */
-  floatResize: (pointer: { x: number }) => ipcRenderer.invoke('float-resize', pointer),
   floatState: (): Promise<FloatState> => ipcRenderer.invoke('float-state'),
-
-  /**
-   * Bring the main window forward. Defect 117.
-   *
-   * Reached from the float window's control strip, and it is the *only* thing in this app that a
-   * renderer can do to the main window's visibility. It returns whether the float is still open,
-   * because that is the one fact a user pressing it needs — see `onRailPress` in float.ts.
-   */
-  showMainWindow: (): Promise<{ floatStillOpen: boolean }> => ipcRenderer.invoke('main-window-show'),
   onFloatChanged: (callback: (state: FloatState) => void) =>
     ipcRenderer.on('float-changed', (_event, state) => callback(state)),
 

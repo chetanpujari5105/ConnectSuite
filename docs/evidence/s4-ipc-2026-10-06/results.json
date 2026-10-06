@@ -1,0 +1,93 @@
+{
+    "mainBridge": {
+        "methods": 150,
+        "forbiddenExposed": "(main: all documented operations)"
+    },
+    "floatBridge": {
+        "methods": 25,
+        "forbiddenExposed": []
+    },
+    "shareBridge": {
+        "methods": 8,
+        "forbiddenExposed": []
+    },
+    "floatCallsSms": "undefined",
+    "shareCallsPairing": "undefined",
+    "startupCallsAllowed": {
+        "allowed": 33,
+        "refused": 0
+    },
+    "compromisedFloat": {
+        "smsSend": {
+            "ok": false,
+            "refused": true,
+            "reason": "refused: not allowed from the float window"
+        },
+        "forgetDevice": {
+            "ok": false,
+            "refused": true,
+            "reason": "refused: not allowed from the float window"
+        },
+        "pairingQr": {
+            "ok": false,
+            "refused": true,
+            "reason": "refused: not allowed from the float window"
+        },
+        "control_floatState": {
+            "ok": true,
+            "stub": true
+        }
+    },
+    "replacedFloatWindow": {
+        "ok": false,
+        "refused": true,
+        "reason": "refused: an unknown sender"
+    },
+    "unregisteredWindow": {
+        "forgetDevice": {
+            "ok": false,
+            "refused": true,
+            "reason": "refused: an unknown sender"
+        }
+    },
+    "wrongPage": {
+        "clipUse": {
+            "ok": false,
+            "refused": true,
+            "reason": "refused: not the window's own page"
+        }
+    },
+    "subframe": {
+        "childClipUse": {
+            "ok": false,
+            "reason": "refused: a subframe",
+            "refused": true
+        },
+        "control_topFrameClipUse": {
+            "ok": true,
+            "stub": true
+        }
+    },
+    "invalidPayload": {
+        "ok": false,
+        "refused": true,
+        "reason": "refused: argument 1 must be a string"
+    },
+    "forbiddenRan": [],
+    "ranAfterStartup": [
+        "float-state",
+        "clip-use"
+    ],
+    "refusalLinesSample": [
+        "refused float-state: an unknown sender \u2014 4 refused / 34 allowed since launch",
+        "refused forget-device: an unknown sender \u2014 5 refused / 34 allowed since launch",
+        "refused mirror-stats: an unknown sender \u2014 6 refused / 34 allowed since launch",
+        "refused clip-use: not the window's own page \u2014 7 refused / 34 allowed since launch",
+        "refused clip-use: a subframe \u2014 8 refused / 34 allowed since launch",
+        "refused set-manual-address: argument 1 must be a string \u2014 9 refused / 35 allowed since launch"
+    ],
+    "counts": {
+        "allowed": 35,
+        "refused": 9
+    }
+}
