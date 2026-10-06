@@ -108,6 +108,7 @@ import { initLogger, log, tailLog } from './logger';
 // has one home and the two windows cannot drift.
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
+import { guardWindow } from './windowGuard';
 import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
@@ -600,6 +601,9 @@ function createWindow(): void {
       preload: join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Electron's default since 20, stated so it cannot be lost by accident: the preload needs only
+      // `electron` (contextBridge, ipcRenderer, webUtils), which a sandboxed preload may load.
+      sandbox: true,
       /*
        * Pinned to 1, and it had drifted. Chromium persists a per-origin zoom level into the user
        * data directory, so a stray ⌘- at some point had left this window rendering `file://` at
@@ -935,6 +939,17 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
  * **sidekick-desktop**, the npm package name — measured, not assumed; see `appMenu.ts`.
  */
 app.setName('Sidekick');
+
+/**
+ * Audit S3: every window this app opens carries the preload bridge, and a page a window navigates to
+ * keeps it. So every window — the main one, the floating mirror, the share receive window, and any
+ * added later — may show only the app's own three pages: registered here, before `whenReady`, so no
+ * window exists unguarded. See `windowGuard.ts` for the exact-path rule.
+ */
+const APP_PAGES = ['index.html', 'float.html', 'share-window.html'].map((page) => join(__dirname, '..', 'renderer', page));
+app.on('web-contents-created', (_event, contents) => {
+  guardWindow(contents, APP_PAGES, (what, reason) => log.warn('window', `refused a ${what}: ${reason}`));
+});
 
 /**
  * The menu is built when the renderer hands over its nav list, and a minimal one stands until then.

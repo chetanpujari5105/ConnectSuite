@@ -162,6 +162,7 @@ export class FloatMirrorWindow {
         preload: this.preload,
         contextIsolation: true,
         nodeIntegration: false,
+        sandbox: true,
       },
     });
 

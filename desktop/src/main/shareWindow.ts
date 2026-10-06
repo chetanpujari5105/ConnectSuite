@@ -150,6 +150,7 @@ export class ShareReceiveWindow {
         preload: this.preload,
         contextIsolation: true,
         nodeIntegration: false,
+        sandbox: true,
         zoomFactor: 1,
       },
     });
