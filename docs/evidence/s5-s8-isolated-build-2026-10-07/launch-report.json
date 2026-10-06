@@ -1,0 +1,242 @@
+{
+ "fused": {
+  "T1 direct launch": {
+   "exit": 0,
+   "killed": false,
+   "secs": 2.6,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": ""
+  },
+  "T1b launch via open (LaunchServices)": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.4,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": ""
+  },
+  "T1b quarantine": {
+   "received/plain.bin": "present",
+   "received/nested/deeper/deep.bin": "present",
+   "excluded/top.bin": "present",
+   "excluded/nested/deeper/deep.bin": "present"
+  },
+  "T1 quarantine (direct exec)": {
+   "received/plain.bin": "present"
+  },
+  "T2 --remote-debugging-port": {
+   "exit": 78,
+   "killed": false,
+   "secs": 0.2,
+   "result": null,
+   "port_seen": false,
+   "port_samples": 2,
+   "stderr": "Sidekick: --remote-debugging-port is not accepted by a release build; exiting."
+  },
+  "T3 ELECTRON_RUN_AS_NODE": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.3,
+   "result": {
+    "started": true,
+    "argv": [
+     "-e",
+     "require('fs').writeFileSync('<scratch>/s5-harness/runasnode-fused.marker','ran as node')"
+    ],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": "",
+   "marker": false
+  },
+  "T4 NODE_OPTIONS --require": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.3,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": "",
+   "marker": false
+  },
+  "T5 --inspect": {
+   "exit": 78,
+   "killed": false,
+   "secs": 0.2,
+   "result": null,
+   "port_seen": false,
+   "port_samples": 2,
+   "stderr": "Sidekick: --inspect is not accepted by a release build; exiting."
+  }
+ },
+ "control": {
+  "T1 direct launch": {
+   "exit": 0,
+   "killed": false,
+   "secs": 2.2,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": ""
+  },
+  "T1b launch via open (LaunchServices)": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.4,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": ""
+  },
+  "T1b quarantine": {
+   "received/plain.bin": "present",
+   "received/nested/deeper/deep.bin": "present",
+   "excluded/top.bin": "present",
+   "excluded/nested/deeper/deep.bin": "present"
+  },
+  "T1 quarantine (direct exec)": {
+   "received/plain.bin": "present"
+  },
+  "T2 --remote-debugging-port": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.3,
+   "result": {
+    "started": true,
+    "argv": [
+     "--remote-debugging-port=9333"
+    ],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": true,
+   "port_samples": 4,
+   "stderr": "DevTools listening on ws://127.0.0.1:9333/devtools/browser/cfeb82fe-3d36-4134-a575-eae4b731bcc7"
+  },
+  "T3 ELECTRON_RUN_AS_NODE": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.1,
+   "result": null,
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": "",
+   "marker": true
+  },
+  "T4 NODE_OPTIONS --require": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.3,
+   "result": {
+    "started": true,
+    "argv": [],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": null,
+   "port_samples": 0,
+   "stderr": "[51533:1007/025856.712789:ERROR:electron/shell/common/node_bindings.cc:487] Most NODE_OPTIONs are not supported in packaged apps. See documentation for more det",
+   "marker": false
+  },
+  "T5 --inspect": {
+   "exit": 0,
+   "killed": false,
+   "secs": 0.3,
+   "result": {
+    "started": true,
+    "argv": [
+     "--inspect=9334"
+    ],
+    "packaged": true,
+    "page": {
+     "scriptRan": true,
+     "cssApplied": true,
+     "bridge": true,
+     "pong": 42,
+     "nodeInPage": false
+    }
+   },
+   "port_seen": true,
+   "port_samples": 4,
+   "stderr": "Debugger listening on ws://127.0.0.1:9334/3412347a-d7e6-4e2e-b473-5b86034cd223\nFor help, see: https://nodejs.org/learn/getting-started/debugging"
+  }
+ }
+}

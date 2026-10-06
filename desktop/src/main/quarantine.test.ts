@@ -106,19 +106,16 @@ test('the product never writes the attribute — it only reads', () => {
 });
 
 /**
- * The packaged half is configuration. Read as text (no YAML dependency in this package); the keys must be
- * inside `mac.extendInfo`, and the exclusions must cover the profile names this app has had.
+ * The packaged half is configuration, read as text (no YAML dependency in this package). The key must sit
+ * inside `mac.extendInfo`. The exclusion key is **absent on purpose**: measured 2026-10-07, macOS ignored it in
+ * every spelling tried, and a key that does nothing is a claim the build would be making falsely.
  */
-test('the packaged Info.plist enables quarantine and excludes the app’s own profile', () => {
+test('the packaged Info.plist enables quarantine, and does not claim exclusions macOS was measured to ignore', () => {
   const yml = readFileSync(join(__dirname, '..', '..', 'electron-builder.yml'), 'utf8');
   const extend = yml.slice(yml.indexOf('  extendInfo:'), yml.indexOf('\n  # ---- Signing.'));
   assert.ok(extend.length > 0, 'control: extendInfo was found');
   assert.match(extend, /\n    LSFileQuarantineEnabled: true\n/);
-  for (const dir of ['Sidekick', 'sidekick-desktop']) {
-    assert.ok(extend.includes(`'~/Library/Application Support/${dir}/*'`), `profile ${dir} not excluded`);
-  }
-  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as { name: string };
-  assert.ok(extend.includes(`/${pkg.name}/*'`), 'the package name’s profile folder is excluded');
+  assert.doesNotMatch(extend.replace(/#[^\n]*/g, ''), /LSFileQuarantineExcludedPathPatterns/);
 });
 
 /** main.ts is not constructible in a test; these hold both publish paths' wiring in place. */

@@ -26,7 +26,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { applyFuses, RELEASE_FUSES } from './fuses.mjs';
+import { applyFuses, FUSE, RELEASE_FUSES } from './fuses.mjs';
 
 const IDENTITY = '-';                       // ad-hoc. Not a placeholder for a real identity.
 
@@ -66,7 +66,8 @@ export default async function afterPack(context) {
   // a byte changed after signing would break the seal. `applyFuses` refuses a wire it does not recognise.
   const frameworkBinary = path.join(fw, 'Electron Framework.framework', 'Versions', 'A', 'Electron Framework');
   const fuses = applyFuses(frameworkBinary, RELEASE_FUSES);
-  console.log(`  • fuses       ${fuses.before} → ${fuses.after} (RunAsNode, NODE_OPTIONS, --inspect off; ASAR integrity and ASAR-only on)`);
+  const named = Object.entries(RELEASE_FUSES).map(([i, on]) => `${Object.keys(FUSE).find((k) => FUSE[k] === Number(i))}=${on ? 'on' : 'off'}`);
+  console.log(`  • fuses       ${fuses.before} → ${fuses.after} (${named.join(', ')})`);
 
   let ok = 0;
   const failed = [];

@@ -7,10 +7,12 @@ import { execFile } from 'node:child_process';
  * ### The mechanism is macOS's, not ours
  *
  * The packaged app's `Info.plist` sets `LSFileQuarantineEnabled` (`electron-builder.yml` → `extendInfo`):
- * Apple's documented key by which **files the app creates are quarantined by macOS itself**, with
- * `LSFileQuarantineExcludedPathPatterns` keeping the app's own profile (settings, identity, logs, resume
- * records) out of it. A received file is written as a partial in the receive folder and published by hard
- * link, and an extended attribute lives on the inode, so the published name carries what the partial got.
+ * Apple's documented key by which **files the app creates are quarantined by macOS itself**. Measured on an
+ * isolated harness packaged through the same hook (2026-10-07): every file it wrote was quarantined, in
+ * nested folders too — and so was its own profile, because the exclusion key was ignored; that is harmless
+ * for data files and a relaunch over it worked. A received file is written as a partial in the receive folder
+ * and published by hard link, and an extended attribute lives on the inode, so the published name carries
+ * what the partial got.
  *
  * This file **never writes** `com.apple.quarantine`. Its value format is not documented by Apple, and a
  * hand-built value would be a guess presented as a platform guarantee. It only **reads** — `xattr -p`, no

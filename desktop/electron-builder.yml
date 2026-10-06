@@ -76,15 +76,13 @@ mac:
     LSMinimumSystemVersion: '11.0'
     # S8 (defect 186): files this app creates are quarantined **by macOS** — Apple's documented key, so a
     # file pulled or shared from the phone is assessed by Gatekeeper when opened as an app or script.
-    # Quarantine is not a scan and makes no file safe. The app's own profile is excluded: settings,
-    # identity, logs, resume records and Chromium's caches are not downloads. Whether `*` covers nested
-    # folders is a reading still owed (morning plan); `src/main/quarantine.ts` reports every received file.
+    # Quarantine is not a scan and makes no file safe. MEASURED 2026-10-07 (isolated harness packaged through
+    # this file's own afterPack, macOS 26.6.1, ad-hoc signed): every file the app wrote was quarantined —
+    # nested folders, direct exec and LaunchServices launch alike — **including the app's own profile**, and
+    # `LSFileQuarantineExcludedPathPatterns` was ignored in all three spellings tried (`~/…/*`, `~/…` and an
+    # absolute `/*`), so it is not set here. Relaunching over a fully quarantined profile worked (3 of 3).
+    # `src/main/quarantine.ts` reports every received file's attribute. docs/evidence/s5-s8-isolated-build-2026-10-07/.
     LSFileQuarantineEnabled: true
-    LSFileQuarantineExcludedPathPatterns:
-      - '~/Library/Application Support/Sidekick/*'
-      - '~/Library/Application Support/sidekick-desktop/*'
-      - '~/Library/Caches/Sidekick/*'
-      - '~/Library/Caches/com.chetan.sidekick.desktop/*'
 
   # ---- Signing. Blank on purpose; see the header. ------------------------------------------------
   #

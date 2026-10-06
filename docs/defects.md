@@ -199,9 +199,9 @@ own heading there, and its own row here.
 | **181** | **Settings → Connection overlapped its own card at the minimum window size and at 1.2× zoom; the sidebar's last row sat under the footer; a notification row's text ran into the next row.** Audit U1/U2. | **fixed in source 2026-10-06, synthetic harness only** — the settings row wraps (`shell.css`), nav rows compact to 30 / 28 px below 740 / 680 px of viewport, notification rows never shrink (`styles.css`). Harness extended with a control-versus-text check (with its own fixture): Settings 2→0 at 1100×700, 5→0 at 1.2×, both themes; nav 468/468 and 435/435. **Not seen in the real window.** | — | see below |
 | **182** | **Pairing does not authenticate the phone to the Mac.** With a pairing armed and nothing stored, the Mac adopts any TLS peer, sends it the pair token, and pins its certificate on the first `hello.ack` (`link.ts:375`, `:595`). Audit S1, High. | **fixed in source 2026-10-06 — not installed, not run on hardware.** Pairing v2 (`docs/protocol.md` → *Pairing (version 2)*): both sides prove the QR secret with HMAC-SHA256 over both certificate fingerprints and both fresh nonces; the secret never crosses the wire; the Mac stores the phone and the phone stores the Mac only after verifying; v1 pairing refused both ways. Red first against HEAD's own `LinkClient`: an impostor on loopback was pinned as the phone and received the token (`docs/evidence/pairing-v2-2026-10-06/`). Mac 15 loopback-TLS integration tests through the real `LinkClient`; phone `PairingV2Test` 17; both against independent vectors. Legacy records kept and labelled, never upgraded. | — | see below |
 | **183** | **Every window shares one 166-method bridge and the main process trusts its caller.** Only the share-window handlers check `event.sender`; most payloads are unvalidated (`fs-drag` drags any existing path). Audit S4, Medium. | **fixed in source 2026-10-06 — not installed, not seen in the real app.** `src/main/ipcAuth.ts` (window registry by object identity + `guardIpc`), `src/main/ipcPolicy.ts` (133 channels: windows, effect, payload rule; events by window), three preloads (main 150, float 25, receive 8 methods). Also closed in the same batch: `sendAll` broadcast clipboard contents, activity and transfers into the float and receive windows' processes; `fs-send` read any local path the renderer named; `pairing-qr-render` rendered any string; `fs-drag`/`reveal-saved` trusted renderer paths or a prefix; a stale receive window could act on offers it was never shown. Tests through the real `main.ts` registrations, the guard, the policy, the receive window, and an isolated Electron run with real preloads and pages; 9 mutations red. `docs/ipc-authorization.md`. | — | see below |
-| **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **open** — batch proposed, §S5; belongs with Developer ID signing | — | see below |
+| **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **partly fixed in source 2026-10-07 — the signing-dependent half stays open.** Fuses flipped in `afterPack` before signing (RunAsNode, NODE_OPTIONS, `--inspect` off; ASAR integrity and ASAR-only on; `build/fuses.mjs`, no new dependency); a packaged build exits on `--remote-debugging-*`, `--inspect*`, `--js-flags` before app code (`releaseGuards.ts`, `entry.js`). Measured on an isolated harness with controls: startup, preload and IPC work; RunAsNode and `--inspect` blocked by the fuses; `--remote-debugging-port` blocked only by the guard. **Entitlements unchanged** — `disable-library-validation` is load-bearing while ad-hoc signed. | — | see below |
 | **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **fixed in source 2026-10-06 — not installed, not seen on hardware.** `clip.push` carries `origin` (`docs/protocol.md` → *Provenance*), stamped by the route (`ClipRoute`), never by the intent. The Mac applies only `origin: "clipboard"`; selection, absent and unknown origins become a bounded offer (5, 10 min, session-bound, single-use Copy); a banner with fixed copy; Restore refuses over newer content. Red first on both sides; Mac 13 + phone 5 mutations red (one phone guard hole found by mutation and closed). | — | see below |
-| **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **fixed in source 2026-10-07 — packaged behaviour NOT verified on hardware.** `LSFileQuarantineEnabled` (Apple's key: macOS quarantines files the app creates) with the app's own profile excluded; every pulled and shared file's attribute is **read** after publish and reported present / absent / unknown with a tally (`quarantine.ts`). Never written by hand. Real synthetic temp files with the attribute set from outside the product; 6 mutations red. Development builds report `absent` by design. | — | see below |
+| **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **fixed in source 2026-10-07 — mechanism measured on an isolated packaged harness; a packaged Sidekick NOT run.** `LSFileQuarantineEnabled` (Apple's key: macOS quarantines files the app creates — measured on an isolated harness: every file, nested folders included; the exclusion key was ignored, so it is not set); every pulled and shared file's attribute is **read** after publish and reported present / absent / unknown with a tally (`quarantine.ts`). Never written by hand. Real synthetic temp files with the attribute set from outside the product; 6 mutations red. Development builds report `absent` by design. | — | see below |
 | **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open — a release decision.** 2026-10-07: every transfer path inventoried (`docs/transfer-integrity-inventory-2026-10-07.md`); the Photos save no longer drops `verified`, so an unchecked large video now **says** it was not checksummed; 9 loopback tests for the pre-hash path. The check itself above 64 MiB still does not exist without `fs.blocks`. | — | see below |
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
 | **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
@@ -3688,10 +3688,27 @@ file's age.
 **Fix direction for what is left:** the hardware checks in `docs/pairing-v2-hardware-test-proposal.md`
 (H9–H12) — the real windows still work, a real drop still sends, a real drag still reaches Finder.
 
-### 184 — Electron fuses and entitlements · **open**
+### 184 — Electron fuses and entitlements · **partly fixed in source; signing half open**
 
-**Fix direction:** §S5 — flip the fuses in `afterPack`, verify each by launch, and drop
-`disable-library-validation` in the change that adds the Developer ID.
+**Fixed in source (2026-10-07, `6777b74` and the evidence commit):** `build/fuses.mjs` reads the fuse wire from
+the framework binary (Electron 43.4.1: v1, nine fuses, `101100011`) and `afterPack` writes `000011011` before the
+first signature; an unknown wire layout stops the build. `entry.js` + `releaseGuards.ts` make a packaged build
+exit with 78 on a debugging switch before `main.js` loads; development runs and every existing `dist` are
+unaffected. **Evidence:** `docs/evidence/s5-s8-isolated-build-2026-10-07/` — the packaged Sidekick's wire,
+`ElectronAsarIntegrity` and deep signature read statically; a minimal harness packaged through the same hook,
+against an unfused control and a fuses-without-guard variant: startup, `file://` page, preload bridge and IPC
+work; `ELECTRON_RUN_AS_NODE` and `--inspect` blocked by the fuses; `--remote-debugging-port` still served
+DevTools with fuses alone, so the guard is load-bearing; `NODE_OPTIONS --require` gave **no reading** (Electron
+already refused it in the control). Mutations MF1–MF5 red.
+
+**Still open, and why:** the entitlements (`disable-library-validation`, `allow-dyld-environment-variables`)
+belong to the Developer ID change — the first is load-bearing while ad-hoc signed. `EnableCookieEncryption` and
+`GrantFileProtocolExtraPrivileges` are unchanged and unmeasured. A packaged **Sidekick** has not been launched.
+
+**Fix direction for what is left:** with a Developer ID: drop `disable-library-validation`, try dropping
+`allow-dyld-environment-variables`, launch-test each. Before release: launch the packaged Sidekick once on a
+fresh macOS user (morning plan). **The wrong fix** is removing an entitlement without a launch test: the app does
+not start without library validation disabled while ad-hoc signed.
 
 ### 185 — any phone app can write the Mac's clipboard · **fixed in source**
 
@@ -3724,27 +3741,30 @@ fix** is checking `referrer`: it is the sender's to choose.
 ### 186 — received files are not quarantined · **fixed in source**
 
 **Fix (2026-10-07):** the supported mechanism, not a hand-built attribute. `electron-builder.yml` →
-`extendInfo` sets `LSFileQuarantineEnabled: true`, so macOS quarantines files the packaged app creates, and
-`LSFileQuarantineExcludedPathPatterns` keeps the app's own profile (`~/Library/Application Support/Sidekick/*`,
-`…/sidekick-desktop/*`, two Caches folders) out of it. A received file is written as a partial in the
-receive folder and published by hard link; the attribute is on the inode, so the published name carries the
-partial's. `src/main/quarantine.ts` **reads** the attribute (`/usr/bin/xattr -p`, no shell) after every pull
-publish (`BulkClient.onPublished`) and every share publish, and logs `present` / `absent` / `unknown` with
-the running counts. The value format of `com.apple.quarantine` is not documented by Apple, so this code never
-writes one.
+`extendInfo` sets `LSFileQuarantineEnabled: true`, so macOS quarantines files the packaged app creates. A
+received file is written as a partial in the receive folder and published by hard link; the attribute is on the
+inode, so the published name carries the partial's. `src/main/quarantine.ts` **reads** the attribute
+(`/usr/bin/xattr -p`, no shell) after every pull publish (`BulkClient.onPublished`) and every share publish, and
+logs `present` / `absent` / `unknown` with the running counts. The value format of `com.apple.quarantine` is not
+documented by Apple, so this code never writes one.
+
+**Measured on an isolated harness packaged through the same hook** (`docs/evidence/s5-s8-isolated-build-2026-10-07/`):
+every file the app wrote was quarantined — nested folders, direct exec and LaunchServices launch — and so was
+its own profile, because `LSFileQuarantineExcludedPathPatterns` was ignored in all three spellings tried. The
+exclusions first added tonight were therefore **removed**; relaunching over a quarantined profile worked 3/3.
 
 **Evidence:** `quarantine.test.ts` — a synthetic temp file whose attribute is set by `/usr/bin/xattr -w` in the
 test (a stimulus from outside the product) reads `present`, its unmarked control `absent`, a hard-linked
-publish keeps it, a missing file is `unknown` (never `absent`); the config keys are inside `extendInfo`;
-`bulkBlockPull.test.ts` — the hook fires once with the final path on a verified pull and not on a refused one,
-and a throwing hook cannot fail a saved pull. Mutations MS1–MS6 red; MS4 and MS6's first runs hung with no
-verdict (a throwing hook left the pull unresolved) and were rerun with `--test-force-exit` and a 30 s test
-timeout, both red.
+publish keeps it, a missing file is `unknown` (never `absent`); the config key is inside `extendInfo` and no
+exclusion is claimed; `bulkBlockPull.test.ts` — the hook fires once with the final path on a verified pull and
+not on a refused one, and a throwing hook cannot fail a saved pull. Mutations MS1–MS6 red; MS4 and MS6's first
+runs hung with no verdict (a throwing hook left the pull unresolved) and were rerun with `--test-force-exit` and
+a 30 s test timeout, both red.
 
 **Not claimed:** that quarantine makes any file safe. It asks Gatekeeper to assess a file opened as an app or
-script; it scans nothing. **Not verified:** that the packaged app's writes actually get the attribute, and
-whether the exclusion `*` covers nested folders — **morning plan: one synthetic pull with an isolated packaged
-build, then `xattr -p` on the result and on the profile's files.** Development runs (`electron .`) report
+script; it scans nothing. **Not verified:** a packaged **Sidekick** receiving a real file (the harness is not Sidekick, and Sidekick's
+keychain-backed identity was not exercised) — **morning plan: one synthetic pull with a packaged build on a
+fresh macOS user, then `xattr -p` on the result.** Development runs (`electron .`) report
 `absent` for every file, by design of macOS: Electron's own bundle has no such key.
 
 **Fix direction for what is left:** that reading. **The wrong fix** is writing `com.apple.quarantine` with a
