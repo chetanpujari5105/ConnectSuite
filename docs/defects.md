@@ -207,6 +207,9 @@ own heading there, and its own row here.
 | **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
 | **190** | **S4's drop grant trusted the renderer: a compromised main window could make `fs-send` read any local file.** `fs-grant-source` granted whatever path the preload — or raw IPC — sent; the sender and preload checks were working and are not a statement about who chose the file. Found by the S4 follow-up, Medium (needs a renderer compromise). | **fixed in source 2026-10-06 — not installed, no real drop performed.** Red first through the production handlers: a forged grant, then `fs-send`, opened and hashed all 34 bytes of a synthetic file. `fs-grant-source` removed; a drop is confirmed in a **native sheet** (`fs-confirm-drop`, Cancel default, one at a time, every file or every source folder named); grants bound to window, `dev`/`ino` and one hour (`sourceGrants.ts`). 9 mutations red (one malformed and one hanging first attempt recorded and rerun). | — | see below |
 | **191** | **The one-time Activity call-data rewrite re-serialised every call row from its five parsed fields**: an extra field on a call row was lost, and a call row in another key order was rewritten with nothing to redact. Found by the synthetic preflight run before any relaunch; the live file was never read or rewritten. | **fixed in source 2026-10-06 (`4661015`) — not run on the live profile.** A call row changes only when its `detail` must be redacted, and then only `detail`; an unknown field that may hold call data is kept and reported by name, never deleted. Red first 4 of 5; 6 mutations red; synthetic production run repeated. | — | see below |
+| **192** | **The phone's share-sheet text route read `EXTRA_TEXT` as a `String`**, so a share whose text is a `Spanned` (a styled `CharSequence`) arrived as null and was answered *"Nothing was selected"*. `Intent.getStringExtra` is `BaseBundle.getString`, a cast that returns null on a non-`String` value (AOSP source). Found by reading the selection path after stage D, 2026-10-07. **Not observed on hardware and not the cause of stage D's step 6** (no start of the activity was logged there). | **fixed in source 2026-10-07 — not installed.** Both extras read with `getCharSequenceExtra`; each action reads only its own extra (`SelectionIntent`); a restored instance cannot send twice. `SelectionIntentTest` 9, provenance guard red on `getStringExtra`; 3 mutations red. | — | see below |
+| **193** | **The phone's focus sync had four silent exits** — feature not installed, window not focused, clipboard empty or non-text, unchanged — so stage D's A4 (a focus with no clipboard event on either side) could not be diagnosed from either log. Breaks the log-the-skip rule. | **fixed in source 2026-10-07 — not installed; A4 itself is NOT explained.** Every focus ends in one named `FocusSync.Reason`, logged with every reason's count (zeros printed), no text and no app name. Non-text clips are now told apart from empty ones internally (still `empty` on the wire). `FocusSyncTest` 10; 3 mutations red. | — | see below |
+| **194** | **Clipboard log lines on the phone named the sender app**: `clip.push … bytes from <app>` on every send, `from=<package>` on every selection start, and `AppLabels` logging the package and its label on first resolve. The text itself was never logged. | **fixed in source 2026-10-07 — not installed.** Both clipboard routes log route, byte count and outcome only; label lookups on these paths are `quiet`. Source guards over every `clip` log call (control: ≥ 10 found); 3 mutations red. Other features' label logging unchanged. | — | see below |
 
 ---
 
@@ -3788,4 +3791,55 @@ are unchanged (`activity-rewrite-synthetic-after-fix.txt`).
 redacted is an **owner decision**, raised by the warning when such a row exists. Whether the live file has
 any is unknown until the approved relaunch (or an approved read-only dry run). **The wrong fix** is deleting
 unknown fields: the file has had more than one writer.
+
+### 192 — the share route read `EXTRA_TEXT` as a String · **fixed in source**
+
+Found by reading `SendSelectionActivity` after stage D (2026-10-07) while separating the two routes the
+stage had conflated: step 2's success arrived as `ACTION_SEND` (share sheet), step 6's attempt was the
+selection toolbar (`ACTION_PROCESS_TEXT`). Those are two senders with two extras, and a reading of one is no
+reading of the other. On the share route the text was read with `getStringExtra(Intent.EXTRA_TEXT)`, which
+returns null for a `Spanned` value (AOSP `BaseBundle.getString` casts and swallows the
+`ClassCastException`). The routing check used the same read, so such a share fell to *"Nothing was
+selected"*.
+
+**Fix:** `SelectionIntent.read(action, processText, sendText)` — pure, JVM-tested — with both extras read
+as `CharSequence`; the toolbar reads only `EXTRA_PROCESS_TEXT` and the share route only `EXTRA_TEXT`; a
+restored instance finishes without sending. **Evidence:** `SelectionIntentTest` (a `StringBuilder` stands in
+for a `Spanned`), `SendSelectionProvenanceTest` (no `getStringExtra` on the path); mutations MP1–MP3 red.
+
+**Not reached:** a real styled share on hardware. **Not claimed:** that this explains stage D step 6 — no
+start of the activity was logged there at all, which this defect cannot produce.
+
+**Fix direction for what is left:** one share of styled text from an app known to send `Spanned` (a
+morning-plan item, owner-supervised). **The wrong fix** is falling back from one extra to the other: a
+toolbar start carrying an `EXTRA_TEXT` is not a share.
+
+### 193 — the focus sync's silent exits · **fixed in source**
+
+`ClipFeature.onWindowFocused` returned without logging when the feature was not installed, when the read
+was refused (window not focused), when the clipboard was empty or held no text, and when it was unchanged.
+Stage D's A4 started `MainActivity` once and nothing followed on either side; §9.6 of the verification
+plan could narrow it only to *"the window never got input focus, or the read was empty / not text"*.
+
+**Fix:** `FocusSync.decide` names one of ten reasons per focus event, in a stated order, and
+`ReasonTally` prints every reason's count on the line, zeros included. `readClip` now distinguishes an
+item with no text from an empty clipboard (the wire still says `empty`; changing that is a contract
+change and is not made here). **Evidence:** `FocusSyncTest` (ordering by throwing doubles; a real
+`ClipEcho` over repeated focus), `ClipFocusAndLogPrivacySourceTest` (no bare `return` in the focus path);
+MP6–MP8 red.
+
+**Fix direction for what is left:** read the new `focus sync:` line after the next approved foregrounding.
+**Not claimed:** any cause for A4 — the line will say which exit was taken next time; it cannot say what
+happened at 23:28 on 2026-10-06.
+
+### 194 — clipboard logs named the sender app · **fixed in source**
+
+The text was never logged, but the app was: the phone's `clip.push` line ended *"bytes from Keep Notes"*,
+the selection route logged `from=com.google.android.keep`, and `AppLabels` logged package and label on
+first resolve. Which app a person copied from or selected in is theirs, and `LinkLog` writes a rotating
+file. **Fix:** route, byte count, outcome and counts only; `AppLabels.of(…, quiet = true)` on the two
+clipboard lookups keeps its counters and drops the names. The Mac's offer label (what the pane shows) is
+unchanged — it is a display, not a log. **Evidence:** source guards with a found-count control; MP4, MP5,
+MP9 red. **The wrong fix** is hashing the package name into the log: a hash of a small known set is the
+set.
 

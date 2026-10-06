@@ -62,6 +62,21 @@ object SelectionSend {
     }
 
     /**
+     * Every way one start of `SendSelectionActivity` ends, for the counters on the log line. Two more
+     * than [Outcome], because an intent can fail before there is any text to decide about — and a
+     * start that carried no text is a different fact from a selection that was blank.
+     */
+    enum class Counted { SENT, NO_LINK, EMPTY, TOO_LARGE, SAME_AS_MAC, NO_TEXT_EXTRA, UNSUPPORTED_ACTION }
+
+    fun counted(outcome: Outcome): Counted = when (outcome) {
+        is Outcome.Sent -> Counted.SENT
+        Outcome.NoLink -> Counted.NO_LINK
+        Outcome.Empty -> Counted.EMPTY
+        Outcome.TooLarge -> Counted.TOO_LARGE
+        Outcome.SameAsMac -> Counted.SAME_AS_MAC
+    }
+
+    /**
      * One sentence per outcome, here rather than in the activity so the test runs the strings the
      * user sees rather than a second copy of them.
      *

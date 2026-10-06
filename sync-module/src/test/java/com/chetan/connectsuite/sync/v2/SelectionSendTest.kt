@@ -100,4 +100,58 @@ class SelectionSendTest {
         assertTrue(message.contains("nothing was sent"))
         assertTrue("it must not read as an error", !message.contains("failed") && !message.contains("Error"))
     }
+
+    // ---- 2026-10-07: repeated starts and malformed text, through the real interlock and the real cap ----
+
+    private fun realSend(echo: ClipEcho, text: String, live: Boolean = true): SelectionSend.Outcome {
+        val outcome = SelectionSend.decide(text, live, ClipboardPayloads::tooLarge) { echo.maySend(it, ClipEcho.Trigger.USER) }
+        if (outcome is SelectionSend.Outcome.Sent) echo.sent(text.trim())
+        return outcome
+    }
+
+    /** A person who taps Send to Mac twice on the same words means it twice; the focus rule must not apply. */
+    @Test
+    fun `the same selection sent twice on purpose is sent twice`() {
+        val echo = ClipEcho()
+        assertEquals(SelectionSend.Outcome.Sent(4), realSend(echo, "same"))
+        assertEquals(SelectionSend.Outcome.Sent(4), realSend(echo, "same"))
+        assertEquals(SelectionSend.Outcome.Sent(4), realSend(echo, "  same  "))
+    }
+
+    @Test
+    fun `a selection equal to what the Mac just sent is refused however often it is tapped`() {
+        val echo = ClipEcho()
+        echo.arrived("from mac")
+        repeat(3) { assertEquals(SelectionSend.Outcome.SameAsMac, realSend(echo, "from mac")) }
+    }
+
+    @Test
+    fun `a dropped link between two taps answers NoLink, then sends once it is back`() {
+        val echo = ClipEcho()
+        assertEquals(SelectionSend.Outcome.NoLink, realSend(echo, "words", live = false))
+        assertEquals(SelectionSend.Outcome.Sent(5), realSend(echo, "words"))
+    }
+
+    /** The cap is on UTF-8 bytes of the trimmed text: exactly at it goes, one byte over is refused. */
+    @Test
+    fun `the size boundary is exact, in bytes, after trimming`() {
+        val echo = ClipEcho()
+        val atCap = "a".repeat(ClipboardPayloads.MAX_TEXT_BYTES)
+        assertEquals(SelectionSend.Outcome.Sent(ClipboardPayloads.MAX_TEXT_BYTES), realSend(echo, atCap))
+        assertEquals(SelectionSend.Outcome.TooLarge, realSend(echo, atCap + "b"))
+        assertEquals("surrounding whitespace is not counted", SelectionSend.Outcome.Sent(ClipboardPayloads.MAX_TEXT_BYTES), realSend(echo, "  $atCap\n"))
+        // Three bytes per character: 21,846 of them is 65,538 bytes, over a cap that 21,845 fits under.
+        assertEquals(SelectionSend.Outcome.TooLarge, realSend(echo, "\u20AC".repeat(21_846)))
+        assertEquals(SelectionSend.Outcome.Sent(65_535), realSend(echo, "\u20AC".repeat(21_845)))
+    }
+
+    @Test
+    fun `blank and control-only selections are Empty or sent as they are, never crash`() {
+        val echo = ClipEcho()
+        for (blank in listOf("", " ", "\n\t ", "\u0020\u0009")) assertEquals(blank, SelectionSend.Outcome.Empty, realSend(echo, blank))
+        // NUL is not whitespace to String.trim(), so it is text; it is sent, and counted in bytes.
+        assertEquals(SelectionSend.Outcome.Sent(2), realSend(echo, "\u0000\u0000"))
+        // A lone surrogate does not throw; UTF-8 encoding replaces it, so its byte count is one.
+        assertEquals(SelectionSend.Outcome.Sent(1), realSend(echo, "\uD800"))
+    }
 }

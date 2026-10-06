@@ -69,6 +69,57 @@ class ClipOriginSourceTest {
     }
 }
 
+/**
+ * 2026-10-07: the focus path ends every event in one logged reason, and no clipboard log line carries the
+ * app a person copied from. Source guards, because `ClipFeature` needs a `Context` and `LinkLog`.
+ */
+class ClipFocusAndLogPrivacySourceTest {
+
+    private fun code(name: String): String =
+        SourceTree.kotlinFiles().single { it.name == name }.readText()
+            .replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
+            .replace(Regex("//[^\\n]*"), "")
+
+    private fun body(code: String, signature: String): String {
+        val start = code.indexOf(signature)
+        assertTrue("control: `$signature` was found", start >= 0)
+        var depth = 0
+        var i = code.indexOf('{', start)
+        val open = i
+        while (i < code.length) {
+            if (code[i] == '{') depth++
+            if (code[i] == '}' && --depth == 0) return code.substring(open, i + 1)
+            i++
+        }
+        throw AssertionError("unbalanced braces after $signature")
+    }
+
+    /** Red against `286e2b0`, whose focus path had four bare `return`s and no line for them. */
+    @Test
+    fun `the focus path has no silent exit and logs its reason with the tally`() {
+        val focus = body(code("ClipFeature.kt"), "fun onWindowFocused(")
+        assertTrue("a bare return in onWindowFocused is a silent exit", !Regex("\\breturn\\b").containsMatchIn(focus))
+        assertTrue(focus.contains("FocusSync.decide("))
+        assertTrue(focus.contains("focusTally.record(reason)"))
+        assertTrue(focus.contains("focusTally.line()"))
+    }
+
+    /** Red against `286e2b0`, whose clip.push line ended "bytes from ${appName}". */
+    @Test
+    fun `no clipboard log line interpolates an app name or package`() {
+        val feature = code("ClipFeature.kt")
+        val lines = Regex("""LinkLog\.\w\(\s*"clip"[\s\S]*?\)\n""").findAll(feature).map { it.value }.toList()
+        assertTrue("control: the scan found the clip log calls (${lines.size})", lines.size >= 10)
+        for (line in lines) {
+            assertTrue("a clip log line names the app: $line", !Regex("\\$\\{?(appName|packageName|fromPackage|label|owner)\\b").containsMatchIn(line))
+            assertTrue("a clip log line carries text: $line", !Regex("\\$\\{?text\\b(?!\\))").containsMatchIn(line.replace("byteLength(text)", "")))
+        }
+        // The two label lookups on the clipboard paths are the quiet kind.
+        assertEquals(2, Regex("AppLabels\\.of\\([^)]*quiet = true\\)").findAll(feature).count())
+        assertEquals(0, Regex("AppLabels\\.of\\((?![^)]*quiet = true)[^)]*\\)").findAll(feature).count())
+    }
+}
+
 /** The payload half, with nothing Android in it: what each route puts on the wire. */
 class ClipOriginPayloadTest {
 

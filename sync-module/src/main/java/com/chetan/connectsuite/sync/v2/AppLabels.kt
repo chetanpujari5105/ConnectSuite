@@ -69,8 +69,11 @@ object AppLabels {
      * this mirrors — can set it, so reading it would have been a hidden-API dependency bought for
      * nothing. The `<queries>` element is the fix; this is only the fallback path.
      */
-    fun of(context: Context, packageName: String): String {
+    fun of(context: Context, packageName: String, quiet: Boolean = false): String {
         cache[packageName]?.let { return it }
+        // `quiet`: the clipboard routes resolve the app a person copied from or selected in, and which
+        // app that was is theirs rather than the log's. The counts stay on the line; the names do not.
+        val who = if (quiet) "a package (not logged)" else packageName
 
         val label = runCatching {
             val packages = context.packageManager
@@ -89,14 +92,14 @@ object AppLabels {
             // path was reached constantly and said nothing at all.
             LinkLog.w(
                 "applabel",
-                "No label for $packageName; showing the package name — ${tally()}",
+                "No label for $who; showing the package name — ${tally()}",
             )
             return packageName
         }
 
         cache[packageName] = label
         resolved.incrementAndGet()
-        LinkLog.i("applabel", "$packageName resolves to \"$label\" — ${tally()}")
+        LinkLog.i("applabel", if (quiet) "$who resolved to a label — ${tally()}" else "$packageName resolves to \"$label\" — ${tally()}")
         return label
     }
 

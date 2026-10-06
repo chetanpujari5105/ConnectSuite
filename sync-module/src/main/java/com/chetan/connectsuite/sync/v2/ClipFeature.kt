@@ -110,6 +110,12 @@ object ClipFeature {
     private val refusedSensitive = AtomicLong(0)
     private val refusedTooLarge = AtomicLong(0)
 
+    /** One count per [FocusSync.Reason], every reason printed — zeros included — on every focus line. */
+    private val focusTally = ReasonTally(FocusSync.Reason.entries)
+
+    /** One count per way a start of `SendSelectionActivity` ended, the same rule. */
+    private val selectionTally = ReasonTally(SelectionSend.Counted.entries)
+
     /** What the phone's own Clipboard card draws. Text included: it never leaves the device. */
     data class PhoneState(
         val lastSentPreview: String? = null,
@@ -234,9 +240,21 @@ object ClipFeature {
      * take; a person copies something in another app, comes back to ConnectSuite, and this runs.
      */
     fun onWindowFocused(context: Context) {
-        val server = link ?: return
-        val clip = readClip(context.applicationContext) ?: return
-        val text = clip.text ?: return
+        // Every focus event ends in exactly one named reason, logged with the counts of all of them.
+        // Before 2026-10-07 four of these exits returned without a word, and stage D's A4 — a focus with
+        // no clipboard event on either side — could not be diagnosed from either log (`FocusSync`).
+        val server = link
+        var clip: Clip? = null
+        val reason = FocusSync.decide(
+            installed = server != null,
+            read = {
+                clip = readClip(context.applicationContext)
+                readOf(clip)
+            },
+            hasLiveSession = { server?.anyLiveSession() != null },
+            echo = { echo.maySend(clip?.text.orEmpty(), ClipEcho.Trigger.AUTOMATIC) },
+        )
+        focusTally.record(reason)
 
         // **Report the effect, not the stimulus** — this repo's own probe rule, and it belongs in
         // product code for the same reason. `broadcast` over zero sessions returns normally and
@@ -246,32 +264,28 @@ object ClipFeature {
         //
         // Worse than a wrong number: the interlock would then suppress the *real* send when a Mac did
         // arrive, because the text had not changed. The feature would look broken exactly once,
-        // for the person whose phone was open before their Mac was.
-        if (server.anyLiveSession() == null) {
-            publish { it.copy(linkUp = false) }
-            LinkLog.i(
-                "clip",
-                "Clipboard read on focus and not sent: no Mac is connected. Nothing was counted as " +
-                    "sent and nothing was remembered as sent, so it will go the moment one is — ${tally()}",
-            )
-            return
-        }
+        // for the person whose phone was open before their Mac was. So NO_LINK counts nothing as sent
+        // and remembers nothing as sent.
+        if (reason == FocusSync.Reason.NO_LINK) publish { it.copy(linkUp = false) }
 
         // Focus is an *automatic* trigger, so both rules apply: the echo rule (never send back what
-        // we received) and the unchanged rule (do not re-send the same clipboard every time
-        // somebody opens the app). Named refusals rather than a boolean, because the first is
-        // logged and the second is the ordinary case — and collapsing them would hide which one is
-        // doing the work, which is exactly how the Mac's twin test passed over a deleted echo rule.
-        when (echo.maySend(text, ClipEcho.Trigger.AUTOMATIC)) {
-            ClipEcho.Decision.Echo -> {
-                LinkLog.i("clip", "Not sending: identical to the last entry received from the Mac — ${tally()}")
-                return
-            }
-            ClipEcho.Decision.Unchanged -> return
-            ClipEcho.Decision.Send -> Unit
+        // we received) and the unchanged rule (do not re-send the same clipboard every time somebody
+        // opens the app). Named refusals rather than a boolean, so the line says which one did the work.
+        val held = clip
+        if (reason == FocusSync.Reason.SENT && server != null && held?.text != null) {
+            deliver(server, held.text, held.packageName, held.appName, ClipboardPayloads.ClipRoute.FOCUS)
         }
+        LinkLog.i("clip", "focus sync: $reason — ${FocusSync.logSentence(reason)} — focus reasons since start: ${focusTally.line()}")
+    }
 
-        deliver(server, text, clip.packageName, clip.appName, ClipboardPayloads.ClipRoute.FOCUS)
+    /** The read's result as a [FocusSync.Read]. A null [Clip] is the platform's refusal, never "empty". */
+    private fun readOf(clip: Clip?): FocusSync.Read = when {
+        clip == null -> FocusSync.Read.REFUSED
+        clip.kind == ClipboardPayloads.KIND_SENSITIVE -> FocusSync.Read.SENSITIVE
+        clip.kind == KIND_TOO_LARGE -> FocusSync.Read.TOO_LARGE
+        clip.nonText -> FocusSync.Read.NON_TEXT
+        clip.text == null -> FocusSync.Read.EMPTY
+        else -> FocusSync.Read.TEXT
     }
 
     /**
@@ -326,8 +340,9 @@ object ClipFeature {
         // log must name the one that did.
         LinkLog.i(
             "clip",
-            "clip.push → Mac via ${route.logName} (origin ${route.origin}): ${ClipboardPayloads.byteLength(text)} bytes from " +
-                "${appName ?: "an unnamed app"} — ${tally()}",
+            // No app name and no package: which app a person copied from is theirs, not the log's.
+            "clip.push → Mac via ${route.logName} (origin ${route.origin}): ${ClipboardPayloads.byteLength(text)} bytes, " +
+                "source app ${if (appName != null || packageName != null) "named in the payload" else "not named"} — ${tally()}",
         )
     }
 
@@ -364,12 +379,25 @@ object ClipFeature {
             // Through `AppLabels`, always — including when it falls back to the package name, so the
             // fallback is counted rather than a raw id being interpolated somewhere that never asks.
             // Defects 28 and 33.
-            val label = fromPackage?.let { AppLabels.of(context, it) }
+            val label = fromPackage?.let { AppLabels.of(context, it, quiet = true) }
             deliver(server, text.trim(), fromPackage, label, ClipboardPayloads.ClipRoute.SELECTION)
         } else {
             LinkLog.i("clip", "selection not sent: ${outcome.javaClass.simpleName} — ${tally()}")
         }
+        selectionTally.record(SelectionSend.counted(outcome))
+        LinkLog.i("clip", "selection outcomes since start: ${selectionTally.line()}")
         return outcome
+    }
+
+    /**
+     * A start of `SendSelectionActivity` that carried no text for its action, or an action it does not
+     * serve. Counted beside the outcomes above, so "nothing arrived" can be told from "something arrived
+     * empty". [routeName] is the action's log name (`PROCESS_TEXT`, `SEND`); nothing else is passed.
+     */
+    fun selectionCarriedNoText(routeName: String, unsupportedAction: Boolean) {
+        val counted = if (unsupportedAction) SelectionSend.Counted.UNSUPPORTED_ACTION else SelectionSend.Counted.NO_TEXT_EXTRA
+        selectionTally.record(counted)
+        LinkLog.i("clip", "selection start via $routeName carried no text: $counted — selection outcomes since start: ${selectionTally.line()}")
     }
 
 
@@ -589,6 +617,8 @@ object ClipFeature {
         val bytes: Int,
         val packageName: String? = null,
         val appName: String? = null,
+        /** Items were present and none had text — an image or a file link. Still `empty` on the wire. */
+        val nonText: Boolean = false,
     )
 
     /**
@@ -618,8 +648,9 @@ object ClipFeature {
             return Clip(ClipboardPayloads.KIND_SENSITIVE, null, 0)
         }
 
-        val text = clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
-            ?: return Clip(ClipboardPayloads.KIND_EMPTY, null, 0)
+        if (clip.itemCount == 0) return Clip(ClipboardPayloads.KIND_EMPTY, null, 0)
+        val text = clip.getItemAt(0)?.text?.toString()
+            ?: return Clip(ClipboardPayloads.KIND_EMPTY, null, 0, nonText = true)
         val bytes = ClipboardPayloads.byteLength(text)
         if (ClipboardPayloads.tooLarge(text)) {
             refusedTooLarge.incrementAndGet()
@@ -637,7 +668,7 @@ object ClipFeature {
             text = text,
             bytes = bytes,
             packageName = owner,
-            appName = owner?.let { AppLabels.of(context, it) },
+            appName = owner?.let { AppLabels.of(context, it, quiet = true) },
         )
     }
 
