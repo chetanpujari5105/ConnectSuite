@@ -197,14 +197,14 @@ own heading there, and its own row here.
 | **179** | **The notification-tag redaction was reversible, and its comment said it was not.** Salted 32-bit FNV-1a (Mac `notifKeyLog.ts`, phone `NotificationKeyLog.kt`, commit `98f8e3d`): the salt only set the starting state and every FNV step is invertible, so one known tag gave the salt and a dictionary the rest — 10⁷ candidates in 0.9 s. Audit S6. | **fixed in source 2026-10-06** — both sides now print a per-process ordinal (`tag#3`) from a table keyed by HMAC-SHA256 under a random 32-byte CSPRNG key, capped at 1,024 entries, never persisted or logged. The attack is a test on both sides, red against FNV, with a control proving the attack works. `98f8e3d`'s message and E3 of `docs/overnight-2026-10-06.md` keep the wrong claim as written; this row is the correction. **Not installed.** | — | see below |
 | **180** | **A privileged window could be navigated away from the app, and the page it reached kept the preload bridge.** No `will-navigate`, `setWindowOpenHandler` or drop guard; Chromium's default for an unhandled file drop is exactly such a navigation. Audit S3, Medium. | **fixed in source 2026-10-06** — `desktop/src/main/windowGuard.ts` (exact resolved-path allowlist of the three app pages, every window via `web-contents-created`, `window.open` and `<webview>` denied) and `src/renderer/dropGuard.ts` on all three pages; `sandbox: true` explicit. Isolated Electron with the real preload: unguarded, an untrusted page reached all 166 bridge methods; guarded, the window stayed put and `window.open` returned null. **A real OS-level drag was not performed.** | — | see below |
 | **181** | **Settings → Connection overlapped its own card at the minimum window size and at 1.2× zoom; the sidebar's last row sat under the footer; a notification row's text ran into the next row.** Audit U1/U2. | **fixed in source 2026-10-06, synthetic harness only** — the settings row wraps (`shell.css`), nav rows compact to 30 / 28 px below 740 / 680 px of viewport, notification rows never shrink (`styles.css`). Harness extended with a control-versus-text check (with its own fixture): Settings 2→0 at 1100×700, 5→0 at 1.2×, both themes; nav 468/468 and 435/435. **Not seen in the real window.** | — | see below |
-| **182** | **Pairing does not authenticate the phone to the Mac.** With a pairing armed and nothing stored, the Mac adopts any TLS peer, sends it the pair token, and pins its certificate on the first `hello.ack` (`link.ts:375`, `:595`). Audit S1, High. | **open** — protocol proposal drafted, not implemented: `docs/pairing-v2-proposal.md` | — | see below |
+| **182** | **Pairing does not authenticate the phone to the Mac.** With a pairing armed and nothing stored, the Mac adopts any TLS peer, sends it the pair token, and pins its certificate on the first `hello.ack` (`link.ts:375`, `:595`). Audit S1, High. | **fixed in source 2026-10-06 — not installed, not run on hardware.** Pairing v2 (`docs/protocol.md` → *Pairing (version 2)*): both sides prove the QR secret with HMAC-SHA256 over both certificate fingerprints and both fresh nonces; the secret never crosses the wire; the Mac stores the phone and the phone stores the Mac only after verifying; v1 pairing refused both ways. Red first against HEAD's own `LinkClient`: an impostor on loopback was pinned as the phone and received the token (`docs/evidence/pairing-v2-2026-10-06/`). Mac 15 loopback-TLS integration tests through the real `LinkClient`; phone `PairingV2Test` 17; both against independent vectors. Legacy records kept and labelled, never upgraded. | — | see below |
 | **183** | **Every window shares one 166-method bridge and the main process trusts its caller.** Only the share-window handlers check `event.sender`; most payloads are unvalidated (`fs-drag` drags any existing path). Audit S4, Medium. | **open** — batch proposed in `docs/phase-2-hardening-proposals.md` §S4 | — | see below |
 | **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **open** — batch proposed, §S5; belongs with Developer ID signing | — | see below |
 | **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **open** — batch proposed, §S7 (a product decision: offer vs apply) | — | see below |
 | **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **open** — proposed, §Integrity | — | see below |
 | **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open** — a release decision; proposed, §Integrity | — | see below |
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
-| **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **open** — proposed with S1, §S2b | — | see below |
+| **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
 
 ---
 
@@ -3644,12 +3644,25 @@ anonymity — an ordinal still links lines about one conversation within a run.
 The harness's one remaining control-over-text overlap is the Mirror pane's idle "Not mirroring." card
 over the canvas, which is by design.
 
-### 182 — pairing does not authenticate the phone to the Mac · **open**
+### 182 — pairing does not authenticate the phone to the Mac · **fixed in source**
 
-**Fix direction:** mutual proof of the QR secret without revealing it, bound to the TLS connection —
-`docs/pairing-v2-proposal.md`, a draft awaiting approval. **The wrong fix** is sending an HMAC of the
-token from the phone after the Mac has already sent the raw token: an impostor that received the token
-can compute any proof.
+Implemented 2026-10-06 as `docs/protocol.md` → *Pairing (version 2)*; the draft it came from
+(`docs/pairing-v2-proposal.md`) is superseded where they differ. What changed from the draft, and why:
+the **phone proves first** (`pair.proof`) and the Mac proves only after verifying it, so an unverified
+peer receives nothing derived from the secret at all; and the phone no longer persists a Mac at scan
+time — it admits the armed fingerprint at TLS only while the arm lasts and persists after the Mac's
+proof verifies.
+
+Found while building it, both in the new code before commit: `onHelloAck` settled the pending hello
+before the new gate tore the connection down, so a refused impostor hung the discovery loop instead of
+letting it try the real phone (caught by the attacker-first test); and two assertions in
+`pairingArm.test.ts` compared a renamed field, `undefined === undefined`, which passes whatever the
+code does — test files are not typechecked (`tsconfig.test.json` explains why), so a renamed field in
+a test is invisible to `tsc`.
+
+**Fix direction for what is left:** the hardware run in `docs/pairing-v2-hardware-test-proposal.md`,
+including a secure re-pair of the owner's devices. **The wrong fix** remains: any proof sent after the
+raw secret.
 
 ### 183 — one bridge, and IPC that trusts its caller · **open**
 
@@ -3683,7 +3696,12 @@ separately. Not a reason to flip a gate in Phase 1.
 disclose, or replace the scanner with an on-device decoder that has no network path. **The wrong fix**
 is deleting `INTERNET` — the link needs it.
 
-### 189 — a side-channel token is accepted from any trusted Mac · **open**
+### 189 — a side-channel token is accepted from any trusted Mac · **fixed in source**
 
-**Fix direction:** compare `LinkTls.handshake`'s fingerprint with the session's peer in
-`acceptSideChannel`; proposed with S1.
+`LinkServer.acceptSideChannel` passes the fingerprint `LinkTls.handshake` returns to
+`SideChannelAuth.authorize`, which refuses unless the token's live session belongs to that same Mac.
+Ended sessions and reconnects are covered because the token is revoked with its session.
+
+**Fix direction for what is left:** one hardware reading — mirror and a pull after a re-pair (plan
+in `docs/pairing-v2-hardware-test-proposal.md`). A second trusted Mac is not available to test the
+refusal on hardware.

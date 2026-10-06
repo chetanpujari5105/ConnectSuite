@@ -1,5 +1,12 @@
 # DRAFT — Pairing v2: the phone proves it scanned the code (audit S1, defect 182)
 
+> **SUPERSEDED 2026-10-06 — implemented.** The contract is `docs/protocol.md` → *Pairing (version 2)*,
+> and it wins wherever this draft differs. The two material differences: the **phone proves first**
+> (`pair.proof`, then the Mac's `pair.confirm`), so a peer that has not proved anything receives nothing
+> derived from the secret; and the phone **persists the Mac only after its proof verifies**, admitting the
+> armed fingerprint at TLS only while the arm lasts. The secret is now 32 bytes (`secret`), the QR carries
+> `v: 2`, and both proofs bind both nonces. Kept for its reasoning (§2, §9).
+
 > **Status: DRAFT PROPOSAL. Not implemented. Not in `docs/protocol.md`.** Nothing here is the contract
 > until it is approved and moved there; where this draft and `docs/protocol.md` disagree today,
 > `docs/protocol.md` describes what ships. Written 2026-10-06. **Stop for approval before any code.**

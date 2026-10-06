@@ -14,12 +14,12 @@
 | ID | Severity | Finding | State | Phase |
 |---|---|---|---|---|
 | RB1 | Critical | No signed build: the Mac `.dmg` is ad-hoc signed; the release APK has no signing config | open — needs Apple Developer Program + release keystore (owner) | 4 |
-| S1 / 182 | High | Pairing does not authenticate the phone to the Mac | open — `docs/pairing-v2-proposal.md`, awaiting approval | 2 |
+| S1 / 182 | High | Pairing does not authenticate the phone to the Mac | **fixed in source** 2026-10-06 (`docs/protocol.md` → Pairing (version 2)); **not installed, not hardware-verified**; every existing pairing is legacy and must be re-paired | 2 → 5 |
 | S2 / 178 | High | Mac bulk and mirror-video sockets did not pin the phone | **fixed in source** 2026-10-06; **not installed, not hardware-verified** | 1 → 5 |
 | P3 / 188 | High (claims) | "Nothing leaves your network" while ML Kit sends usage metrics to Google | open — unmeasured; capture F9, then decide | 4 |
 | RB5 | High (policy) | No privacy policy, publisher identity or contact anywhere | open — owner supplies; not invented here | 4 |
 | RB6 | High | Five privacy fixes and every Phase 1 fix exist in source only | open — plan F | 5 |
-| U-1 | **Unknown** | Whether any existing pairing was made with an impostor (v1 pairing could not tell) | **unknown** — not declared safe; §7 of the S1 proposal | 2 |
+| U-1 | **Unknown** | Whether any existing pairing was made with an impostor (v1 pairing could not tell) | **unknown, and will stay so** — legacy records are labelled, never upgraded; release verification requires a v2 re-pair (`docs/pairing-v2-hardware-test-proposal.md` H4) | 5 |
 | U-2 | **Unknown** | Dependency advisories (no `npm audit` / OSV run — it would send the dependency list off this machine) | **unknown** — §Dependency audit below | 2 |
 | U-3 | **Unknown** | Behaviour on any phone but the SM-S938B (and the Moto for some rows) | **unknown** — `docs/single-device-audit.md` | 6 |
 | U-4 | **Unknown** | Whether `share`/`fs.blocks`/camera/webcam code is safe to enable — never reviewed as release code | **unknown** — gates stay off | 3 |
@@ -52,7 +52,7 @@ signed release build — no row has this.
 
 | # | Feature and exact scope | Gate in release code | Impl | Tested | HW | Release | Remaining defects and dependencies | v1 | Acceptance criteria and evidence required |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | **Pairing** — one QR scan on the phone; TLS 1.3; fingerprints pinned both ways | on | yes | yes | 2026-08-25, 2026-09-03 | no | **S1 (182)**, S2b (189); bundle-id change forces re-pair | **conditional** on S1 | A real pairing on hardware through v2; an impostor-first run on a LAN stand-in that leaves nothing stored; release notes say re-pair |
+| 1 | **Pairing** — one QR scan on the phone; TLS 1.3; fingerprints pinned both ways; **v2: both sides prove the QR secret** | on | yes (v2, 2026-10-06) | yes — 15 loopback-TLS integration + 17 JVM + shared vectors | v1 only (2026-08-25, 2026-09-03); **v2 never run** | no | 182/189 fixed in source; legacy records; bundle-id change forces re-pair | **include once H1–H6 pass** | `docs/pairing-v2-hardware-test-proposal.md` H4–H6 (and H7 when its stand-in exists); release notes say every earlier pairing must be redone |
 | 2 | **Reconnect & discovery** — last address → gateway → mDNS → manual; after sleep, boot, update | on | yes | yes | Phase 6, 2026-09-03 | no | Defect 17 (one phone); other OEMs unknown | include, "one phone, tested on Samsung" stated | Boot, Doze and update return on the release build; a second handset |
 | 3 | **Notifications** — mirror, reply, actions, dismiss | on | yes | yes | Phase 4, 2026-08-31 ⚠ | no | **179** fixed in source; privacy fixes not installed | include | F4/F5: install, then the log grep with its control |
 | 4 | **Mac native notifications** | on | yes | yes | 2026-09-04 | no | — | include | Banner on the release build with a fresh notification-permission prompt |
@@ -90,12 +90,15 @@ phase silently.
 | U1/U2 — Settings layout, sidebar, notification rows (181) | fixed in source, synthetic | harness with a control-versus-text check: Settings 2→0 / 5→0, nav fits | F10 in the real window |
 | Docs reconciliation | done | D4 closed by evidence (icon hash in the 2026-09-19 package); defect 100 closed with its 2026-09-10 reading; FNV claim corrected | — |
 
-### Phase 2 — pairing and privilege boundaries · **proposed, awaiting approval**
+### Phase 2 — pairing and privilege boundaries · **S1 + S2b done in source 2026-10-06; S4, S7 proposed**
 
-S1 + S2b (`docs/pairing-v2-proposal.md`); S4, then S7 (`docs/phase-2-hardening-proposals.md`); the
-dependency audit (below). **Acceptance:** every S1 test in proposal §8 red against today's code and
-green after; the share window's preload exposes no SMS or call channel; a selection push leaves the
-Mac clipboard untouched.
+S1 + S2b: built to `docs/protocol.md` → *Pairing (version 2)*. Red first against HEAD's own
+`LinkClient` (an impostor was pinned and received the token — `docs/evidence/pairing-v2-2026-10-06/`);
+Mac 15 + 3 tests, phone 17, all through shared independent vectors; 9 of 10 mutations red (the tenth is
+an equivalent guard, explained in the evidence). Hardware: `docs/pairing-v2-hardware-test-proposal.md`.
+Still to come: S4, then S7 (`docs/phase-2-hardening-proposals.md`); the dependency audit (below).
+**Acceptance for those:** the share window's preload exposes no SMS or call channel; a selection push
+leaves the Mac clipboard untouched.
 
 ### Phase 3 — functional completion
 
@@ -142,8 +145,8 @@ tool to install, which this phase is not allowed to do; it needs your approval.
 2. **Publisher details (RB5):** legal name, contact address and support email for the privacy policy,
    the Developer ID and Android developer verification. Not invented here.
 3. **Distribution:** direct for v1 (recommended in the audit), Play later or never.
-4. **S1:** approve `docs/pairing-v2-proposal.md`, including that old phones and old Macs will refuse to
-   pair rather than fall back.
+4. **Pairing v2 hardware run:** `docs/pairing-v2-hardware-test-proposal.md`, step by step — it re-pairs your
+   devices (H4).
 5. **S7:** offer vs apply for selection pushes (proposal says offer, with a switch).
 6. **The dependency audit:** which option, if any.
 7. **Plan F**, step by step — F2 runs the irreversible Activity rewrite.

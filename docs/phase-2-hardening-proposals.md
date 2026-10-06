@@ -7,7 +7,7 @@
 
 ## Order, and why
 
-1. **S1 + S2b** (`docs/pairing-v2-proposal.md`) — the only remaining High; changes the contract first.
+1. ~~**S1 + S2b**~~ — **done in source 2026-10-06** (`docs/protocol.md` → Pairing (version 2); defects 182, 189).
 2. **S4** — the privilege boundary inside the Mac app; makes every future renderer bug smaller.
 3. **S7** — a product decision with a small code change.
 4. **S5** — belongs with Developer ID signing (release phase 4), proposed now so it is not designed in a
@@ -116,7 +116,7 @@ common real use) is worth one extra click on the Mac. The proposal says yes; the
 |---|---|---|---|
 | **S8** (186) | Received files carry no `com.apple.quarantine`, so Gatekeeper never assesses a script or app pulled from the phone | Set the attribute on publish in `shareDestination.publishExclusive` and the pull publish path (agent `Sidekick`, the phone's name as origin), or `LSFileQuarantineEnabled` in `extendInfo`; test that a published file carries it | small |
 | **S9** (187) | Pulls above 64 MiB carry no digest in a release build (`fs.blocks` off; phone pre-hash ceiling 64 MiB) | Show "unverified" wherever such a pull is listed; keep `FS_BLOCKS_RELEASE` a separate decision (release phase 3). With 178 fixed the network can no longer substitute bytes; residual risk is a phone-side read error | small |
-| S2b (189) | Phone accepts a side-channel token from any trusted Mac | With S1, `docs/pairing-v2-proposal.md` §10 | small |
+| S2b (189) | Phone accepted a side-channel token from any trusted Mac | **Fixed in source 2026-10-06** (`SideChannelAuth`) | done |
 | S10 | Manual and Tailscale addresses stored unvalidated | Validate as IP or hostname with a sentence on refusal (UX, not a hole) | small |
 | S11a | File names appear in phone `fs` log lines | Owner decision: keep (debuggable) or ordinal them like 179 | decision |
 | S11b | `activity.jsonl.pre-migration` and the ConnectSuite folder's `activity.jsonl` may still hold call numbers outside the pending rewrite | Owner decision, after F2; **never deleted without asking** | decision |
