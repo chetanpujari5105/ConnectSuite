@@ -91,6 +91,20 @@ class FakeBridge {
     this.changed = cb;
   }
 
+  /** S7 (2026-10-07): the offer banner's guidance, as main reports it. */
+  bannerGuidance: string | null = null;
+  private bannerChanged: ((status: { guidance: string | null }) => void) | null = null;
+  async clipOfferBanner() {
+    return { ok: true as const, data: { guidance: this.bannerGuidance } };
+  }
+  onClipOfferBanner(cb: (status: { guidance: string | null }) => void) {
+    this.bannerChanged = cb;
+  }
+  fireBanner(guidance: string | null): void {
+    this.bannerGuidance = guidance;
+    this.bannerChanged?.({ guidance });
+  }
+
   /** The main process pushing an arrival at the renderer. */
   fireArrived(entry: Row): void {
     this.arrived?.(entry);
@@ -539,4 +553,45 @@ test('Restore names the displaced entry by id; a refusal is said, not hidden', a
   assert.ok(pane.bridge.calls.includes('clipRestore:displaced-7'));
   assert.ok(!pane.bridge.calls.some((c) => c.startsWith('clipUse:')));
   assert.match(pane.notice.textContent, /changed since/);
+});
+
+// ---- S7 (2026-10-07): a refused offer banner is said in the pane ---------------------------------------
+
+const GUIDE = 'macOS did not show a notification for an offer from your phone. Offers wait here until you press Copy or Dismiss.';
+
+test('S7: when macOS refuses the banner while an offer waits, the pane says so as a problem', async () => {
+  const pane = mount([OFFER]);
+  await settle();
+  pane.bridge.fireBanner(GUIDE);
+  await settle();
+  assert.equal(pane.notice.textContent, GUIDE);
+  assert.equal(pane.notice.hidden, false);
+});
+
+test('S7: a refusal with no offer waiting says nothing — there is nothing on screen for it to be about', async () => {
+  const pane = mount([{ ...OFFER, offerPending: false }]);
+  await settle();
+  pane.bridge.fireBanner(GUIDE);
+  await settle();
+  assert.ok(!pane.notice.textContent.includes('macOS did not show'));
+});
+
+test('S7: an offer arriving after an earlier refusal carries the guidance beside its own sentence', async () => {
+  const pane = mount([]);
+  await settle();
+  pane.bridge.fireBanner(GUIDE);
+  pane.bridge.history = [OFFER];
+  pane.bridge.fireArrived({ ...OFFER, offerPending: undefined });
+  await settle();
+  assert.match(pane.notice.textContent, /not on this Mac’s clipboard/);
+  assert.ok(pane.notice.textContent.endsWith(GUIDE));
+});
+
+test('S7: with no refusal, the arrival sentence is unchanged — no guidance invented', async () => {
+  const pane = mount([]);
+  await settle();
+  pane.bridge.history = [OFFER];
+  pane.bridge.fireArrived({ ...OFFER, offerPending: undefined });
+  await settle();
+  assert.ok(!pane.notice.textContent.includes('macOS'));
 });

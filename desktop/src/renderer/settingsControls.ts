@@ -113,8 +113,53 @@ function settingValue(label: string, sub: string, value: string): HTMLElement {
   return settingRow(label, sub, span);
 }
 
+/**
+ * Settings → Connection → *Trusted device*: the sentence, from the same status the strip reads.
+ *
+ * **Why it is here, and why it is painted rather than built (2026-10-07).** Stage B of the supervised
+ * verification forgot the legacy pairing and paired again with v2, and the open Connection pane kept
+ * saying *"Paired before secure pairing — forget and pair again"* over a phone that had just been
+ * verified. The sentence was chosen once, when the pane was built, from whatever `lastStatus` held then;
+ * a Settings pane is rebuilt only on open and on a theme change, never on a pairing change. Re-opening
+ * the tab redrew it — a workaround, not a fix. So the sentence has one writer, [paintTrustedDevice],
+ * called from `render()` on every status and from the pane when it is built.
+ *
+ * Three states, because *unpaired* is its own fact: after Forget there is no certificate to remove, and
+ * the old v2 sentence ("Removes the phone's certificate…") described a phone that was no longer there.
+ */
+function trustedDeviceSentence(status: { paired?: boolean; pairedLegacy?: boolean } | null): string {
+  if (!status?.paired) return 'No phone is paired with this Mac. Pair one by scanning the code shown on the Overview.';
+  if (status.pairedLegacy) {
+    return 'Paired before secure pairing \u2014 forget and pair again to verify this phone. Forgetting removes its certificate; you will pair again from scratch.';
+  }
+  return 'Paired with secure pairing. Forgetting removes the phone\u2019s certificate from the trust store; you will pair again from scratch.';
+}
+
+/** The element currently showing [trustedDeviceSentence], if a Connection pane is built. */
+let trustedDeviceNote: HTMLElement | null = null;
+/** The last status seen, so a pane built between two statuses draws the current one. */
+let trustedDeviceStatus: { paired?: boolean; pairedLegacy?: boolean } | null = null;
+
+/** Called by `render()` on every status, and by the pane with its own note element when it is built. */
+function paintTrustedDevice(status: { paired?: boolean; pairedLegacy?: boolean } | null, note?: HTMLElement): void {
+  trustedDeviceStatus = status;
+  if (note) trustedDeviceNote = note;
+  if (trustedDeviceNote) trustedDeviceNote.textContent = trustedDeviceSentence(trustedDeviceStatus);
+}
+
+/** The Trusted device row: the Forget button, and a note [paintTrustedDevice] keeps current. */
+function trustedDeviceRow(forget: HTMLElement, status: { paired?: boolean; pairedLegacy?: boolean } | null): HTMLElement {
+  const row = settingRow('Trusted device', trustedDeviceSentence(status), forget);
+  const note = row.querySelector('.setting-sub') as HTMLElement | null;
+  if (note) paintTrustedDevice(status, note);
+  return row;
+}
+
 // The seam: the four controls, for `settingsControls.test.ts`.
 (globalThis as Record<string, unknown>).settingRow = settingRow;
 (globalThis as Record<string, unknown>).settingToggle = settingToggle;
 (globalThis as Record<string, unknown>).settingLimit = settingLimit;
 (globalThis as Record<string, unknown>).settingValue = settingValue;
+(globalThis as Record<string, unknown>).trustedDeviceSentence = trustedDeviceSentence;
+(globalThis as Record<string, unknown>).paintTrustedDevice = paintTrustedDevice;
+(globalThis as Record<string, unknown>).trustedDeviceRow = trustedDeviceRow;

@@ -26,6 +26,9 @@ import type { SharePagePayload } from './main/shareWindow';
 import type { CameraFrameMessage, CameraPaneState, CameraResult } from './main/camera';
 import type { WebcamResult, WebcamStatus } from './main/webcam';
 import type { SpikeStatus } from './main/webcamSpike';
+import type { OfferBannerStatus } from './main/clipOfferNotifier';
+
+type OfferBannerView = OfferBannerStatus & { guidance: string | null };
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -364,6 +367,11 @@ contextBridge.exposeInMainWorld('connect', {
   /** S7: Dismiss an offer. The clipboard is not touched. */
   clipOfferDismiss: (offerId: string): Promise<PhoneResult<{ dismissed: boolean }>> =>
     ipcRenderer.invoke('clip-offer-dismiss', { offerId }),
+  /** S7: what the offer banner has done since launch — counts only, and the pane's guidance when one failed. */
+  clipOfferBanner: (): Promise<PhoneResult<OfferBannerView>> => ipcRenderer.invoke('clip-offer-banner'),
+  onClipOfferBanner: (callback: (status: OfferBannerView) => void): void => {
+    ipcRenderer.on('clip-offer-banner', (_event, status: OfferBannerView) => callback(status));
+  },
   /** Restore a displaced entry by id — refused if the clipboard changed since it was replaced. */
   clipRestore: (id: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-restore', { id }),
   /** Empties the list. Not the pasteboard, and not the echo interlock — see `clearHistory`. */

@@ -525,6 +525,8 @@ function render(status: RendererStatus | null): void {
   shell.setStatus(status);
   // Held for Settings → Device info, which is built when it is opened rather than on every status.
   lastStatus = status;
+  // Settings → Connection's trusted-device sentence follows every pairing change, not only a rebuild.
+  paintTrustedDevice(status);
   drawPairSteps();
 
   setDiag('state', status?.phase ?? '—');
@@ -2028,17 +2030,10 @@ shell.addSettingsPane(
         await showQr();
       })();
     });
-    body.appendChild(
-      settingRow(
-        'Trusted device',
-        // Pairing v2 (docs/protocol.md → Existing pairings): a phone stored by the v1 flow is legacy —
-        // it works, and nothing ever proved it was the phone you scanned. Said here, never hidden.
-        lastStatus?.pairedLegacy
-          ? 'Paired before secure pairing \u2014 forget and pair again to verify this phone. Forgetting removes its certificate; you will pair again from scratch.'
-          : 'Removes the phone\u2019s certificate from the trust store. You will pair again from scratch.',
-        forget,
-      ),
-    );
+    // Pairing v2 (docs/protocol.md → Existing pairings): a phone stored by the v1 flow is legacy — it works,
+    // and nothing ever proved it was the phone you scanned. Said here, never hidden, and kept current by
+    // `render()` through `paintTrustedDevice` rather than chosen once when the pane is built.
+    body.appendChild(trustedDeviceRow(forget, lastStatus));
 
     // The saved values are filled in after construction so the two inputs above stay one helper.
     const inputs = body.querySelectorAll('input');

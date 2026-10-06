@@ -210,6 +210,8 @@ own heading there, and its own row here.
 | **192** | **The phone's share-sheet text route read `EXTRA_TEXT` as a `String`**, so a share whose text is a `Spanned` (a styled `CharSequence`) arrived as null and was answered *"Nothing was selected"*. `Intent.getStringExtra` is `BaseBundle.getString`, a cast that returns null on a non-`String` value (AOSP source). Found by reading the selection path after stage D, 2026-10-07. **Not observed on hardware and not the cause of stage D's step 6** (no start of the activity was logged there). | **fixed in source 2026-10-07 — not installed.** Both extras read with `getCharSequenceExtra`; each action reads only its own extra (`SelectionIntent`); a restored instance cannot send twice. `SelectionIntentTest` 9, provenance guard red on `getStringExtra`; 3 mutations red. | — | see below |
 | **193** | **The phone's focus sync had four silent exits** — feature not installed, window not focused, clipboard empty or non-text, unchanged — so stage D's A4 (a focus with no clipboard event on either side) could not be diagnosed from either log. Breaks the log-the-skip rule. | **fixed in source 2026-10-07 — not installed; A4 itself is NOT explained.** Every focus ends in one named `FocusSync.Reason`, logged with every reason's count (zeros printed), no text and no app name. Non-text clips are now told apart from empty ones internally (still `empty` on the wire). `FocusSyncTest` 10; 3 mutations red. | — | see below |
 | **194** | **Clipboard log lines on the phone named the sender app**: `clip.push … bytes from <app>` on every send, `from=<package>` on every selection start, and `AppLabels` logging the package and its label on first resolve. The text itself was never logged. | **fixed in source 2026-10-07 — not installed.** Both clipboard routes log route, byte count and outcome only; label lookups on these paths are `quiet`. Source guards over every `clip` log call (control: ≥ 10 found); 3 mutations red. Other features' label logging unchanged. | — | see below |
+| **195** | **The Mac's clipboard-offer banner counted `show()` as posted and had no failure path.** Stage D (2026-10-07 01:13): macOS refused the banner (`addRequest not allowed: com.github.Electron`, unified log) while the app's own log said nothing; nothing in the pane said why no banner came. | **fixed in source 2026-10-07 — not installed; no banner observed on hardware.** Counts *considered / skipped (focused) / requested / reported shown / failed / clicked / withdrawn* on every line; a thrown `show()` and Electron's `failed` event are failures, recorded with the other banners' refusals; the offer is kept; the Clipboard pane says, while an offer waits, that macOS did not show it and what this build can do. `show()` returning is never called shown. 4 + 6 tests; 6 mutations red. | — | see below |
+| **196** | **Settings → Connection kept a stale trust sentence after Forget and re-pair** — *"Paired before secure pairing…"* over a phone just verified with v2, until the tab was reopened. The sentence was chosen once at build time; a Settings pane is rebuilt only on open and on a theme change. Found in stage B (2026-10-06 23:57). | **fixed in source 2026-10-07 — not installed.** One writer, `paintTrustedDevice`, called from `render()` on every status; three sentences (legacy, unpaired, v2). Legacy → unpaired → v2 driven in one open pane; 3 mutations red. | — | see below |
 
 ---
 
@@ -3842,4 +3844,36 @@ clipboard lookups keeps its counters and drops the names. The Mac's offer label 
 unchanged — it is a display, not a log. **Evidence:** source guards with a found-count control; MP4, MP5,
 MP9 red. **The wrong fix** is hashing the package name into the log: a hash of a small known set is the
 set.
+
+### 195 — the offer banner counted a request as a banner · **fixed in source**
+
+`ClipOfferNotifier.announce` called `show()`, counted `posted`, and registered no `failed` handler. In stage D
+the macOS unified log showed Electron's `Adding notification request` at 01:13:50.321 and
+`usernotificationsd … addRequest not allowed: com.github.Electron` at .330; Sidekick's log held no line about
+the banner at all, and the owner — who saw no banner — had nothing in the app explaining it.
+
+**Fix:** seven counts, all on every line; `show()` returning is *requested*, Electron's `show` event is
+*reported shown* (what macOS drew is not observable here — Focus, a banner style of *None* or delivery straight
+to Notification Center all look the same from the app); a thrown `show()` or Electron's `failed` is *failed*,
+logged at warn with macOS's own text, recorded through `NativeNotifier.recordRefusal` (so the Notifications
+settings pane reports it too), and pushed to the Clipboard pane, which says — only while an offer waits —
+*"macOS did not show a notification for an offer from your phone. Offers wait here until you press Copy or
+Dismiss."* plus the packaged/development instruction. The offer is never dropped by a failed banner.
+
+**Not reached:** a real banner, refused or shown. **Not changed:** macOS permissions; a development build is
+still refused by macOS, by design of macOS. **Fix direction for what is left:** in the morning plan, one offer
+while Sidekick is unfocused, then read the new `offer notification` lines and the pane's sentence.
+**The wrong fix** is calling `show()` success, or probing permission with a test banner: Electron exposes no
+authorization read, and a probe banner is a notification the person did not ask for.
+
+### 196 — Settings → Connection's stale trust sentence · **fixed in source**
+
+The *Trusted device* sentence was a conditional inside the pane's build closure, reading `lastStatus` once.
+Settings panes are rebuilt on open and on a theme change; a pairing change triggers neither. **Fix:** the
+sentence moved to `settingsControls.ts` (reachable by tests), with one writer, `paintTrustedDevice`, called by
+`render()` on every status. A third sentence for *unpaired* — the old non-legacy sentence described removing
+a certificate that Forget had already removed. **Evidence:** legacy → unpaired → v2 painted into one open
+row with no rebuild; a source guard that `render()` calls the painter; mutations MM7–MM9 red. **Not reached:**
+the real window. **The wrong fix** is rebuilding the whole pane on status: it would reset the address inputs
+mid-edit.
 

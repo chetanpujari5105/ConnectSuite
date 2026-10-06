@@ -133,3 +133,56 @@ test('every row carries its label and its explanation, not just its control', ()
   assert.equal(row.queryAll('.setting-label')[0].textContent, 'Label');
   assert.equal(row.queryAll('.setting-sub')[0].textContent, 'The explanation');
 });
+
+// ---- Settings → Connection → Trusted device (2026-10-07, stage B finding) ---------------------------
+
+const trust = globalThis as unknown as {
+  trustedDeviceSentence(status: { paired?: boolean; pairedLegacy?: boolean } | null): string;
+  paintTrustedDevice(status: { paired?: boolean; pairedLegacy?: boolean } | null, note?: FakeElement): void;
+  trustedDeviceRow(forget: FakeElement, status: { paired?: boolean; pairedLegacy?: boolean } | null): FakeElement;
+};
+
+const LEGACY = { paired: true, pairedLegacy: true };
+const UNPAIRED = { paired: false, pairedLegacy: false };
+const V2 = { paired: true, pairedLegacy: false };
+
+test('the trusted-device sentence follows legacy → unpaired → v2 in an open pane, with no rebuild', () => {
+  const row = trust.trustedDeviceRow(document.createElement('button') as unknown as FakeElement, LEGACY);
+  const note = () => row.queryAll('.setting-sub')[0]!.textContent;
+  assert.match(note(), /Paired before secure pairing/);
+
+  // What `render()` does on each status. The pane is NOT rebuilt between these lines — that is the defect.
+  trust.paintTrustedDevice(UNPAIRED);
+  assert.match(note(), /No phone is paired/);
+  assert.doesNotMatch(note(), /before secure pairing/);
+
+  trust.paintTrustedDevice(V2);
+  assert.match(note(), /Paired with secure pairing/);
+  assert.doesNotMatch(note(), /before secure pairing/);
+});
+
+test('each of the three states has its own sentence, and only legacy asks to pair again', () => {
+  const three = [LEGACY, UNPAIRED, V2].map((s) => trust.trustedDeviceSentence(s));
+  assert.equal(new Set(three).size, 3);
+  assert.deepEqual(three.map((s) => /forget and pair again/.test(s)), [true, false, false]);
+  assert.equal(trust.trustedDeviceSentence(null), trust.trustedDeviceSentence(UNPAIRED), 'no status yet reads as unpaired, never as legacy');
+});
+
+test('a pane built after the status moved draws the current status, not the one it was handed', () => {
+  trust.paintTrustedDevice(V2);
+  const row = trust.trustedDeviceRow(document.createElement('button') as unknown as FakeElement, V2);
+  trust.paintTrustedDevice(LEGACY);
+  assert.match(row.queryAll('.setting-sub')[0]!.textContent, /before secure pairing/);
+});
+
+/** The transition lives in `render()`, which no test can construct; this holds the call in place. */
+test('render() repaints the trusted-device sentence on every status', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const code = readFileSync(join(__dirname, 'renderer.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const start = code.indexOf('function render(status: RendererStatus | null): void {');
+  assert.ok(start >= 0, 'control: render() was found');
+  const body = code.slice(start, code.indexOf('\n}\n', start));
+  assert.match(body, /paintTrustedDevice\(status\)/);
+  assert.doesNotMatch(code, /lastStatus\?\.pairedLegacy\s*\?/, 'the sentence must not be chosen once at build time again');
+});

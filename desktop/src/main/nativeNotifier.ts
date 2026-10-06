@@ -300,7 +300,16 @@ export class NativeNotifier {
     this.refreshBadge();
   }
 
-  /** The first refusal, recorded once, from either kind of banner. */
+  /**
+   * A refusal reported by a banner this class did not post — the clipboard-offer banner
+   * (`clipOfferNotifier.ts`). Recorded through the same path, so the notification pane's permission state
+   * says what macOS said whichever banner it said it to.
+   */
+  recordRefusal(message: string): void {
+    this.onFailed(message);
+  }
+
+  /** The first refusal, recorded once, from any kind of banner. */
   private onFailed(error: unknown): void {
     const message = String(error ?? 'unknown');
     if (!this.refusal) {

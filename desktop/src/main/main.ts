@@ -24,7 +24,7 @@ import {
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
-import { ClipOfferNotifier } from './clipOfferNotifier';
+import { ClipOfferNotifier, offerBannerGuidance } from './clipOfferNotifier';
 import { arrivalAction } from './clipOffers';
 import { ClipboardWatcher } from './clipboardWatcher';
 import {
@@ -313,7 +313,9 @@ const clipOfferNotifier = new ClipOfferNotifier(
     sendAll('menu-route', { id: 'clipboard' });
   },
   () => !store.get('notificationSound'),
-  (line) => log.info('clipboard', line),
+  (line, level) => (level === 'warn' ? log.warn('clipboard', line) : log.info('clipboard', line)),
+  (status) => sendAll('clip-offer-banner', { ...status, guidance: offerBannerGuidance(status, app.isPackaged) }),
+  (message) => nativeNotifier.recordRefusal(message),
 );
 const clip = new ClipboardClient(
   () => link,
@@ -2530,6 +2532,11 @@ ipc.handle('clip-offer-copy', (_event, options: { offerId: string }) => {
   return result;
 });
 ipc.handle('clip-offer-dismiss', (_event, options: { offerId: string }) => clip.dismissOffer(options.offerId));
+/** What the offer banner has done since launch, and the pane's sentence when one could not be shown. */
+ipc.handle('clip-offer-banner', () => {
+  const status = clipOfferNotifier.status();
+  return { ok: true, data: { ...status, guidance: offerBannerGuidance(status, app.isPackaged) } };
+});
 ipc.handle('clip-restore', (_event, options: { id: string }) => clip.restore(options.id));
 
 ipc.handle(

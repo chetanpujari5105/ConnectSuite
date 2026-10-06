@@ -105,6 +105,12 @@ interface ClipBridge {
   clipOfferDismiss(offerId: string): Promise<ClipResult<{ dismissed: boolean }>>;
   /** Restore names the displaced entry; refused if the clipboard changed since it was replaced. */
   clipRestore(id: string): Promise<ClipResult<null>>;
+  /**
+   * S7: what the offer banner has done since launch. Only `guidance` is drawn — a sentence when macOS refused
+   * a banner, null otherwise. Optional so a bridge without it degrades to no sentence, never to a crash.
+   */
+  clipOfferBanner?(): Promise<ClipResult<{ guidance: string | null }>>;
+  onClipOfferBanner?(callback: (status: { guidance: string | null }) => void): void;
   /** `applied` says whether it reached the pasteboard — a `sensitive` or `empty` entry does not. */
   onClipArrived(callback: (entry: ClipEntryRow & { applied?: boolean }) => void): void;
   onClipChanged(callback: () => void): void;
@@ -314,6 +320,9 @@ class ClipboardView {
    */
   private selected: string | null = null;
 
+  /** The pane's sentence for a refused offer banner, from the main process; null when none was refused. */
+  private bannerGuidance: string | null = null;
+
   /** Generation counter for [refresh]; see its comment for the race it closes. */
   private refreshes = 0;
 
@@ -454,6 +463,18 @@ class ClipboardView {
     this.bridge.onClipChanged(() => void this.refresh());
     this.renderTabs();
 
+    // S7 (2026-10-07): a refused banner is said in the pane, because the person who did not see it is about
+    // to come here wondering why nothing happened. Said only while an offer is waiting — guidance about a
+    // banner for an offer that has already ended would be a sentence about nothing on screen.
+    void this.bridge.clipOfferBanner?.().then((result) => {
+      if (result.ok) this.bannerGuidance = result.data.guidance;
+    });
+    this.bridge.onClipOfferBanner?.((status) => {
+      const before = this.bannerGuidance;
+      this.bannerGuidance = status.guidance;
+      if (status.guidance && status.guidance !== before && this.pendingOffers() > 0) this.say(status.guidance, true);
+    });
+
     this.bridge.onClipArrived((entry) => {
       // Prepend for immediacy, then reconcile — and the reconcile is not tidiness, it is the undo.
       //
@@ -468,11 +489,10 @@ class ClipboardView {
         this.selected = ClipboardView.keyOf(entry);
         this.prepend({ ...entry, offerPending: true });
         void this.refresh();
-        this.say(
+        const arrived =
           `${entry.appName ? `From ${entry.appName} on your phone` : 'From your phone'} — not on this Mac’s ` +
-            'clipboard. Review it, then press Copy to use it.',
-          false,
-        );
+          'clipboard. Review it, then press Copy to use it.';
+        this.say(this.bannerGuidance ? `${arrived} ${this.bannerGuidance}` : arrived, false);
         return;
       }
       this.prepend(entry);
@@ -501,6 +521,11 @@ class ClipboardView {
       // stays alive, because there is no permission to go and grant.
       this.say([result.reason, result.fixHint].filter(Boolean).join(' '), true);
     }
+  }
+
+  /** Offers that can still be copied — the only state in which banner guidance is about something on screen. */
+  private pendingOffers(): number {
+    return this.entries.filter((entry) => entry.offerId && entry.offerPending).length;
   }
 
   private say(message: string, isProblem: boolean): void {
