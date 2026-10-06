@@ -2,7 +2,8 @@
 
 > **What this is.** A matrix of the product's features against the evidence that exists for each, so
 > the next supervised session can decide what a first public release contains. **It is not a release
-> verdict, and Sidekick is not ready to ship** — see *Blockers*. Nothing here was run on the phone or
+> verdict, and Sidekick is not ready to ship** — see *Blockers*. **Superseded as the working document by
+> `docs/release-tracker.md` (2026-10-06)**, which reconciles this matrix with `docs/release-audit-2026-10-06.md`. Nothing here was run on the phone or
 > in the running app; every "tonight" result is a JVM test, a `node --test` run or a synthetic renderer
 > harness. Hardware evidence is cited from `docs/testing.md` and the phase close-outs, which hold the
 > readings — this file only points at them.
@@ -42,7 +43,7 @@ by a flag or a build fact) · **incomplete** (built, with a known gap a user wou
 | 14 | **Block-verified pulls above 64 MiB** (`fs.blocks`) | gated (`FS_BLOCKS_RELEASE = false`) | `fsBlocks`, `bulkBlockPull`, `pullResume` | development runs | Release decision | Not in the first release unless flipped deliberately |
 | 15 | **Photos & video browser** — albums, grid, preview, save original, drag to Finder | shipped | `photos`, `photosView` (+3 tonight), `photosPull` | Phase 5; limited access, defect 139 verified 2026-09-23 | — | **Yes** |
 | 16 | **Clipboard** — Mac → phone automatic; phone → Mac when Sidekick is open on the phone; history | shipped | `clipboard*`, `clipEcho`, `clipWatchPolicy` | Slices 11–13, 2026-09-01/02 | Phone → Mac is **not** automatic — a platform wall; say so | **Yes**, with the wall stated |
-| 17 | **Screen mirroring + control**, floating window | shipped | `mirrorSession`, `captureFit`, `float*`, `pointerGestures` | 2026-09-10 (defect 100 traced to the app being background-restricted, not a code defect; frames measured) | Every start needs a tap on the phone (wall); secure surfaces are black (wall); **defect 100's register row still reads open** — reconcile it | **Yes** |
+| 17 | **Screen mirroring + control**, floating window | shipped | `mirrorSession`, `captureFit`, `float*`, `pointerGestures` | 2026-09-10 (defect 100 traced to the app being background-restricted, not a code defect; frames measured) | Every start needs a tap on the phone (wall); secure surfaces are black (wall); ~~defect 100's register row still reads open~~ reconciled 2026-10-06: closed, not a code defect | **Yes** |
 | 18 | **Apps** — list with icons; "open on phone" asks via a phone notification | shipped | `apps`, `appsView`; `check-apps-verb` | 123/123 packages, 2026-09-03 | It is an *ask*, not a launch (measured); never call it "launch" | Yes, named honestly |
 | 19 | **Phone → Mac sharing** ("Send to Mac" share sheet) | gated — a packaged build advertises `share.file 1` only (`SHARE_V3_RELEASE`, `SHARE_WAIT_RELEASE` false) | `share*` tests | development runs from 2026-09-25 | Release decision; what a packaged phone user sees is a decline | Not unless flipped deliberately |
 | 20 | **Camera v1** — phone camera preview inside the Camera pane | gated (debuggable phone builds only) | `camera`, `cameraView`; phone `CameraStreamTest` (de-flaked tonight) | two supervised sessions 2026-10-02 | Most of the plan unrun (`docs/camera-v1.md`) | No |
@@ -68,7 +69,9 @@ on in a release build with hardware evidence on one phone; it does not mean veri
    `docs/second-device-moto-g34.md`). Phase 6's reliability fixes may be One UI workarounds
    (`docs/phase-6-closeout.md` §2, three rows with no route).
 5. **Defect 30's no-thread send** — one consenting send, proven absent from both providers first.
-6. **D4: no application icon.** A stranger sees the default Electron icon.
+6. ~~**D4: no application icon.** A stranger sees the default Electron icon.~~ **Stale — corrected 2026-10-06:** the icon
+   landed on 2026-09-19 (`d5d11de`), and the packaged `Sidekick.app` of that date carries it (same SHA-256 as
+   `desktop/build/icon.icns`). See `docs/phase-9-distribution-audit.md` D4.
 7. **Rename re-pair.** Every Mac on this build mints a new identity (bundle id change); every
    already-paired phone must scan again. Fine for a first release, but it must be said in its notes.
 

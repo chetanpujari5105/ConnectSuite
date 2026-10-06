@@ -55,6 +55,11 @@ JID (their number). Mac `nativeNotifier` logged it on **every cooldown decision*
 `notifications` on a debug path; phone `NotificationRelay` on a failed dismiss. Both sides now log
 `tag#<per-process salted hash>`. Red on both sides with the raw key restored.
 
+> **Correction, 2026-10-06 (later the same day):** the salted 32-bit FNV hash this entry shipped was
+> **reversible** — one known tag gives the salt, and a dictionary then gives every other tag in the run
+> (10⁷ candidates in 0.9 s, synthetic). The claim in `98f8e3d`'s message that the file "cannot be
+> reversed by hashing candidate numbers" was wrong. Replaced by per-process ordinals: defect 179.
+
 ### E4 — a failed contact lookup logged the number (`4b3159f`)
 
 `ContactsStore.query` logged `Query on $uri failed: ${it.message}`; the lookup URI is
