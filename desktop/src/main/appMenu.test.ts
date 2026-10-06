@@ -142,3 +142,17 @@ test('each palette command is a Mirror menu item with the key the palette prints
 test('with no commands handed over, there is no empty Mirror menu', () => {
   assert.equal(build().some((m: any) => m.label === 'Mirror'), false);
 });
+
+/** 2026-10-07: with a zoom handler the View items go through it, so a step can be refused against the minimum. */
+test('with a zoom handler, Actual Size / Zoom In / Zoom Out call it — and the unchecked roles are gone', () => {
+  const calls: string[] = [];
+  const template = buildAppMenu(ROUTES, { appName: 'Sidekick', showDeveloperItems: false, route: () => {}, palette: () => {}, zoom: (d) => calls.push(d) });
+  const view = menu(template, 'View') as any[];
+  assert.ok(!view.some((i) => ['zoomIn', 'zoomOut', 'resetZoom'].includes(i.role)), 'an Electron zoom role bypasses the minimum');
+  const byAccel = (a: string) => view.find((i) => i.accelerator === a);
+  for (const [accel, dir] of [['Cmd+0', 'reset'], ['Cmd+Plus', 'in'], ['Cmd+=', 'in'], ['Cmd+-', 'out']] as const) {
+    byAccel(accel).click();
+    assert.equal(calls.at(-1), dir, accel);
+  }
+  assert.equal(byAccel('Cmd+=').visible, false, 'the ⌘= alias is not a second visible row');
+});

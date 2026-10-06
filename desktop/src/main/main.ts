@@ -152,7 +152,7 @@ import { wireWebcamSpike, type SpikeWiring } from './webcamSpike';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armPairingCode } from './pairingArm';
-import { fitWindow, DESIGN } from '../shared/windowGeometry';
+import { fitWindow, DESIGN, zoomStep, zoomFactorFor, type ZoomDirection } from '../shared/windowGeometry';
 
 const [MAIN_PAGE, FLOAT_PAGE, SHARE_PAGE] = ['index.html', 'float.html', 'share-window.html'].map((page) =>
   join(__dirname, '..', 'renderer', page),
@@ -640,6 +640,7 @@ function createWindow(): void {
    */
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const { bounds, minimum } = fitWindow(area);
+  windowBaseMinimum = minimum;
   if (bounds.width < DESIGN.width || bounds.height < DESIGN.height) {
     // Logged because it is a real, invisible degradation: every pane below is laid out against the
     // handoff's canvas and is now drawing into less than it. The success case is logged beside it
@@ -710,7 +711,11 @@ function createWindow(): void {
   // S4: the main window is the only `main` sender the IPC guard accepts, and only from its own page.
   const mainContents = window.webContents;
   windows.register('main', mainContents, MAIN_PAGE);
-  window.webContents.on('did-finish-load', () => window?.webContents.setZoomLevel(0));
+  window.webContents.on('did-finish-load', () => {
+    window?.webContents.setZoomLevel(0);
+    // Zoom is back to 100%, so the minimum is back to the display's own (2026-10-07, `applyZoom`).
+    if (windowBaseMinimum) window?.setMinimumSize(windowBaseMinimum.width, windowBaseMinimum.height);
+  });
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   window.on('focus', () => nativeNotifier.setWindowFocused(true));
   window.on('blur', () => nativeNotifier.setWindowFocused(false));
@@ -722,6 +727,30 @@ function createWindow(): void {
     nativeNotifier.setWindowFocused(false);
     window = null;
   });
+}
+
+/** The minimum `fitWindow` chose for this display — the floor a zoomed minimum never goes below. */
+let windowBaseMinimum: { width: number; height: number } | null = null;
+
+/**
+ * View → Zoom, decided by `zoomStep` (2026-10-07): a step that would leave the page smaller than the
+ * layout's 1100 x 700 CSS minimum is refused and said, and an accepted one scales the window minimum with
+ * it. Main window only; the float and share windows have no zoom.
+ */
+function applyZoom(direction: ZoomDirection): void {
+  const w = window;
+  if (!w || w.isDestroyed()) return;
+  const [width, height] = w.getContentSize() as [number, number];
+  const from = w.webContents.getZoomLevel();
+  const decision = zoomStep(from, direction, { width, height }, windowBaseMinimum ?? undefined);
+  if (!decision.ok) {
+    log.info('window', `zoom ${direction} refused: ${decision.reason}`);
+    sendAll('menu-route', { id: `toast:Make the window larger to zoom in further — ${decision.reason}.` });
+    return;
+  }
+  w.setMinimumSize(decision.minimum.width, decision.minimum.height);
+  w.webContents.setZoomLevel(decision.level);
+  log.info('window', `zoom ${direction}: ${Math.round(zoomFactorFor(from) * 100)}% → ${Math.round(zoomFactorFor(decision.level) * 100)}%, minimum now ${decision.minimum.width} x ${decision.minimum.height}`);
 }
 
 function statusLabel(status: ConnectionStatus | null): string {
@@ -1032,6 +1061,7 @@ function installAppMenu(routes: MenuRoute[], commands: MenuRoute[] = []): void {
       buildAppMenu(routes, {
         appName: app.getName(),
         showDeveloperItems: !app.isPackaged,
+        zoom: applyZoom,
         route: (id) => {
           revealMainWindow('menu');
           sendAll('menu-route', { id });

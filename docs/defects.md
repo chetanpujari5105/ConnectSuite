@@ -212,6 +212,8 @@ own heading there, and its own row here.
 | **194** | **Clipboard log lines on the phone named the sender app**: `clip.push … bytes from <app>` on every send, `from=<package>` on every selection start, and `AppLabels` logging the package and its label on first resolve. The text itself was never logged. | **fixed in source 2026-10-07 — not installed.** Both clipboard routes log route, byte count and outcome only; label lookups on these paths are `quiet`. Source guards over every `clip` log call (control: ≥ 10 found); 3 mutations red. Other features' label logging unchanged. | — | see below |
 | **195** | **The Mac's clipboard-offer banner counted `show()` as posted and had no failure path.** Stage D (2026-10-07 01:13): macOS refused the banner (`addRequest not allowed: com.github.Electron`, unified log) while the app's own log said nothing; nothing in the pane said why no banner came. | **fixed in source 2026-10-07 — not installed; no banner observed on hardware.** Counts *considered / skipped (focused) / requested / reported shown / failed / clicked / withdrawn* on every line; a thrown `show()` and Electron's `failed` event are failures, recorded with the other banners' refusals; the offer is kept; the Clipboard pane says, while an offer waits, that macOS did not show it and what this build can do. `show()` returning is never called shown. 4 + 6 tests; 6 mutations red. | — | see below |
 | **196** | **Settings → Connection kept a stale trust sentence after Forget and re-pair** — *"Paired before secure pairing…"* over a phone just verified with v2, until the tab was reopened. The sentence was chosen once at build time; a Settings pane is rebuilt only on open and on a theme change. Found in stage B (2026-10-06 23:57). | **fixed in source 2026-10-07 — not installed.** One writer, `paintTrustedDevice`, called from `render()` on every status; three sentences (legacy, unpaired, v2). Legacy → unpaired → v2 driven in one open pane; 3 mutations red. | — | see below |
+| **197** | **View → Zoom could shrink the page below the layout's minimum**: at 125% the 1100×700 minimum window is an 880×560 page — Files' listing column ~50 px with its toolbar clipped, Calls' centre column ~78 px, a Clipboard filter under *Clear all*. Found by the isolated renderer harness, 2026-10-07. | **fixed in source 2026-10-07 — not installed.** Zoom items go through `zoomStep`: a step that would leave the page under 1100×700 CSS px is refused with a toast saying the size needed, and the window minimum scales with the zoom (reset at load). Sweep after: 0 overlaps / 0 clipped / 0 h-scroll in 32 jobs; 4 tests + menu test; 3 mutations red. | — | see below |
+| **198** | **A failed pairing code left the pairing screen unexplained**: `pairing-qr` rejects (`Link not ready`, or the code cannot be armed or drawn) and `showQr` let the rejection go unhandled — the card kept its last code, or none, and said nothing. Found by the harness's `failing` mode (8 of 8 jobs). | **fixed in source 2026-10-07 — not installed.** A third pairing-card shape, *No pairing code yet* / *This Mac could not make a pairing code*, with *Try again*; not a network claim. 3 tests; 1 mutation red. | — | see below |
 
 ---
 
@@ -3927,4 +3929,21 @@ a certificate that Forget had already removed. **Evidence:** legacy → unpaired
 row with no rebuild; a source guard that `render()` calls the painter; mutations MM7–MM9 red. **Not reached:**
 the real window. **The wrong fix** is rebuilding the whole pane on status: it would reset the address inputs
 mid-edit.
+
+### 197 — zoom below the layout minimum · **fixed in source**
+
+The window enforces 1100×700 but zoom divides the CSS viewport by its factor, and the panes are laid out for
+the CSS minimum. **Fix:** View's three zoom items call `applyZoom` → `zoomStep` (`src/shared/windowGeometry.ts`):
+zooming in needs a content area of `1100×700 × factor`; otherwise the step is refused and a toast names the
+size needed. An accepted step sets the window minimum to that size; *Actual Size* and every page load restore
+the display's own minimum. Zooming out is always allowed. **Evidence:** `docs/evidence/ui-harness-2026-10-07/`.
+**Not reached:** the real window and menu (no relaunch tonight). **The wrong fix** is restyling every pane for
+an 880-px page — the minimum exists because the grids stop being honest below it.
+
+### 198 — the pairing card on a failed code · **fixed in source**
+
+`showQr` destructured `connect.pairingQr()` with no catch. **Fix:** `pairCardView('failed')` and a catch that
+draws it through the existing one-writer `applyPairCard`; the header's network sentence is not touched,
+because a code that could not be made is not a network fact. **Not reached:** the real failure on hardware
+(it needs the link not to be ready at the moment the screen asks).
 

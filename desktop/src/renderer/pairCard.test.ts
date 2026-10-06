@@ -99,3 +99,43 @@ test('and it goes away again — the transition is not one-way in either directi
   assert.equal(n.qr.hidden, true);
   assert.equal(n.offline.children.length, 1);
 });
+
+// ---- 2026-10-07: a code that could not be made (found by the isolated harness's `failing` mode) ------
+
+test('a code that could not be made replaces the plate with an explanation and a Try again', () => {
+  const n = nodes();
+  let rechecks = 0;
+  applyPairCard(n, (g.pairCardView as (r: boolean | 'failed') => any)('failed'), () => { rechecks += 1; });
+  assert.equal(n.title.textContent, 'No pairing code yet');
+  assert.doesNotMatch(n.title.textContent, /[Ss]can/, 'no instruction to scan a code that does not exist');
+  assert.equal(n.qr.hidden, true);
+  assert.equal(n.button.hidden, true);
+  assert.equal(n.offline.hidden, false);
+  const block = n.offline.children[0]!;
+  assert.match(block.textContent, /could not make a pairing code/);
+  assert.match(block.textContent, /Nothing was paired/);
+  assert.doesNotMatch(block.textContent, /network|Wi-Fi/, 'not a network claim — nothing said it was one');
+  block.queryAll('button')[0]!.click();
+  assert.equal(rechecks, 1);
+});
+
+test('failed → code: the card leaves the failed shape completely', () => {
+  const n = nodes();
+  const view = g.pairCardView as (r: boolean | 'failed') => any;
+  applyPairCard(n, view('failed'), () => {});
+  applyPairCard(n, view(true), () => {});
+  assert.equal(n.title.textContent, 'Scan this with your phone');
+  assert.equal(n.qr.hidden, false);
+  assert.equal(n.offline.hidden, true);
+  assert.equal(n.offline.children.length, 0);
+});
+
+/** `showQr` lives in renderer.ts, which no test can construct; this holds the catch in place. */
+test('showQr catches a rejected pairing-qr and draws the failed shape', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const code = readFileSync(join(__dirname, 'renderer.ts'), 'utf8').replace(/\/\/[^\n]*/g, '');
+  const start = code.indexOf('async function showQr(');
+  const body = code.slice(start, code.indexOf('\n}\n', start));
+  assert.match(body, /try \{\s*made = await connect\.pairingQr\(rotate\);\s*\} catch \{[\s\S]*applyPairShape\('failed'\);\s*return;\s*\}/);
+});

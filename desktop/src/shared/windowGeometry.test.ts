@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DESIGN, MARGIN, MIN, sizeFor, minimumsFor, positionFor, fitWindow } from './windowGeometry.ts';
+import { DESIGN, MARGIN, MIN, sizeFor, minimumsFor, positionFor, fitWindow, zoomStep } from './windowGeometry.ts';
 
 /**
  * The two displays on the Mac that reported this, read from Electron's own `screen` module.
@@ -107,4 +107,38 @@ test('positionFor centres rather than pinning to the origin', () => {
   const { x, y } = positionFor(EXTERNAL, { width: DESIGN.width, height: DESIGN.height });
   assert.equal(x, EXTERNAL.x + Math.round((EXTERNAL.width - DESIGN.width) / 2));
   assert.equal(y, EXTERNAL.y + Math.round((EXTERNAL.height - DESIGN.height) / 2));
+});
+
+// ---- View → Zoom against the layout minimum (2026-10-07, isolated renderer harness finding) -----------
+
+
+test('zooming in at the 1100 x 700 minimum window is refused, with the size it would need', () => {
+  const r = zoomStep(0, 'in', { width: 1100, height: 700 });
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.reason : '', /needs a window of at least 1320 x 840; this one is 1100 x 700/);
+});
+
+test('a window large enough zooms to 120% and its minimum becomes 1320 x 840', () => {
+  const r = zoomStep(0, 'in', { width: 1440, height: 920 });
+  assert.deepEqual(r, { ok: true, level: 1, minimum: { width: 1320, height: 840 } });
+});
+
+test('a second step to 144% is refused on a 1440 x 920 window (needs 1584 x 1008)', () => {
+  const r = zoomStep(1, 'in', { width: 1440, height: 920 });
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.reason : '', /1584 x 1008/);
+});
+
+test('zooming out is always allowed and never lowers the minimum below the display’s own', () => {
+  assert.deepEqual(zoomStep(0, 'out', { width: 1100, height: 700 }), { ok: true, level: -1, minimum: { width: 1100, height: 700 } });
+  assert.deepEqual(zoomStep(-1, 'out', { width: 1100, height: 700 }, { width: 900, height: 600 }), { ok: true, level: -2, minimum: { width: 900, height: 600 } });
+});
+
+test('Actual Size from 120% returns the display’s own minimum', () => {
+  assert.deepEqual(zoomStep(1, 'reset', { width: 1440, height: 920 }), { ok: true, level: 0, minimum: { width: 1100, height: 700 } });
+});
+
+test('levels are clamped to Chromium’s range', () => {
+  const r = zoomStep(-8, 'out', { width: 2000, height: 2000 });
+  assert.equal(r.ok && r.level, -8);
 });

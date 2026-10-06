@@ -75,12 +75,17 @@ export interface AppMenuHandlers {
   command?: (id: string) => void;
   /** Whether developer items may be shown. `app.isPackaged === false` in development. */
   showDeveloperItems: boolean;
+  /**
+   * View → zoom, through `zoomStep` (2026-10-07). Optional: without it the menu keeps Electron's roles,
+   * which zoom with no regard for the window's minimum — the minimal launch menu has no window yet.
+   */
+  zoom?: (direction: 'in' | 'out' | 'reset') => void;
   appName: string;
 }
 
 export function buildAppMenu(
   routes: MenuRoute[],
-  { route, palette, command, showDeveloperItems, appName }: AppMenuHandlers,
+  { route, palette, command, showDeveloperItems, appName, zoom }: AppMenuHandlers,
   /**
    * The palette's commands (`navModel.COMMANDS`), handed over the same way as the routes — defect
    * 122. Their printed `⌘⇧` keys become this menu's accelerators, so the palette and the menu bar
@@ -146,9 +151,15 @@ export function buildAppMenu(
          * the open thread, the loaded album, an unsent message — with no warning and no undo.
          */
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        ...(zoom
+          ? ([
+              { label: 'Actual Size', accelerator: 'Cmd+0', click: () => zoom('reset') },
+              { label: 'Zoom In', accelerator: 'Cmd+Plus', click: () => zoom('in') },
+              // ⌘= is what a US keyboard types for ⌘+; Electron's own role answers both, so this does too.
+              { label: 'Zoom In', accelerator: 'Cmd+=', visible: false, acceleratorWorksWhenHidden: true, click: () => zoom('in') },
+              { label: 'Zoom Out', accelerator: 'Cmd+-', click: () => zoom('out') },
+            ] as MenuItemConstructorOptions[])
+          : ([{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] as MenuItemConstructorOptions[])),
         ...(showDeveloperItems
           ? ([
               { type: 'separator' },

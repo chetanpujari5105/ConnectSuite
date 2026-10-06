@@ -700,7 +700,17 @@ let shownCode: { name: string; host: string } | null = null;
 let codeIsScannable = true;
 
 async function showQr(rotate = false): Promise<void> {
-  const { payload, dataUrl, reachable } = await connect.pairingQr(rotate);
+  let made: Awaited<ReturnType<ConnectBridge['pairingQr']>>;
+  try {
+    made = await connect.pairingQr(rotate);
+  } catch {
+    // `pairing-qr` rejects when the link is not ready yet or the code cannot be armed or drawn. The card
+    // says so in its own shape rather than leaving the last code — or nothing — on screen unexplained.
+    shownCode = null;
+    applyPairShape('failed');
+    return;
+  }
+  const { payload, dataUrl, reachable } = made;
   el<HTMLImageElement>('qr').src = dataUrl;
   shownCode = { name: payload.name, host: payload.host };
   applyPairShape(reachable);
@@ -722,11 +732,12 @@ async function showQr(rotate = false): Promise<void> {
  * It is also what a probe can call. `pairCard.ts` covers the card and `pairSteps.ts` covers the
  * column; only this says the two move together, and only in a browser is that observable.
  */
-function applyPairShape(reachable: boolean): void {
-  codeIsScannable = reachable;
+function applyPairShape(reachable: boolean | 'failed'): void {
+  codeIsScannable = reachable === true;
   // The header is the third surface on this screen and it was the last to be told. Its sentence is
-  // the shell's to write; this only hands over the fact.
-  shell.setPairReachable(reachable);
+  // the shell's to write; this only hands over the fact. A code that could not be made is not a
+  // network fact, so the header is left as it was rather than told the Mac is offline.
+  if (reachable !== 'failed') shell.setPairReachable(reachable);
   /*
    * The action re-runs `showQr` without rotating — re-reading the interfaces is the whole of
    * "check again", and rotating would invalidate a code somebody may already be looking at.
@@ -966,6 +977,8 @@ void connect.menuSetRoutes(
 connect.onMenuRoute((id) => {
   if (id === '__palette__') shell.openPalette();
   else if (id.startsWith('command:')) shell.runCommand(id.slice('command:'.length));
+  // A refused View → Zoom step (2026-10-07): the main process's sentence, said rather than swallowed.
+  else if (id.startsWith('toast:')) shell.toast(id.slice('toast:'.length));
   else shell.route(id);
 });
 

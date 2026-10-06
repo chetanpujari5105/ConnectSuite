@@ -20,7 +20,7 @@
  */
 
 interface PairCardView {
-  kind: 'code' | 'no-network';
+  kind: 'code' | 'no-network' | 'code-failed';
   /** The card's `h2`. One writer for both shapes, so the two cannot drift apart. */
   title: string;
   /** Whether the QR plate, its note and the standing instructions are on the card at all. */
@@ -63,7 +63,26 @@ const PAIR_CARD_NO_NETWORK: PairCardView = {
     'and the code appears here.',
 };
 
-function pairCardView(reachable: boolean): PairCardView {
+/**
+ * The third shape (2026-10-07): the main process could not make a code at all — `pairing-qr` rejected
+ * (`Link not ready` in the first moments after launch, or the code could not be armed or drawn). Before
+ * this, `showQr` let the rejection go unhandled and the card kept whatever it last showed, or nothing,
+ * with no sentence. Found by the isolated renderer harness's `failing` mode. Nothing was paired and
+ * nothing was sent, and the card says so rather than guessing at a cause it was not told.
+ */
+const PAIR_CARD_FAILED: PairCardView = {
+  kind: 'code-failed',
+  title: 'No pairing code yet',
+  showCode: false,
+  action: 'Try again',
+  headline: 'This Mac could not make a pairing code',
+  body:
+    'Nothing was paired and nothing was sent to a phone. This can happen in the first moments after ' +
+    'Sidekick opens. Try again; if it keeps happening, quit Sidekick and open it again.',
+};
+
+function pairCardView(reachable: boolean | 'failed'): PairCardView {
+  if (reachable === 'failed') return PAIR_CARD_FAILED;
   return reachable ? PAIR_CARD_CODE : PAIR_CARD_NO_NETWORK;
 }
 

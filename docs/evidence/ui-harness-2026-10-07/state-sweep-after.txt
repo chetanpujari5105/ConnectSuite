@@ -1,0 +1,35 @@
+populated-dark-1100x700            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1661
+empty-dark-1100x700                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1635
+disconnected-dark-1100x700         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1650
+failing-dark-1100x700              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1640
+populated-dark-1280x800            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1652
+empty-dark-1280x800                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1650
+disconnected-dark-1280x800         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1636
+failing-dark-1280x800              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1678
+populated-dark-1320x840-z1.2       ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1655
+empty-dark-1320x840-z1.2           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1659
+disconnected-dark-1320x840-z1.2    ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1642
+failing-dark-1320x840-z1.2         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1656
+populated-dark-1440x920            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1652
+empty-dark-1440x920                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1671
+disconnected-dark-1440x920         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1642
+failing-dark-1440x920              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1664
+populated-light-1100x700           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1676
+empty-light-1100x700               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1640
+disconnected-light-1100x700        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1653
+failing-light-1100x700             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1641
+populated-light-1280x800           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1652
+empty-light-1280x800               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1642
+disconnected-light-1280x800        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1636
+failing-light-1280x800             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1634
+populated-light-1320x840-z1.2      ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1654
+empty-light-1320x840-z1.2          ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1656
+disconnected-light-1320x840-z1.2   ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1644
+failing-light-1320x840-z1.2        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1658
+populated-light-1440x920           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1655
+empty-light-1440x920               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1663
+disconnected-light-1440x920        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1641
+failing-light-1440x920             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1642
+
+== distinct findings (pane, kind, item) x jobs
+32 ('mirror', 'textOverlap', '{"control": "canvas#mirror-canvas", "text": "div#mirror-overlay.mirror-overlay", "sample": "Not mirroring.", "w": 87, "h": 16}')

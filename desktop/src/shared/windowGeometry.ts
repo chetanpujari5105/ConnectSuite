@@ -126,3 +126,51 @@ export function fitWindow(area: Area, design = DESIGN): { bounds: Bounds; minimu
   const size = sizeFor(area, design);
   return { bounds: { ...positionFor(area, size), ...size }, minimum: minimumsFor(size) };
 }
+
+/**
+ * A View → Zoom step, decided before it is applied (2026-10-07).
+ *
+ * **Why.** Every pane is laid out for a CSS viewport of at least [MIN] — the window's own minimum says so
+ * — but zoom divides the CSS viewport by its factor. At 125% the 1100 x 700 minimum window is an 880 x 560
+ * page: measured in the isolated renderer harness, Files squeezed its listing column to ~50 px with its
+ * toolbar clipped, Calls its centre column to ~78 px, and Clipboard's third filter ran under *Clear all*.
+ *
+ * **The rule.** A zoom step is taken only if the window's content still holds `MIN x factor` device
+ * pixels — i.e. the page stays at least [MIN] in CSS pixels — and the window's minimum becomes that size
+ * (never below [minimumsFor]'s) so it cannot be dragged smaller afterwards. Zooming out only grows the CSS
+ * viewport and is always allowed. A refused step says why; nothing is resized behind the person's back.
+ *
+ * Chromium's level→factor is `1.2 ^ level`; levels are clamped to Chromium's own −8…+9 range.
+ */
+export type ZoomDirection = 'in' | 'out' | 'reset';
+
+export function zoomFactorFor(level: number): number {
+  return Math.pow(1.2, level);
+}
+
+export function zoomStep(
+  current: number,
+  direction: ZoomDirection,
+  content: { width: number; height: number },
+  baseMinimum: { width: number; height: number } = MIN,
+): { ok: true; level: number; minimum: { width: number; height: number } } | { ok: false; reason: string } {
+  const next = direction === 'reset' ? 0 : Math.max(-8, Math.min(9, current + (direction === 'in' ? 1 : -1)));
+  const factor = zoomFactorFor(next);
+  const needed = { width: Math.ceil(MIN.width * factor), height: Math.ceil(MIN.height * factor) };
+  if (factor > 1 && (content.width < needed.width || content.height < needed.height)) {
+    return {
+      ok: false,
+      reason:
+        `zooming to ${Math.round(factor * 100)}% needs a window of at least ${needed.width} x ${needed.height}; ` +
+        `this one is ${content.width} x ${content.height}`,
+    };
+  }
+  return {
+    ok: true,
+    level: next,
+    minimum: {
+      width: Math.max(baseMinimum.width, factor > 1 ? needed.width : 0),
+      height: Math.max(baseMinimum.height, factor > 1 ? needed.height : 0),
+    },
+  };
+}

@@ -1,0 +1,58 @@
+populated-dark-1100x700            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1769
+empty-dark-1100x700                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1639
+disconnected-dark-1100x700         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1638
+failing-dark-1100x700              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1642
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-dark-1280x800            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1656
+empty-dark-1280x800                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1668
+disconnected-dark-1280x800         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1638
+failing-dark-1280x800              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1655
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-dark-1100x700-z1.25      ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=2 clipped=6 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1, 'activity': 1} docOv=0 err=0 boot=1664
+empty-dark-1100x700-z1.25          ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=6 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1} docOv=0 err=0 boot=1638
+disconnected-dark-1100x700-z1.25   ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=1 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1638
+failing-dark-1100x700-z1.25        ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=2 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1} docOv=0 err=1 boot=1637
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-dark-1440x920            ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1654
+empty-dark-1440x920                ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1641
+disconnected-dark-1440x920         ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1642
+failing-dark-1440x920              ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1645
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-light-1100x700           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1655
+empty-light-1100x700               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1643
+disconnected-light-1100x700        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1638
+failing-light-1100x700             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1643
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-light-1280x800           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1654
+empty-light-1280x800               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1656
+disconnected-light-1280x800        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1657
+failing-light-1280x800             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1692
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-light-1100x700-z1.25     ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=2 clipped=6 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1, 'activity': 1} docOv=0 err=0 boot=1685
+empty-light-1100x700-z1.25         ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=6 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1} docOv=0 err=0 boot=1683
+disconnected-light-1100x700-z1.25  ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=1 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1681
+failing-light-1100x700-z1.25       ctl=True panes=13 textOv=3 {'mirror': 1, 'clipboard': 2} ctrlOv=1 clipped=2 offVp=0 unnamed=0 hScroll={'overview': 1, 'calls': 1} docOv=0 err=1 boot=1687
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+populated-light-1440x920           ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1696
+empty-light-1440x920               ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1682
+disconnected-light-1440x920        ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=0 boot=1697
+failing-light-1440x920             ctl=True panes=13 textOv=1 {'mirror': 1} ctrlOv=0 clipped=0 offVp=0 unnamed=0 hScroll={} docOv=0 err=1 boot=1680
+   errors: ["Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'name') @renderer.js:215"]
+
+== distinct findings (pane, kind, item) x jobs
+32 ('mirror', 'textOverlap', '{"control": "canvas#mirror-canvas", "text": "div#mirror-overlay.mirror-overlay", "sample": "Not mirroring.", "w": 87, "h": 16}')
+6 ('clipboard', 'overlaps', '{"a": "button.clip-tab", "b": "button#clip-clear.clip-clear", "w": 70, "h": 28}')
+6 ('clipboard', 'clippedControls', '{"el": "button.clip-tab", "by": "section.clip-panel", "right": 578, "clipRight": 540}')
+6 ('clipboard', 'textOverlap', '{"control": "button.clip-tab", "text": "button#clip-clear.clip-clear", "sample": "Clear all", "w": 50, "h": 15}')
+6 ('clipboard', 'textOverlap', '{"control": "button#clip-clear.clip-clear", "text": "button.clip-tab", "sample": "From this Mac 0", "w": 57, "h": 15}')
+4 ('files', 'clippedControls', '{"el": "input#files-search.files-search", "by": "div.files-panel", "right": 641, "clipRight": 518}')
+4 ('files', 'clippedControls', '{"el": "select#files-sort.files-sort", "by": "div.files-panel", "right": 609, "clipRight": 518}')
+4 ('files', 'clippedControls', '{"el": "button#files-view-list.files-view-button", "by": "div.files-panel", "right": 552, "clipRight": 518}')
+4 ('files', 'clippedControls', '{"el": "button#files-view-grid.files-view-button", "by": "div.files-panel", "right": 584, "clipRight": 518}')
+4 ('files', 'clippedControls', '{"el": "button#files-send-to-phone.button.files-tool.files-send-button", "by": "div.files-panel", "right": 641, "clipRight": 518}')
+2 ('clipboard', 'overlaps', '{"a": "button.clip-tab", "b": "button#clip-clear.clip-clear", "w": 14, "h": 28}')
+2 ('clipboard', 'overlaps', '{"a": "button.clip-tab", "b": "button#clip-clear.clip-clear", "w": 56, "h": 28}')
+2 ('clipboard', 'clippedControls', '{"el": "button.clip-tab", "by": "section.clip-panel", "right": 598, "clipRight": 540}')
+2 ('clipboard', 'textOverlap', '{"control": "button.clip-tab", "text": "button#clip-clear.clip-clear", "sample": "Clear all", "w": 43, "h": 15}')
+2 ('clipboard', 'textOverlap', '{"control": "button#clip-clear.clip-clear", "text": "button.clip-tab", "sample": "From this Mac 10", "w": 43, "h": 15}')
+2 ('files', 'clippedControls', '{"el": "button.button.secondary.state-action", "by": "div.files-panel", "right": 589, "clipRight": 518}')
