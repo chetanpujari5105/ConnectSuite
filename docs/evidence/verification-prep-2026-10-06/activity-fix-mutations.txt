@@ -1,0 +1,26 @@
+Control (unmutated):
+GREEN (exit 0)
+F1 the original defect: every call row re-serialised from its five parsed fields
+RED (exit 1)
+  ✖ prep finding: a call row in another key order with nothing to redact is kept byte for byte
+  ✖ prep finding: a call row with an unknown field and nothing to redact is kept byte for byte
+  ✖ prep finding: an unknown field that may hold call data is kept and reported, never silently deleted
+  ✖ prep finding: redaction changes only `detail` — every other field, value and key order survives
+  ✖ prep finding: the fixed rewrite is idempotent over all four rows, and non-call rows stay exact
+F2 redaction writes only the five known fields
+RED (exit 1)
+  ✖ prep finding: redaction changes only `detail` — every other field, value and key order survives
+F3 the privacy question is not reported
+RED (exit 1)
+  ✖ prep finding: an unknown field that may hold call data is kept and reported, never silently deleted
+F4 the report carries field values
+RED (exit 1)
+  ✖ prep finding: an unknown field that may hold call data is kept and reported, never silently deleted
+F5 nothing is ever redacted
+RED (exit 1)
+  ✖ a non-call row is preserved byte for byte when call rows around it are rewritten
+  ✖ history written before the rule is rewritten on load, in both files
+  ✖ prep finding: redaction changes only `detail` — every other field, value and key order survives
+F6 malformed-line policy changed: broken call lines kept
+RED (exit 1)
+  ✖ an unreadable line that may hold call data is dropped from disk, and counted

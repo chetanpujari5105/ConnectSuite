@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseActivityLine } from './activityLine';
-import { callHistoryName } from '../shared/callRecord';
+import { UNKNOWN_NUMBER, callHistoryName } from '../shared/callRecord';
 import { log } from './logger';
 
 /**
@@ -210,7 +210,14 @@ interface StoredHistory {
  * now read. **The rewrite is irreversible and keeps no backup**, because a backup would retain the
  * numbers it exists to remove; so it touches only what the rule is about:
  *
- * - a **call** row is written back from its parsed fields, under the rule;
+ * - a **call** row is changed **only when its `detail` must be redacted**, and then only `detail`
+ *   changes — every other field, its value and the key order survive ([redactCallLine]). A call row
+ *   with nothing to redact is kept byte for byte, whatever its key order or extra fields. (Before
+ *   2026-10-06 it was re-serialised from its five parsed fields, which dropped extra fields and
+ *   rewrote rows with nothing to redact — the verification-prep finding.)
+ * - a call row carrying a field this build does not know that **may hold call data** is kept and
+ *   **reported** by field name and count, never deleted or altered: whether such a field may stay is
+ *   a policy question, not one this rewrite answers silently;
  * - **every other readable row is written back byte for byte**, fields this build does not know
  *   included — the rule is about calls, and a re-serialisation would drop another writer's data;
  * - an **unreadable** line is kept as it is, unless it [mayHoldCallData] — a half-written call row
@@ -223,28 +230,15 @@ interface StoredHistory {
 function readStored(path: string): StoredHistory {
   if (!existsSync(path)) return { events: [], skipped: 0 };
   const lines = readFileSync(path, 'utf8').split('\n').filter((line) => line.trim().length > 0);
-  const events: ActivityEvent[] = [];
-  const keep: string[] = [];
-  let skipped = 0;
-  let changed = 0;
-  let dropped = 0;
-  for (const line of lines) {
-    const parsed = parseActivityLine(line);
-    if (!parsed) {
-      skipped += 1;
-      if (mayHoldCallData(line)) dropped += 1;
-      else keep.push(line);
-      continue;
-    }
-    const event = { ...parsed, detail: clip(storedDetail(parsed.category, parsed.detail)) };
-    events.push(event);
-    if (parsed.category === 'calls') {
-      const rewritten = JSON.stringify(event);
-      if (rewritten !== line.trim()) changed += 1;
-      keep.push(rewritten);
-    } else {
-      keep.push(line);
-    }
+  const { events, keep, skipped, changed, dropped, questions } = planStoredRewrite(lines);
+  if (questions.length > 0) {
+    // Field names and a count only — never a value. Reported on every load until someone decides.
+    const names = [...new Set(questions.flatMap((q) => q.fields))].join(', ');
+    log.warn(
+      'activity',
+      `${questions.length} call row(s) in ${path.endsWith('.old') ? 'activity.jsonl.old' : 'activity.jsonl'} carry an ` +
+        `unknown field that may hold call data (${names}) — kept unchanged, not redacted: a policy decision is needed`,
+    );
   }
   if (changed > 0 || dropped > 0) {
     const name = path.endsWith('.old') ? 'activity.jsonl.old' : 'activity.jsonl';
@@ -268,6 +262,88 @@ function readStored(path: string): StoredHistory {
     }
   }
   return { events, skipped };
+}
+
+/** The fields the store itself writes. Anything else on a call row is another writer's. */
+const KNOWN_FIELDS = new Set(['seq', 'at', 'category', 'kind', 'detail']);
+/** A field name that suggests call data, or a value with a number-length digit run. */
+const SENSITIVE_NAME = /number|phone|caller|callee|msisdn|address|contact|tel/i;
+
+/** A field name safe to print: identifier-shaped and short, else a placeholder. */
+function printableField(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]{0,31}$/.test(name) ? name : '(unprintable name)';
+}
+
+export interface RewritePlan {
+  events: ActivityEvent[];
+  /** The lines to write back, in order — every line not changed or dropped is the original string. */
+  keep: string[];
+  skipped: number;
+  /** Call rows whose `detail` was redacted. */
+  changed: number;
+  /** Unreadable lines that may hold call data, dropped (the existing malformed-line policy). */
+  dropped: number;
+  /** Call rows kept with an unknown field that may hold call data: names only, for the report. */
+  questions: Array<{ seq: number; fields: string[] }>;
+}
+
+/**
+ * The rewrite's decisions, with no disk in them — `readStored` writes what this returns. Exported for
+ * the tests, which run the same function the app runs.
+ */
+export function planStoredRewrite(lines: readonly string[]): RewritePlan {
+  const events: ActivityEvent[] = [];
+  const keep: string[] = [];
+  const questions: RewritePlan['questions'] = [];
+  let skipped = 0;
+  let changed = 0;
+  let dropped = 0;
+  for (const line of lines) {
+    const parsed = parseActivityLine(line);
+    if (!parsed) {
+      skipped += 1;
+      if (mayHoldCallData(line)) dropped += 1;
+      else keep.push(line);
+      continue;
+    }
+    events.push({ ...parsed, detail: clip(storedDetail(parsed.category, parsed.detail)) });
+    if (parsed.category !== 'calls') {
+      keep.push(line);
+      continue;
+    }
+    const raw = JSON.parse(line) as Record<string, unknown>;
+    const suspicious = Object.keys(raw).filter(
+      (key) =>
+        (!KNOWN_FIELDS.has(key) || (key === 'detail' && typeof raw.detail !== 'string')) &&
+        (SENSITIVE_NAME.test(key) || /\d{5,}/.test(JSON.stringify(raw[key]) ?? '')),
+    );
+    if (suspicious.length > 0) questions.push({ seq: parsed.seq, fields: suspicious.map(printableField) });
+    const redacted = redactCallLine(raw, parsed.detail);
+    if (redacted === null) {
+      keep.push(line);
+    } else {
+      changed += 1;
+      keep.push(redacted);
+    }
+  }
+  return { events, keep, skipped, changed, dropped, questions };
+}
+
+/**
+ * A call row with its `detail` redacted, or **null when nothing needs redacting** — in which case the
+ * caller keeps the original line byte for byte.
+ *
+ * Redaction is needed only when the call-history rule would replace a non-empty detail with
+ * "Unknown number" — a number, or a name carrying one. An empty detail or `unknown` holds no number
+ * and is left as written (the screen still shows "Unknown number"). When it is needed, only `detail`
+ * changes: the row is re-serialised from **its own parsed object**, so every other field and value and
+ * the key order are the ones on disk.
+ */
+function redactCallLine(raw: Record<string, unknown>, detail: string): string | null {
+  const trimmed = detail.trim();
+  if (trimmed === '' || trimmed.toLowerCase() === 'unknown' || trimmed === UNKNOWN_NUMBER) return null;
+  if (callHistoryName(detail) !== UNKNOWN_NUMBER) return null;
+  return JSON.stringify({ ...raw, detail: UNKNOWN_NUMBER });
 }
 
 /**

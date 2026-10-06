@@ -1,0 +1,139 @@
+2026-10-06T18:27:12.441+05:30 I [activity] Rewrote activity.jsonl.old: 1 call row(s) brought under the call-data rule / 0 unreadable line(s) that may hold call data dropped / 1 line(s) kept
+2026-10-06T18:27:12.443+05:30 I [activity] Rewrote activity.jsonl: 3 call row(s) brought under the call-data rule / 0 unreadable line(s) that may hold call data dropped / 5 line(s) kept
+2026-10-06T18:27:12.443+05:30 I [activity] Activity log: 4 event(s) read / 1 line(s) unreadable, next seq 5
+2026-10-06T18:27:12.444+05:30 I [activity] Activity log: 2 event(s) read / 0 line(s) unreadable, next seq 3
+2026-10-06T18:27:12.444+05:30 I [activity] Activity log: 2 event(s) read / 1 line(s) unreadable, next seq 4
+2026-10-06T18:27:12.445+05:30 I [activity] Rewrote activity.jsonl: 0 call row(s) brought under the call-data rule / 1 unreadable line(s) that may hold call data dropped / 1 line(s) kept
+2026-10-06T18:27:12.445+05:30 I [activity] Activity log: 1 event(s) read / 1 line(s) unreadable, next seq 2
+2026-10-06T18:27:12.445+05:30 I [activity] Rewrote activity.jsonl: 1 call row(s) brought under the call-data rule / 0 unreadable line(s) that may hold call data dropped / 2 line(s) kept
+2026-10-06T18:27:12.445+05:30 I [activity] Activity log: 2 event(s) read / 0 line(s) unreadable, next seq 3
+2026-10-06T18:27:12.446+05:30 W [activity] Could not rewrite activity.jsonl.old; it is unchanged on disk and will be tried again next launch. Would have been: 1 call row(s) brought under the call-data rule / 0 unreadable line(s) that may hold call data dropped / 1 line(s) kept :: Error: EISDIR: illegal operation on a directory, open '/var/folders/nl/cqz56mls6p1_x_kn8fnbfcsh0000gn/T/activity-test-jwjZpF/activity.jsonl.old.rewrite'
+2026-10-06T18:27:12.446+05:30 W [activity] Could not rewrite activity.jsonl; it is unchanged on disk and will be tried again next launch. Would have been: 1 call row(s) brought under the call-data rule / 0 unreadable line(s) that may hold call data dropped / 2 line(s) kept :: Error: EISDIR: illegal operation on a directory, open '/var/folders/nl/cqz56mls6p1_x_kn8fnbfcsh0000gn/T/activity-test-jwjZpF/activity.jsonl.rewrite'
+2026-10-06T18:27:12.446+05:30 I [activity] Activity log: 2 event(s) read / 0 line(s) unreadable, next seq 3
+2026-10-06T18:27:12.447+05:30 I [activity] Activity log: 1 event(s) read / 1 line(s) unreadable, next seq 2
+2026-10-06T18:27:12.447+05:30 I [activity] Activity log: 2 event(s) read / 1 line(s) unreadable, next seq 3
+✔ a calls row recorded with a number is stored as "Unknown number" (1.196208ms)
+✔ a calls row recorded with a contact name keeps the name (0.559959ms)
+✔ a row of another category is stored exactly as given (0.430666ms)
+✔ history written before the rule is rewritten on load, in both files (1.993041ms)
+✔ a clean history is not rewritten (0.879583ms)
+✔ an unreadable line that cannot hold call data is kept, and the file is left byte for byte (0.627958ms)
+✔ an unreadable line that may hold call data is dropped from disk, and counted (0.566791ms)
+✔ a non-call row is preserved byte for byte when call rows around it are rewritten (0.587041ms)
+✔ a rewrite that cannot be written leaves the history readable (0.768625ms)
+✔ an event recorded after a half-written last line is readable on the next launch (0.574167ms)
+✖ prep finding: a call row with an unknown field and nothing to redact is kept byte for byte (1.298ms)
+✖ prep finding: a call row in another key order with nothing to redact is kept byte for byte (0.845625ms)
+✖ prep finding: redaction changes only `detail` — every other field, value and key order survives (1.067542ms)
+✖ prep finding: an unknown field that may hold call data is kept and reported, never silently deleted (0.761375ms)
+✔ prep finding: the fixed rewrite is idempotent over all four rows, and non-call rows stay exact (1.066375ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 11
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 171.61825
+
+✖ failing tests:
+
+test at src/main/activity.test.ts:216:1
+✖ prep finding: a call row with an unknown field and nothing to redact is kept byte for byte (1.298ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '{"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B"}\n'
+  - '{"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}\n'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/activity.test.ts:219:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '{"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B"}\n',
+    expected: '{"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/activity.test.ts:222:1
+✖ prep finding: a call row in another key order with nothing to redact is kept byte for byte (0.845625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '{"seq":4.5,"at":1004,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}\n'
+  - '{"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}\n'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/activity.test.ts:225:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '{"seq":4.5,"at":1004,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}\n',
+    expected: '{"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/activity.test.ts:228:1
+✖ prep finding: redaction changes only `detail` — every other field, value and key order survives (1.067542ms)
+  AssertionError [ERR_ASSERTION]: key order changed
+  + actual - expected
+  
+    [
+  +   'seq',
+      'at',
+  -   'seq',
+      'category',
+      'kind',
+      'detail',
+  -   'extra',
+  -   'n'
+    ]
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/activity.test.ts:234:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'seq', 'at', 'category', 'kind', 'detail' ],
+    expected: [ 'at', 'seq', 'category', 'kind', 'detail', 'extra', 'n' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/activity.test.ts:239:1
+✖ prep finding: an unknown field that may hold call data is kept and reported, never silently deleted (0.761375ms)
+  AssertionError [ERR_ASSERTION]: the row was changed — the policy question is not ours to answer silently
+  + actual - expected
+  
+  + '{"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D"}\n'
+  - '{"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}\n'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/activity.test.ts:241:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '{"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D"}\n',
+    expected: '{"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}\n',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,51 @@
+
+== writable folder
+lines before 11 / after 10; files in dir: activity.jsonl
+  KEPT VERBATIM  {"seq":1,"at":1000,"category":"system","kind":"Sidekick started","detail":"version 2.0.0"}
+  CHANGED/GONE   {"seq":2,"at":1001,"category":"calls","kind":"Missed call","detail":"+91 98000 00001"}
+  KEPT VERBATIM  {"seq":3,"at":1002,"category":"calls","kind":"Call ended","detail":"Test Contact A"}
+  KEPT VERBATIM  {"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}
+  KEPT VERBATIM  {"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}
+  KEPT VERBATIM  {"seq":5,"at":1005,"category":"files","kind":"Sent to phone","detail":"synthetic.bin","note":"kept"}
+  KEPT VERBATIM  {"seq":6,"at":1006,"category":"files","kind":"Sent
+  CHANGED/GONE   {"seq":7,"at":1007,"category":"calls","detail":"+9198
+  KEPT VERBATIM  {"seq":8,"at":1008,"category":"sms","kind":"Received","detail":"order 12345678 shipped"}
+  KEPT VERBATIM  {"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}
+  KEPT VERBATIM  {"seq":10,"at":1010,"category":"calls","kind":"Call ringing","detail":""}
+  NEW           {"seq":2,"at":1001,"category":"calls","kind":"Missed call","detail":"Unknown number"}
+  log: W [activity] 1 call row(s) in activity.jsonl carry an unknown field that may hold call data (callerNumber) — kept unchanged, not redacted: a policy decision is needed
+  log: I [activity] Rewrote activity.jsonl: 1 call row(s) brought under the call-data rule / 1 unreadable line(s) that may hold call data dropped / 10 line(s) kept
+  log: I [activity] Activity log: 9 event(s) read / 2 line(s) unreadable, next seq 11
+
+== read-only folder (write refused)
+lines before 11 / after 11; files in dir: activity.jsonl
+  KEPT VERBATIM  {"seq":1,"at":1000,"category":"system","kind":"Sidekick started","detail":"version 2.0.0"}
+  KEPT VERBATIM  {"seq":2,"at":1001,"category":"calls","kind":"Missed call","detail":"+91 98000 00001"}
+  KEPT VERBATIM  {"seq":3,"at":1002,"category":"calls","kind":"Call ended","detail":"Test Contact A"}
+  KEPT VERBATIM  {"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}
+  KEPT VERBATIM  {"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}
+  KEPT VERBATIM  {"seq":5,"at":1005,"category":"files","kind":"Sent to phone","detail":"synthetic.bin","note":"kept"}
+  KEPT VERBATIM  {"seq":6,"at":1006,"category":"files","kind":"Sent
+  KEPT VERBATIM  {"seq":7,"at":1007,"category":"calls","detail":"+9198
+  KEPT VERBATIM  {"seq":8,"at":1008,"category":"sms","kind":"Received","detail":"order 12345678 shipped"}
+  KEPT VERBATIM  {"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}
+  KEPT VERBATIM  {"seq":10,"at":1010,"category":"calls","kind":"Call ringing","detail":""}
+  log: W [activity] 1 call row(s) in activity.jsonl carry an unknown field that may hold call data (callerNumber) — kept unchanged, not redacted: a policy decision is needed
+  log: W [activity] Could not rewrite activity.jsonl; it is unchanged on disk and will be tried again next launch. Would have been: 1 call row(s) brought under the call-data rule / 1 unreadable line(s) that may hold call data dropped / 10 line(s) kept :: Error: EACCES: permission denied, open '<tmp>/activity-fixture-ro-XXXX/activity.jsonl.rewrite'
+  log: I [activity] Activity log: 9 event(s) read / 2 line(s) unreadable, next seq 11
+  events still returned to the pane: 9; error: null
+
+== second launch (idempotence)
+lines before 10 / after 10; files in dir: activity.jsonl
+  KEPT VERBATIM  {"seq":1,"at":1000,"category":"system","kind":"Sidekick started","detail":"version 2.0.0"}
+  KEPT VERBATIM  {"seq":2,"at":1001,"category":"calls","kind":"Missed call","detail":"Unknown number"}
+  KEPT VERBATIM  {"seq":3,"at":1002,"category":"calls","kind":"Call ended","detail":"Test Contact A"}
+  KEPT VERBATIM  {"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}
+  KEPT VERBATIM  {"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}
+  KEPT VERBATIM  {"seq":5,"at":1005,"category":"files","kind":"Sent to phone","detail":"synthetic.bin","note":"kept"}
+  KEPT VERBATIM  {"seq":6,"at":1006,"category":"files","kind":"Sent
+  KEPT VERBATIM  {"seq":8,"at":1008,"category":"sms","kind":"Received","detail":"order 12345678 shipped"}
+  KEPT VERBATIM  {"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}
+  KEPT VERBATIM  {"seq":10,"at":1010,"category":"calls","kind":"Call ringing","detail":""}
+  log: W [activity] 1 call row(s) in activity.jsonl carry an unknown field that may hold call data (callerNumber) — kept unchanged, not redacted: a policy decision is needed
+  log: I [activity] Activity log: 9 event(s) read / 1 line(s) unreadable, next seq 11

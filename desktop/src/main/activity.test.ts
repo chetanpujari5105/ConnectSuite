@@ -185,3 +185,70 @@ test('an event recorded after a half-written last line is readable on the next l
     'the new event was appended onto the broken line and became unreadable too',
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// Verification-prep finding, 2026-10-06 (docs/evidence/verification-prep-2026-10-06/
+// activity-rewrite-synthetic.txt): the rewrite re-serialised every call row from its five parsed
+// fields. A call row with an extra field lost it; a call row in another key order was rewritten
+// with nothing to redact. These are those exact synthetic rows.
+
+const EXTRA_FIELD_NAME = '{"seq":4,"at":1003,"category":"calls","kind":"Call ended","detail":"Test Contact B","extra":"x"}';
+const OTHER_KEY_ORDER = '{"at":1004,"seq":4.5,"category":"calls","kind":"Call ringing","detail":"Test Contact C"}';
+const NUMBER_WITH_EXTRA = '{"at":1001,"seq":2,"category":"calls","kind":"Missed call","detail":"+91 98000 00001","extra":"x","n":1.5}';
+const UNKNOWN_FIELD_NUMBER = '{"seq":9,"at":1009,"category":"calls","kind":"Missed call","detail":"Test Contact D","callerNumber":"+91 98000 00002"}';
+
+function loadCapturingLog(lines: string[]): { text: string; logs: string[]; store: ActivityStore; path: string } {
+  const where = dir();
+  const path = join(where, 'activity.jsonl');
+  writeFileSync(path, lines.join('\n') + '\n');
+  const logs: string[] = [];
+  const real = console.log;
+  console.log = (...a: unknown[]) => { logs.push(a.map(String).join(' ')); };
+  const store = new ActivityStore();
+  try {
+    store.initAt(where);
+  } finally {
+    console.log = real;
+  }
+  return { text: readFileSync(path, 'utf8'), logs, store, path };
+}
+
+test('prep finding: a call row with an unknown field and nothing to redact is kept byte for byte', () => {
+  const { text, store } = loadCapturingLog([EXTRA_FIELD_NAME]);
+  assert.equal(store.all().length, 1, 'control: the row was read');
+  assert.equal(text, EXTRA_FIELD_NAME + '\n');
+});
+
+test('prep finding: a call row in another key order with nothing to redact is kept byte for byte', () => {
+  const { text, store } = loadCapturingLog([OTHER_KEY_ORDER]);
+  assert.equal(store.all()[0]?.detail, 'Test Contact C', 'control: the row was read');
+  assert.equal(text, OTHER_KEY_ORDER + '\n');
+});
+
+test('prep finding: redaction changes only `detail` — every other field, value and key order survives', () => {
+  const { text, store } = loadCapturingLog([NUMBER_WITH_EXTRA]);
+  assert.equal(store.all()[0]?.detail, 'Unknown number');
+  assert.ok(!text.includes('98000'), 'the number survived on disk');
+  const written = JSON.parse(text) as Record<string, unknown>;
+  const original = JSON.parse(NUMBER_WITH_EXTRA) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(written), Object.keys(original), 'key order changed');
+  assert.deepEqual({ ...written, detail: original.detail }, original, 'a field other than detail changed');
+  assert.equal(written.detail, 'Unknown number');
+});
+
+test('prep finding: an unknown field that may hold call data is kept and reported, never silently deleted', () => {
+  const { text, logs } = loadCapturingLog([UNKNOWN_FIELD_NUMBER]);
+  assert.equal(text, UNKNOWN_FIELD_NUMBER + '\n', 'the row was changed — the policy question is not ours to answer silently');
+  const reported = logs.filter((l) => l.includes('unknown field') && l.includes('callerNumber'));
+  assert.equal(reported.length, 1, `not reported: ${JSON.stringify(logs)}`);
+  assert.ok(!reported[0]!.includes('98000'), 'the report carried the value');
+});
+
+test('prep finding: the fixed rewrite is idempotent over all four rows, and non-call rows stay exact', () => {
+  const nonCall = '{"seq":5,"at":1005,"category":"files","kind":"Sent to phone","detail":"synthetic.bin","note":"kept"}';
+  const first = loadCapturingLog([EXTRA_FIELD_NAME, OTHER_KEY_ORDER, NUMBER_WITH_EXTRA, UNKNOWN_FIELD_NUMBER, nonCall]);
+  assert.ok(first.text.includes(nonCall + '\n'), 'a non-call row changed');
+  const second = loadCapturingLog(first.text.trimEnd().split('\n'));
+  assert.equal(second.text, first.text, 'a second launch changed the file');
+  assert.ok(!second.logs.some((l) => l.includes('Rewrote')), 'a second launch rewrote');
+});

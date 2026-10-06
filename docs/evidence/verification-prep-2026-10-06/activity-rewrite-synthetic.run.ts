@@ -20,6 +20,8 @@ const fixture = [
   '{"seq":6,"at":1006,"category":"files","kind":"Sent', // broken non-call line
   '{"seq":7,"at":1007,"category":"calls","detail":"+9198', // broken call line
   L({ seq: 8, at: 1008, category: 'sms', kind: 'Received', detail: 'order 12345678 shipped' }),       // digits in a non-call row
+  L({ seq: 9, at: 1009, category: 'calls', kind: 'Missed call', detail: 'Test Contact D', callerNumber: '+91 98000 00002' }), // unknown field holding a number
+  L({ seq: 10, at: 1010, category: 'calls', kind: 'Call ringing', detail: '' }),                      // empty detail: no number to redact
 ];
 const report = (label: string, dir: string, before: string) => {
   const after = existsSync(join(dir, 'activity.jsonl')) ? readFileSync(join(dir, 'activity.jsonl'), 'utf8') : '';
