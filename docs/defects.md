@@ -198,7 +198,7 @@ own heading there, and its own row here.
 | **180** | **A privileged window could be navigated away from the app, and the page it reached kept the preload bridge.** No `will-navigate`, `setWindowOpenHandler` or drop guard; Chromium's default for an unhandled file drop is exactly such a navigation. Audit S3, Medium. | **fixed in source 2026-10-06** — `desktop/src/main/windowGuard.ts` (exact resolved-path allowlist of the three app pages, every window via `web-contents-created`, `window.open` and `<webview>` denied) and `src/renderer/dropGuard.ts` on all three pages; `sandbox: true` explicit. Isolated Electron with the real preload: unguarded, an untrusted page reached all 166 bridge methods; guarded, the window stayed put and `window.open` returned null. **A real OS-level drag was not performed.** | — | see below |
 | **181** | **Settings → Connection overlapped its own card at the minimum window size and at 1.2× zoom; the sidebar's last row sat under the footer; a notification row's text ran into the next row.** Audit U1/U2. | **fixed in source 2026-10-06, synthetic harness only** — the settings row wraps (`shell.css`), nav rows compact to 30 / 28 px below 740 / 680 px of viewport, notification rows never shrink (`styles.css`). Harness extended with a control-versus-text check (with its own fixture): Settings 2→0 at 1100×700, 5→0 at 1.2×, both themes; nav 468/468 and 435/435. **Not seen in the real window.** | — | see below |
 | **182** | **Pairing does not authenticate the phone to the Mac.** With a pairing armed and nothing stored, the Mac adopts any TLS peer, sends it the pair token, and pins its certificate on the first `hello.ack` (`link.ts:375`, `:595`). Audit S1, High. | **fixed in source 2026-10-06 — not installed, not run on hardware.** Pairing v2 (`docs/protocol.md` → *Pairing (version 2)*): both sides prove the QR secret with HMAC-SHA256 over both certificate fingerprints and both fresh nonces; the secret never crosses the wire; the Mac stores the phone and the phone stores the Mac only after verifying; v1 pairing refused both ways. Red first against HEAD's own `LinkClient`: an impostor on loopback was pinned as the phone and received the token (`docs/evidence/pairing-v2-2026-10-06/`). Mac 15 loopback-TLS integration tests through the real `LinkClient`; phone `PairingV2Test` 17; both against independent vectors. Legacy records kept and labelled, never upgraded. | — | see below |
-| **183** | **Every window shares one 166-method bridge and the main process trusts its caller.** Only the share-window handlers check `event.sender`; most payloads are unvalidated (`fs-drag` drags any existing path). Audit S4, Medium. | **open** — batch proposed in `docs/phase-2-hardening-proposals.md` §S4 | — | see below |
+| **183** | **Every window shares one 166-method bridge and the main process trusts its caller.** Only the share-window handlers check `event.sender`; most payloads are unvalidated (`fs-drag` drags any existing path). Audit S4, Medium. | **fixed in source 2026-10-06 — not installed, not seen in the real app.** `src/main/ipcAuth.ts` (window registry by object identity + `guardIpc`), `src/main/ipcPolicy.ts` (133 channels: windows, effect, payload rule; events by window), three preloads (main 150, float 25, receive 8 methods). Also closed in the same batch: `sendAll` broadcast clipboard contents, activity and transfers into the float and receive windows' processes; `fs-send` read any local path the renderer named; `pairing-qr-render` rendered any string; `fs-drag`/`reveal-saved` trusted renderer paths or a prefix; a stale receive window could act on offers it was never shown. Tests through the real `main.ts` registrations, the guard, the policy, the receive window, and an isolated Electron run with real preloads and pages; 9 mutations red. `docs/ipc-authorization.md`. | — | see below |
 | **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **open** — batch proposed, §S5; belongs with Developer ID signing | — | see below |
 | **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **open** — batch proposed, §S7 (a product decision: offer vs apply) | — | see below |
 | **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **open** — proposed, §Integrity | — | see below |
@@ -3664,11 +3664,22 @@ a test is invisible to `tsc`.
 including a secure re-pair of the owner's devices. **The wrong fix** remains: any proof sent after the
 raw secret.
 
-### 183 — one bridge, and IPC that trusts its caller · **open**
+### 183 — one bridge, and IPC that trusts its caller · **fixed in source**
 
-**Fix direction:** `docs/phase-2-hardening-proposals.md` §S4 — per-window preloads, a sender guard,
-payload validation. **The wrong fix** is a sender check alone: the main window is the sender for every
-privileged call, so it stops nothing a compromised main window does.
+The boundary is the main process, not the preload: every handler is registered through `guardIpc`, which
+identifies the sender by object identity among the windows this process registered, refuses unknown,
+destroyed, replaced, subframe and wrong-page senders, checks the window's role, and validates the
+arguments before the handler runs. The matrix is `docs/ipc-authorization.md`.
+
+**Found while building it, and fixed:** `sendAll` broadcast every event — `clip-arrived` carries the
+clipboard text — into the floating and receive windows' processes; `fs-send` would read and upload any
+local path the renderer named; `pairing-qr-render` turned any renderer string into a QR; `mark-requested`
+went to every window. One process note: a mutation run on the phone's wording fix first failed to
+compile, and Gradle served the previous run's results file — caught because the harness prints each
+file's age.
+
+**Fix direction for what is left:** the hardware checks in `docs/pairing-v2-hardware-test-proposal.md`
+(H9–H12) — the real windows still work, a real drop still sends, a real drag still reaches Finder.
 
 ### 184 — Electron fuses and entitlements · **open**
 

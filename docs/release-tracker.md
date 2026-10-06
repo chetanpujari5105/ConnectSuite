@@ -24,8 +24,8 @@
 | U-3 | **Unknown** | Behaviour on any phone but the SM-S938B (and the Moto for some rows) | **unknown** — `docs/single-device-audit.md` | 6 |
 | U-4 | **Unknown** | Whether `share`/`fs.blocks`/camera/webcam code is safe to enable — never reviewed as release code | **unknown** — gates stay off | 3 |
 
-Mediums (S3 fixed in source; S4, S5, S7 open; U1 fixed in source) and Lows are tracked in the phases
-below; they are not public-release blockers on their own, but S4 and S5 must land before a signed build.
+Mediums (S3 and S4 fixed in source; S5, S7 open; U1 fixed in source) and Lows are tracked in the phases
+below; they are not public-release blockers on their own, but S5 must land before a signed build.
 
 ## Reconciling 14/22 and 16/22
 
@@ -90,15 +90,19 @@ phase silently.
 | U1/U2 — Settings layout, sidebar, notification rows (181) | fixed in source, synthetic | harness with a control-versus-text check: Settings 2→0 / 5→0, nav fits | F10 in the real window |
 | Docs reconciliation | done | D4 closed by evidence (icon hash in the 2026-09-19 package); defect 100 closed with its 2026-09-10 reading; FNV claim corrected | — |
 
-### Phase 2 — pairing and privilege boundaries · **S1 + S2b done in source 2026-10-06; S4, S7 proposed**
+### Phase 2 — pairing and privilege boundaries · **S1, S2b and S4 done in source 2026-10-06; S7 proposed**
 
 S1 + S2b: built to `docs/protocol.md` → *Pairing (version 2)*. Red first against HEAD's own
 `LinkClient` (an impostor was pinned and received the token — `docs/evidence/pairing-v2-2026-10-06/`);
 Mac 15 + 3 tests, phone 17, all through shared independent vectors; 9 of 10 mutations red (the tenth is
 an equivalent guard, explained in the evidence). Hardware: `docs/pairing-v2-hardware-test-proposal.md`.
-Still to come: S4, then S7 (`docs/phase-2-hardening-proposals.md`); the dependency audit (below).
-**Acceptance for those:** the share window's preload exposes no SMS or call channel; a selection push
-leaves the Mac clipboard untouched.
+S4 (defect 183): every IPC handler behind a main-process guard — sender identity, main frame, exact page,
+role, payload — with three narrowed preloads and events scoped per window (`docs/ipc-authorization.md`,
+133 channels). Tests through the real `main.ts` registrations and an isolated Electron run with the real
+preloads and pages; 9 mutations red. Phone pairing wording: *Code scanned. Verifying your Mac…* until the
+phone verified the Mac, *Paired* only then (`ConnectStage.pairingOutcome`); 2 mutations red.
+Still to come: S7 (`docs/phase-2-hardening-proposals.md` §S7, the next proposal); the dependency audit.
+**Acceptance for S7:** a selection push leaves the Mac clipboard untouched until a person presses Copy.
 
 ### Phase 3 — functional completion
 
@@ -147,6 +151,6 @@ tool to install, which this phase is not allowed to do; it needs your approval.
 3. **Distribution:** direct for v1 (recommended in the audit), Play later or never.
 4. **Pairing v2 hardware run:** `docs/pairing-v2-hardware-test-proposal.md`, step by step — it re-pairs your
    devices (H4).
-5. **S7:** offer vs apply for selection pushes (proposal says offer, with a switch).
+5. **S7:** the three decisions at the end of `docs/phase-2-hardening-proposals.md` §S7.
 6. **The dependency audit:** which option, if any.
 7. **Plan F**, step by step — F2 runs the irreversible Activity rewrite.

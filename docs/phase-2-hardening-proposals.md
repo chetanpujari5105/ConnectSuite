@@ -8,7 +8,7 @@
 ## Order, and why
 
 1. ~~**S1 + S2b**~~ — **done in source 2026-10-06** (`docs/protocol.md` → Pairing (version 2); defects 182, 189).
-2. **S4** — the privilege boundary inside the Mac app; makes every future renderer bug smaller.
+2. ~~**S4**~~ — **done in source 2026-10-06** (defect 183; `docs/ipc-authorization.md`).
 3. **S7** — a product decision with a small code change.
 4. **S5** — belongs with Developer ID signing (release phase 4), proposed now so it is not designed in a
    hurry.
@@ -16,41 +16,11 @@
 
 ---
 
-## S4 — one bridge for every window, and IPC that trusts its caller (defect 183, Medium)
+## S4 — one bridge for every window (defect 183) · **done in source 2026-10-06**
 
-**Today.** `desktop/src/preload.ts` exposes one `window.connect` with 166 `ipcRenderer` uses to all
-three windows — main, floating mirror, share receive window (which draws phone-supplied file names).
-Of 129 `ipcMain` handlers in `main.ts`, only the share-window group (`main.ts:1297-1373`) checks
-`event.sender`. Payloads are mostly trusted as typed; `fs-drag` (`main.ts:2637`) will start a drag of
-**any** existing path the renderer names.
-
-**Batch.**
-
-1. **Three preloads, one per window**, each exposing only that window's calls. The float window needs
-   the mirror stream, input and float controls; the share window needs the `share-*` calls; everything
-   else stays main-only. Generated from one table so the three cannot drift: `preloadApi.ts` declares
-   `{ channel, windows: ['main' | 'float' | 'share'] }`, and a test asserts each preload exposes exactly
-   its rows.
-2. **A sender guard on every privileged handler**: `fromWindow(event, 'main')` checks
-   `event.senderFrame` is the top frame of that window's `webContents` and that its URL passes
-   `windowGuard.navigationDecision`. Handlers registered through one helper so a new one cannot be
-   added unguarded; a test enumerates `ipcMain`'s registered channels against the table.
-3. **Payload validation at the boundary** for the handlers that act on the outside world: `fs-drag`
-   (paths must be inside the receive folder, the preview cache, or a path this process produced in
-   this session), `sms-send`, `call-dial`, `clip-use`, `clip-open` (already re-decides its scheme),
-   `media-*`, `fs-*`, `set-*-address`, `downloads-*`. Unknown fields refused, types checked, lengths
-   capped.
-
-**Red-first tests.** The share window's preload must not expose `sms-send` (red today); a handler
-invoked from the float window's `webContents` for a main-only channel is refused (red today);
-`fs-drag` with `/etc/hosts` is refused (red today).
-
-**The wrong fix.** A sender check alone. Every privileged call legitimately comes from the main
-window, so a sender check stops nothing a compromised main window does — the per-window preloads and
-the payload rules are the parts that shrink the blast radius.
-
-**Not in this batch.** A CSP change (already `default-src 'self'`, no inline script), and moving
-renderer code to a framework.
+Built as proposed, plus what building it found (`sendAll` broadcasting clipboard contents into other
+windows, `fs-send` reading any path, `pairing-qr-render`). The matrix is `docs/ipc-authorization.md`;
+the evidence `docs/evidence/s4-ipc-2026-10-06/`.
 
 ---
 
@@ -82,31 +52,60 @@ are honoured by a packaged build, and ASAR integrity is off. `build/entitlements
 
 ---
 
-## S7 — any phone app can write the Mac's clipboard (defect 185, Medium)
+## S7 — any phone app can write the Mac's clipboard (defect 185, Medium) · **the next proposal**
 
-**Today.** `SendSelectionActivity` is exported for `PROCESS_TEXT` and `SEND text/*` (it must be, to
-appear in other apps' menus). Any foreground app can fire an explicit intent at it; the text goes out
-as `clip.push`; the Mac **applies** it on arrival (`clipboard.ts:141-157`). Only a toast on the phone
-tells the user. Mitigation already present: the displaced Mac clipboard is kept and Restore puts it
-back.
+**Today, measured from the code.** `SendSelectionActivity` is exported for `PROCESS_TEXT` and
+`SEND text/*` — it must be, to appear in other apps' selection toolbars and share sheets. Any app in the
+foreground can fire an explicit intent at it with any `EXTRA_TEXT`; `ClipFeature.sendSelectedText` sends
+it as `clip.push` with `source: "phone"` (the same value as an ordinary clipboard sync), and the Mac's
+`ClipboardClient.receive` **writes it to the Mac clipboard on arrival** (`desktop/src/main/clipboard.ts`).
+The only signal is a toast on the phone. A person who later presses ⌘V in Terminal pastes whatever the
+other app chose. What already limits it: the displaced Mac clipboard is kept as a history entry that
+Restore puts back; S4 (2026-10-06) does nothing here, because the push arrives over the authenticated
+link, from the real phone.
 
-**Batch.**
+### What changes
 
-1. The phone marks pushes from this activity `source: "selection"` (the in-app path stays `"app"`).
-   Contract first: `clip.push.source`, optional, unknown values treated as `"selection"`.
-2. The Mac **offers** a selection push rather than applying it: a native notification *"Text from
-   <app name> on your phone — Copy"*, and an entry in Clipboard history with **Copy**. Nothing touches
-   the Mac's clipboard until the person acts.
-3. A Settings switch *"Apply text sent from other phone apps automatically"*, **off** by default, for
-   the owner who wants today's behaviour back.
+1. **Contract first.** `clip.push` gains `origin`, one of:
+   - `clipboard` — the phone's own clipboard, read while Sidekick is in front (today's sync);
+   - `selection` — text another app handed to `SendSelectionActivity` (toolbar or share sheet).
 
-**The wrong fix.** Checking `referrer` or the calling package: both are the sender's to choose.
+   The phone sets it; it is never derived from `package`/`referrer`, which are the sending app's to choose.
+2. **The Mac applies only `origin: "clipboard"` automatically.** `selection` — and **an absent or unknown
+   `origin`**, which is every push from a phone built before this change — is **offered**: a history
+   entry marked *From <app> on your phone — not applied*, with **Copy**, and (when the window is not
+   focused) a native notification with a **Copy** action. Nothing touches the Mac clipboard until a person
+   acts on the Mac.
+3. **A Settings switch** under Clipboard: *Apply text other phone apps send, automatically* — **off** by
+   default. It changes step 2 for `selection` only; it never makes an unknown `origin` auto-apply.
+4. **The phone's toast says what happens:** *Offered to your Mac — choose Copy there* (or *Sent to your
+   Mac's clipboard* when the switch is on and the Mac reports it).
 
-**Red-first.** A `clip.push` with `source: "selection"` must leave the Mac clipboard untouched (red
-today).
+### Why this shape
 
-**Decision needed from you:** whether a share-sheet/selection send from inside a trusted app (the most
-common real use) is worth one extra click on the Mac. The proposal says yes; the switch is the escape.
+- It keeps the useful flow (select text in any app → it appears on the Mac) and puts the person's
+  confirmation on the side where the paste happens.
+- Treating an absent `origin` as `selection` fails safe with older phones: the cost is one extra click,
+  never an unasked write.
+- **The wrong fixes:** checking `referrer`/`package` (sender-chosen); requiring a confirmation on the
+  phone (the sending app is in front and can drive or overlay it); dropping the export (the feature
+  disappears from every app's toolbar).
+
+### Tests (red first)
+
+- Mac: `clip.push {origin: "selection"}` leaves the clipboard untouched and creates one offered entry;
+  **Copy** writes exactly that text and nothing else; an absent `origin` behaves like `selection`;
+  `origin: "clipboard"` applies (control); the switch on applies `selection` but never an absent origin.
+- Phone (JVM): `sendSelectedText` sets `origin: "selection"`; the foreground clipboard path sets
+  `origin: "clipboard"`; a source scan that no other code path builds a `clip.push` without `origin`.
+- Hardware (approved separately): select text in a browser on the phone → Send to Mac → the Mac shows
+  the offer, its clipboard unchanged until Copy; then one ordinary in-app clipboard sync still applies.
+
+### Decisions needed from you
+
+1. Offer by default for `selection` (recommended), or apply by default with the switch the other way.
+2. Whether the native notification is wanted for offers when the Mac window is not focused.
+3. Whether the Restore affordance for applied entries stays as it is (recommended: yes).
 
 ---
 
