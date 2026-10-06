@@ -1,3 +1,32 @@
+# S4 MAC IPC BOUNDARY + PHONE PAIRING COPY — 2026-10-06: built, tested, committed; NOTHING installed or relaunched
+
+**Read this first.** Matrix: `docs/ipc-authorization.md` (133 channels). Evidence:
+`docs/evidence/s4-ipc-2026-10-06/`. Tracker: `docs/release-tracker.md`. Next proposal: S7 in
+`docs/phase-2-hardening-proposals.md`.
+
+1. **Built and proven (code, isolated runs — no hardware):**
+   - **S4 (defect 183):** every Mac IPC handler sits behind `guardIpc` — sender by object identity among
+     registered windows, main frame only, exact page, role, then payload validation — before it runs.
+     Preloads: main 150, float 25, receive window 8 methods. Also fixed: `sendAll` sent clipboard text and
+     activity into the float/receive windows' processes; `fs-send` read any path; `fs-drag`/`reveal-saved`
+     trusted renderer paths; a receive window could act on offers it was never shown; `pairing-qr-render`.
+   - **Isolated Electron, real preloads and pages:** a compromised float page was refused SMS, Forget and
+     pairing; replaced, unregistered, wrong-page and subframe senders refused; 0 forbidden handlers ran;
+     the real pages initialised with 33 allowed calls and 0 refusals.
+   - **The pairing secret, stated precisely:** the raw field never crosses IPC; the QR image encodes it.
+   - **Phone copy:** "Code scanned. Verifying your Mac…" until the phone verified the Mac; "Paired" only
+     then (`ConnectStage.pairingOutcome`); cancel and failure say so. No protocol change.
+   - **Fresh:** Mac **1,856/0** (both typechecks); phone **1,396/0** (`--rerun-tasks`, ≤ 3.3 min old);
+     every guard rc 0. Mutations: 9 Mac (S4) + 2 phone (copy), all red.
+2. **Committed** (local, not pushed): `8f2a483` (S4), `ed14b6e` (phone copy), `0aa5864` (register,
+   tracker, S7 proposal, hardware plan), plus the commit carrying this entry.
+3. **Readable, not built:** S7 proposal (three decisions at its end); hardware plan H1–H12.
+4. **Needs your decision or hands:** S7's decisions; each hardware step (H4 re-pairs your devices, H2 runs
+   the Activity rewrite); S5 with signing; ML Kit; publisher details.
+5. **Would do next, on approval:** S7, contract first.
+6. **Left changed on your devices:** nothing. No phone or ADB; Sidekick not launched or relaunched;
+   `desktop/dist` not rebuilt (builds were scratch copies); no profile read. Your edits untouched.
+
 # PAIRING V2 + S2b — 2026-10-06: both built, tested and committed; NOTHING installed, re-paired or run on hardware
 
 **Read this first.** Contract: `docs/protocol.md` → *Pairing (version 2)* and *Session tokens*. Evidence:
