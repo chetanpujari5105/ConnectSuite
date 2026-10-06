@@ -24,8 +24,10 @@
 | U-3 | **Unknown** | Behaviour on any phone but the SM-S938B (and the Moto for some rows) | **unknown** — `docs/single-device-audit.md` | 6 |
 | U-4 | **Unknown** | Whether `share`/`fs.blocks`/camera/webcam code is safe to enable — never reviewed as release code | **unknown** — gates stay off | 3 |
 
-Mediums (S3, S4 and S7 fixed in source; S5 open; U1 fixed in source) and Lows are tracked in the phases
-below; they are not public-release blockers on their own, but S5 must land before a signed build.
+Mediums (S3, S4 and S7 fixed in source; **S5 partly fixed in source 2026-10-07** — fuses and a packaged-build
+debugging-switch refusal, measured on an isolated harness; the entitlement half waits for Developer ID; U1 fixed
+in source) and Lows are tracked in the phases below; they are not public-release blockers on their own, but S5's
+signing half must land with a signed build.
 
 ## Reconciling 14/22 and 16/22
 
@@ -64,16 +66,16 @@ signed release build — no row has this.
 | 10 | **Contacts** | on | yes | yes | Phase 4 | no | — | include | Lookup on the release build |
 | 11 | **Media remote** | on | yes | yes | step 67, 2026-08-28 | no | Defect 38 (phone-side volume never reaches the Mac) | include, volume stated one-way | — |
 | 12 | **Files Mac → phone** — `Download/ConnectSuite` and granted folders, resume | on | yes | yes (**pinned socket new**) | 2026-09-01 ⚠ | no | 178 fixed in source, needs F11 | include | F11: one push verified by the phone's digest after the pin change |
-| 13 | **Files phone → Mac** — browse, pull, drag to Finder | on | yes | yes | 2026-09-01; **defect 137** since 2026-09-23 ⚠ | no | **Defect 137** (granted trees list 0); 186 (quarantine) | **conditional** — `Download/ConnectSuite` only until 137 is understood | F7: provider log read; F11 one pull |
-| 14 | **Block-verified pulls > 64 MiB** (`fs.blocks`) | **off** (`FS_BLOCKS_RELEASE`) | yes | yes | development runs | no | release decision; until then **187**: large pulls unverified | deferred; say "unverified" | Decision recorded; UI states unverified |
+| 13 | **Files phone → Mac** — browse, pull, drag to Finder | on | yes | yes (+9 pre-hash loopback tests 2026-10-07) | 2026-09-01; **defect 137** since 2026-09-23 ⚠ | no | **Defect 137** (granted trees list 0; no Sidekick-side defect found 2026-10-07 — provider reading in the morning plan); 186 fixed in source (quarantine, measured on a harness) | **conditional** — `Download/ConnectSuite` only until 137 is understood | F7: provider log read; F11 one pull |
+| 14 | **Block-verified pulls > 64 MiB** (`fs.blocks`) | **off** (`FS_BLOCKS_RELEASE`) | yes | yes | development runs | no | release decision; until then **187**: large pulls unverified — **both Files and Photos now say so** (2026-10-07; `docs/transfer-integrity-inventory-2026-10-07.md`) | deferred; say "unverified" | Decision recorded; UI states unverified |
 | 15 | **Photos & video browser** | on | yes | yes | 2026-09-23 ⚠ | no | Play photo policy (P5) for Play only; depth unmeasured on hardware | include | F6: 20+ pages timed on the phone |
-| 16 | **Clipboard + history** — Mac → phone automatic; phone → Mac while open; history | on | yes | yes | 2026-09-01/02 | no | **185 fixed in source 2026-10-06** (selections offered, not applied); phone → Mac wall | include, wall stated | `docs/s7-hardware-verification-proposal.md`; release notes state the wall and that a selection needs Copy on the Mac |
+| 16 | **Clipboard + history** — Mac → phone automatic; phone → Mac while open; history | on | yes | yes | 2026-09-01/02; **stage D PARTIAL 2026-10-07**: offer/Copy/duplicate-Copy/Restore pass for the share route; banner refused by macOS (dev build); toolbar route inconclusive | no | **185 fixed in source**; 192–195 fixed in source 2026-10-07 (share-route text read, focus-sync reasons, no sender app in logs, banner accounting); phone → Mac wall | include, wall stated | `docs/s7-hardware-verification-proposal.md`; release notes state the wall and that a selection needs Copy on the Mac |
 | 17 | **Mirroring + control**, floating window | on | yes | yes (**pinned socket new**) | 2026-09-10 ⚠ | no | 178 needs F11; defect 100 reconciled (closed, not a code defect); needs background restriction lifted (102/103) | include | F11: 30 s of `Encoded +N frames` after the pin change |
 | 18 | **Apps** — list, "ask to open" | on | yes | yes | 2026-09-03 | no | — | include, never "launch" | — |
 | 19 | **Phone → Mac sharing** | packaged Mac: `share.file 1` only; phone multi-file off | yes | yes | development runs | no | release decision; code never reviewed as release code (U-4) | deferred | — |
 | 20 | **Camera v1** | **off** unless phone build debuggable | yes | yes | 2026-10-02 (supervised) | no | most of `docs/camera-v1.md` unrun | deferred | — |
 | 21 | **Phone as Mac webcam** | **off** (`WEBCAM_RELEASE`) | partial | Swift 140, Mac, phone | spike PASS 2026-10-05 | no | signing, Camera Extension, defect 177 | deferred; **never claim meeting-app compatibility** | — |
-| 22 | **Activity, Settings, theme, login item** | on | yes | yes | 2026-09-16 | no | **181** fixed in source (synthetic only); window bounds not remembered; the pending irreversible Activity rewrite | include | F2 (rewrite counts), F3 (settings persist), F10 (layout in the real window) |
+| 22 | **Activity, Settings, theme, login item** | on | yes | yes (isolated renderer sweep 2026-10-07: 32 jobs × 13 panes clean) | 2026-09-16 | no | **181** fixed in source (synthetic only); Activity rewrite **ran** in A3 (294 rows); 196–198 fixed in source 2026-10-07 (stale trust sentence, zoom below the layout minimum, unexplained pairing-code failure); window bounds not remembered | include | F2 (rewrite counts), F3 (settings persist), F10 (layout in the real window) |
 
 ## The six phases
 
@@ -112,6 +114,12 @@ person presses Copy — proven in source; on hardware it is `docs/s7-hardware-ve
 
 ### Phase 3 — functional completion
 
+**2026-10-07 (overnight, source and harness only — nothing installed):** S8/186 fixed in source (macOS's
+`LSFileQuarantineEnabled`, each received file's attribute read and reported; the exclusion key was measured as
+ignored and is not set); S9/187 — every transfer path inventoried, Photos no longer drops `verified`, pre-hash
+path loopback-tested (`docs/transfer-integrity-inventory-2026-10-07.md`); defect 137 — no Sidekick-side
+defect found, one provider reading written into `docs/morning-plan-2026-10-07.md`.
+
 Defect 30 (F8), defect 137 (F7), the `fs.blocks` decision (row 14), S8/S9 (quarantine, "unverified"
 labelling), window bounds persistence, the state vocabulary decision (84 states across 19 panes).
 **Acceptance:** each defect closed on hardware or explicitly scoped out of v1 in the release notes.
@@ -149,6 +157,12 @@ High in the beta; every claim in the release notes traceable to a row here.
 tool to install, which this phase is not allowed to do; it needs your approval.
 
 ## Decisions needed from you
+
+**Added 2026-10-07** (`docs/privacy-and-distribution-2026-10-07.md` §8, `docs/morning-plan-2026-10-07.md`):
+install the `bf096e1` builds before resuming stage D; ML Kit — disclose or replace; a notices screen in both
+apps; whether phone diagnostic logs may move in a device-to-device transfer; a packaged-build launch on a fresh
+macOS user.
+
 
 1. **SDK privacy (P3):** approve capture F9; then disclose ML Kit's metrics, or replace the scanner with
    an on-device decoder that has no network path.

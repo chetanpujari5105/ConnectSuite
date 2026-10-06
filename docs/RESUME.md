@@ -1,3 +1,39 @@
+# OVERNIGHT 2026-10-07 (unattended): clipboard gaps, S5/S8/S9, UI sweep, privacy drafts — 10 commits; NOTHING installed or relaunched
+
+**Read first:** `docs/morning-plan-2026-10-07.md` (what to do, in order, with the approvals each step needs),
+then `docs/evidence/stage-d-2026-10-07/RECORD.md`.
+
+1. **Built and proven (tests, mutations, isolated builds/harnesses — no hardware):**
+   - Stage D recorded honestly: **PARTIAL**; step 2 passed for `ACTION_SEND` only; banner refused by macOS;
+     step 6 inconclusive between toolbar action and delivery; later paths not exercised by it.
+   - Phone (192–194): share route reads text as `CharSequence`; every focus sync ends in a named reason with
+     counts; clipboard logs carry no text and no sender app; selection starts counted per route.
+   - Mac (195–198): offer banner counts requested / reported shown / failed / clicked and the pane says a
+     refusal; Settings trust sentence follows every status (legacy → unpaired → v2); zoom can no longer shrink
+     the page below 1100×700 CSS px; a failed pairing code is explained.
+   - S8/186: `LSFileQuarantineEnabled` + every received file's attribute read and reported (measured on a
+     packaged harness; exclusions ignored by macOS, so not set). S5/184 (part): fuses `000011011` + packaged
+     builds refuse debugging switches (guard is load-bearing for `--remote-debugging-port`). S9/187: all
+     transfer paths inventoried; Photos now says when a save was not checksummed; pre-hash path tested.
+   - 137: no Sidekick-side defect found; the provider reading is in the morning plan.
+   - Privacy/distribution drafts: `docs/privacy-and-distribution-2026-10-07.md` (ML Kit structurally confirmed
+     to bring Google's logging transport; not a traffic measurement).
+   - Fresh: phone **1,434/0**, Mac **1,955/0**, typechecks clean, Swift **140/0**, scripts **287/0**, hooks
+     pass, guards exit 0. ~46 mutations red. No flake seen (Mac suite 8 full runs).
+2. **Committed** (local, not pushed): `fa0320a`, `9195f39`, `a93297e`, `0cbe9c8`, `d4436d8`, `6777b74`,
+   `425e578`, `f8dabdf`, `bf096e1`, and the commit carrying this entry.
+3. **Ready, not installed:** `artifacts-bf096e1/` in the session scratch — Mac dist `0c074f7d…`, packaged app
+   (`app.asar` `5127b900…`), debug APK `9b7d34f0…` (same signer, versionCode 1).
+4. **Needs your decision/hands:** install both before resuming D (recommended); D steps 6–8 and the banner
+   step; one logcat read for 137; C step 3 and H4b; E then F; a packaged launch on a fresh macOS user; and the
+   owner items in the privacy package §8 (publisher details, ML Kit, Developer ID, keystore, audit tool, notices).
+5. **Next:** the morning plan, step 1.
+6. **Left changed on your devices:** nothing. One read-only phone check at ~02:4x (locked, dozing; A4 install
+   time confirmed). Mac watcher still **off**; real clipboard not read or written; pairing v2 untouched; both
+   rollback copies and the Activity backup untouched (reminder due end of stage G or 2026-10-13); nothing
+   published or pushed. Your uncommitted edits untouched; this entry and the `testing.md` section were staged
+   without them. One scratch folder was created and removed under `~/Library/Caches` for the quarantine reading.
+
 # SUPERVISED VERIFICATION — 2026-10-06: A0 done (watcher off); defect 191 fixed in code; NOTHING installed or relaunched
 
 **Read first:** `docs/supervised-verification-plan-2026-10-06.md` (stages A0–G, §8 is A0's record).

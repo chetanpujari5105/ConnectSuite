@@ -28294,3 +28294,52 @@ live `activity.jsonl`, its backups and the old profile were not read, copied or 
 `main/activity.js` and its map differ from the superseded `286e2b0` build). Android APK from `286e2b0`
 unchanged and still valid (no phone, Gradle, contract or shared change since). Live `desktop/dist` unchanged
 (`4f40b0e9…`, 2026-10-04 17:09).
+
+## Overnight 2026-10-07 — clipboard gaps, S5/S8/S9, UI sweep, privacy package (unattended; nothing installed)
+
+Source, tests, isolated builds and harnesses only. **No phone UI action, install, relaunch, clipboard read or
+write, transfer or pairing change.** One read-only phone check (identity, lock state, versions) found the phone
+**locked and dozing**; every later phone check was skipped. The live Mac app (PID 67469, `4661015`) and
+`desktop/dist` were not touched; port 9222 was never used.
+
+**Stage D record:** `docs/evidence/stage-d-2026-10-07/RECORD.md` — PARTIAL; step 2 passed for the share-sheet
+route (`ACTION_SEND`) only; banner unavailable (macOS refused the development bundle); step 6 inconclusive
+between the toolbar action and its delivery, with the instrument limitation that leaves it so; the paths after
+the activity were not exercised by step 6. Supersedes the stage notes' *"C and D ruled out"*.
+
+**Defects registered and fixed in source (`docs/defects.md`):** 192 (share route read `EXTRA_TEXT` as `String`),
+193 (focus sync's silent exits → `FocusSync` reasons with counts), 194 (clipboard logs named the sender app),
+195 (offer banner counted a request as a banner; no failure path), 196 (stale Settings trust sentence), 197 (zoom
+below the layout minimum), 198 (unexplained pairing-code failure). Updated: 184 (S5, partly), 186 (S8), 187
+(S9, still open as a release decision).
+
+**Red-first:** 9 phone mutations (MP1–MP9), 9 + 6 + 4 + 5 + 4 Mac mutations (MM1–MM9, MS1–MS6, MT1/MT2b/MT3/MT4,
+MF1–MF5, MZ1–MZ3 + pairing), each restored and SHA-256-verified by the runner, which printed the age of the
+result artifact and the runner's exit code. **Instrument faults caught tonight:** MS4/MS6 first runs hung (an
+unguarded throwing hook left a pull unresolved) and were rerun with `--test-force-exit`, both red; MT2 stayed
+green against eight pre-hash tests because every over-long case carried a digest — a ninth test (over-long, no
+digest) is where the length check stands alone; a mutation-runner log string containing "original" tripped the
+provenance guard's `origin` scan (fixed in the wording, not the guard); `npm ls` reported present packages as
+missing, so the Mac licence inventory was read from the packaged `app.asar` instead.
+
+**Isolated packaged builds** (`docs/evidence/s5-s8-isolated-build-2026-10-07/`): fuse wire `000011011`; a harness
+packaged through the same hook against an unfused control and a fuses-without-guard variant — startup, preload,
+IPC work; RunAsNode and `--inspect` blocked by fuses; `--remote-debugging-port` blocked only by the guard;
+`NODE_OPTIONS --require` **no reading** (the control refused it too). `LSFileQuarantineEnabled` quarantined every
+file, the profile included; the exclusion key was ignored in three spellings and is not set.
+
+**Isolated renderer sweep** (`docs/evidence/ui-harness-2026-10-07/`): 4 states × 4 sizes × 2 themes × 13 panes;
+before — 8 uncaught errors, 12 control overlaps, 30 clipped controls (125% zoom in the minimum window); after —
+0 / 0 / 0, 32/32 instrument controls. Route timings at ×1/×10/×25 synthetic data, before/after equal within
+single-run variation; no performance claim.
+
+**Fresh final runs (2026-10-07 03:3x–03:5x IST, tree `bf096e1`):** phone JVM **1,434 / 0** (`--rerun-tasks`, six
+modules, 0 result files older than the run); Mac **1,955 / 0** (`.test-run.json` 2026-10-06T22:18:31Z = 03:48
+IST, green); both typechecks clean; Swift **140 / 0** (`run-tests.mjs`; a bare `swift test` cannot find the
+Testing module, by design); scripts **287 / 0**; both hook fixture suites pass; `check-defects` and ten other
+guards exit 0. **Flakes:** none observed — the Mac suite ran 8 times in full tonight, all green; no retries,
+skips or sleeps were added.
+
+**Artifacts built, NOT installed** (session scratch `artifacts-bf096e1/`): Mac `dist` `0c074f7d…2f29` (312 files);
+packaged `Sidekick.app`, `app.asar` `5127b900…f9851`, deep-verified ad-hoc; debug APK `9b7d34f0…17f7`, signer
+`d3a505d2…7d26`, versionCode 1. Superseded: the `6777b74` scratch package.
