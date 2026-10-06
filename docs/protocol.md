@@ -2683,6 +2683,64 @@ The sender's clipboard changed and it is telling the other side.
   name an owner — and when the owner is unknown the fields are *absent*, never `"unknown"`.
 - **`atMs`** is the sender's clock. It orders that side's history and is trusted for nothing else.
 - **`source`** is `phone` or `mac`, so a receiver can tell a real change from its own echo.
+- **`origin`** — *how the text reached the phone's sender code*, set by the phone on every `clip.push`
+  it sends (S7, defect 185). One of two values, lower-case, exact:
+
+  | `origin` | Set by | Means |
+  |---|---|---|
+  | `clipboard` | the focus read only (`ClipFeature.onWindowFocused`) | the phone read **its own clipboard** while Sidekick was in front — the documented phone → Mac sync |
+  | `selection` | the exported `SendSelectionActivity` (`PROCESS_TEXT`, `SEND text/*`) | **another app handed the text to Sidekick**. Always this value on that path, whatever the intent carries |
+
+  It is decided by **which code path built the push**, never by anything the sending app supplies —
+  no extra, no `referrer`, no `package` can raise a selection to `clipboard`. The Mac does not send
+  `origin` and the phone ignores it on an arriving push.
+
+### Provenance: what the Mac does with `origin`
+
+**Only `origin: "clipboard"` is applied on arrival.** Everything else is **offered**: kept on the Mac as
+a pending offer, the Mac's clipboard untouched, until a person presses **Copy** on the Mac.
+"Everything else" is a closed rule, not a list of known values:
+
+| `origin` on the arriving push | Mac |
+|---|---|
+| `"clipboard"` (exactly) | apply, as before — displaced text kept, **Restore** available |
+| `"selection"` | offer |
+| absent — **every phone built before this field** | offer |
+| any other string, `"Clipboard"`, a number, `null`, an object | offer |
+
+**Mixed versions, stated:** an old phone with a new Mac costs one click per phone → Mac entry, including
+ordinary focus syncs (fail safe — never an unasked write). A new phone with an old Mac is today's
+behaviour: the old Mac ignores the field and applies everything, so defect 185 is closed only on a
+Mac that has this change. The phone's toast for a selection says *"Sent to your Mac — choose Copy
+there"*, which is slightly wrong against an old Mac (it is already on the clipboard) and never wrong in
+the unsafe direction.
+
+**An offer, on the Mac:**
+
+- **Bounded** — at most 5 pending, 64 KB each (the namespace cap; a larger one is not kept), and each
+  expires after 10 minutes. The oldest goes first when a sixth arrives.
+- **Copy** applies **exactly that offer's text**, through the same path as an applied arrival (so the
+  echo interlock is armed and the displaced clipboard is kept for Restore), and **consumes** it: a
+  second Copy, a Copy after Dismiss, after expiry, or after the link dropped is refused and writes
+  nothing. Copy is bound to the **session** the offer arrived on (the control session token); a
+  reconnect is a new session and the offer is gone.
+- **Dismiss, expiry and disconnect never touch the clipboard.**
+- **A native notification may announce it** when the Mac window is not focused. Its copy is fixed —
+  *"Text offered from your phone"* / *"Open Sidekick to review it. Nothing was copied."* — and carries
+  **no** text, preview, URL, app name or sender. Clicking it **only opens the Clipboard pane**; it never
+  copies. It is withdrawn when the offer is copied, dismissed, expires or the link drops.
+- **Nothing is ever opened, run or pasted** on the Mac's behalf: an offered link gets no Open button.
+- Offers live in the main process and reach **only the main window** (S4 events, `docs/ipc-authorization.md`).
+  No offer text is logged at any level; log lines carry byte counts and the `origin` class only.
+- **No setting** applies selections automatically in this build. Whether one is wanted is a later
+  decision, and it would never make an absent or unknown `origin` auto-apply.
+
+**`clip.request` is unchanged:** its ack is applied, because a person on the Mac pressed the button that
+asked for it — the Mac-side action this rule exists to require.
+
+**Restore is guarded.** It puts a displaced entry back **only while this Mac's clipboard still holds the
+entry that displaced it**. If something newer has been copied since, Restore refuses with a sentence
+rather than overwrite it.
 
 **From the phone this is only ever sent while the app is focused**, which in practice means the
 moment a person brings ConnectSuite to the front after copying something. That is not a limitation of
@@ -2700,8 +2758,9 @@ notification — no callback, no KVO, no notification-centre event — and Elect
 500 ms floor: 0.02 % of one core at this namespace's own 64 KB cap. A read does **not** bump
 `changeCount`, which is what stops the watcher being its own stimulus.
 
-**An arriving entry is applied on the Mac and offered on the phone**, and the asymmetry is a
-measurement rather than a preference. It was *offered on both* in the first build, with the note that
+**An arriving entry with `origin: "clipboard"` is applied on the Mac** (anything else is offered — see
+*Provenance* above) **and is offered on the phone**, and the asymmetry is a measurement rather than a
+preference. It was *offered on both* in the first build, with the note that
 revisiting it meant adding an undo rather than removing the confirmation. That is what happened.
 
 - **The Mac applies immediately.** ⌘V works with nothing clicked, which is the whole point of the
