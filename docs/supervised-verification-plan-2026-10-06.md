@@ -16,7 +16,7 @@
 | Code it runs | `desktop/dist`, built **2026-10-04 17:09:41**, manifest `4f40b0e9…` (unchanged by this preparation, checked before and after). It predates **29** Mac commits: none of S1, S2, S2b, S3, S4, S6, S7, defect 190, or the Activity call-data rewrite is running |
 | Link | Connected to the SM-S938B over Wi-Fi since 16:42 (Mac log). Stored pairing is **legacy** (`paired` has no `pairing: 2`) |
 | **Clipboard watcher** | **`watchClipboard = true`** — the live app is *already* sending every new Mac copy (plain text, unmarked) to the phone. Existing behaviour, untouched |
-| Phone | **Not on USB** (`adb devices` answered with an empty list; no cold-start banner). Installed version, `lastUpdateTime`, signer and grants **could not be read** this sitting. Last recorded installs in the docs are 2026-09-29; the camera runs of 10-02/10-05 installed builds too |
+| Phone | **Read 2026-10-06 22:26** (`phone-readonly-2026-10-06.md`): debug build only, versionCode 1, `lastUpdateTime` **2026-10-04 17:08:34** (predates every phone commit since 10-05), signer `d3a505d2…7d26` = the new APK's, declared permissions identical, user 0 holds all 14 runtime grants; user 95 has the package with no grants; user 150 is a protected profile without it. Installed `base.apk` (`b0ad2a47…`) pulled as the rollback copy |
 | Legacy migration marker | `legacy-migration.json`: settings, activity merge and re-pair decision all recorded (2026-09-18) — none run again |
 
 ## 2. Artifacts
@@ -120,9 +120,8 @@ Still irreversible for the rows it does redact, and still unknown how many live 
 ## 4. Install and signing compatibility
 
 - `adb install -r` of this APK over the installed debug build is a same-package, same-signer,
-  same-versionCode (1) update: the platform accepts it with no `-d`. **Unverified until the phone is on USB**:
-  the installed signer and versionCode must be read first (`pm path` + `apksigner`, `dumpsys package` —
-  read-only through `scripts/adb-pinned.sh`).
+  same-versionCode (1) update: the platform accepts it with no `-d`. **Verified 2026-10-06 22:26** by
+  reading the installed `base.apk`'s signer and versionCode (`phone-readonly-2026-10-06.md`).
 - Data preserved by `-r`: Room DB (schema **version 1**, no migration in this APK), trust store, prefs,
   runtime grants, notification-listener and accessibility bindings (`CLAUDE.md`, measured on this phone).
   **Cost:** `LinkService` is not running afterwards — start `MainActivity` by name and confirm with
