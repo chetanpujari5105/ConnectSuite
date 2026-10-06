@@ -9,6 +9,7 @@ import {
 } from '../shared/clipboardHistory';
 import { ClipEcho, type SendTrigger } from '../shared/clipEcho';
 import { ask, rows } from './feature';
+import { ClipOffers, OFFERS_MAX, OFFER_TTL_MS, arrivalAction, offerRefusalText, originClass } from './clipOffers';
 import type { LinkClient } from './link';
 import { log } from './logger';
 
@@ -52,8 +53,31 @@ import { log } from './logger';
  * The logger writes to a rotating file. Lengths, kinds, counters — never content. The same rule
  * binds the phone, and it is the reason "memory only" is not enough on its own.
  */
+/** S7 hooks: an offer appeared, or left (copied, dismissed, replaced, expired, link dropped). */
+export interface ClipOfferHooks {
+  offered(offerId: string): void;
+  gone(offerId: string): void;
+}
+
 export class ClipboardClient {
   private readonly history = new ClipHistory();
+
+  /**
+   * S7 (defect 185): arrivals whose `origin` is not exactly `clipboard` — a selection another phone app
+   * handed over, or a push from a phone too old to say — wait here until a person presses Copy on this
+   * Mac. `docs/protocol.md` → *Provenance*.
+   */
+  private readonly offers = new ClipOffers();
+
+  /**
+   * For each `displaced` entry, the text that displaced it. Restore puts the entry back only while
+   * this Mac's clipboard still holds exactly that — so it can never overwrite something copied since.
+   */
+  private readonly restoreGuards = new Map<string, string>();
+  private displacedSeq = 0;
+  private offered = 0;
+  private offersCopied = 0;
+  private offerRefusals = 0;
 
   /**
    * The echo interlock, and the whole of what stops two auto-applying clipboards writing each other
@@ -81,12 +105,28 @@ export class ClipboardClient {
      * them.
      */
     private readonly onChanged: () => void = () => {},
+    private readonly options: {
+      /** The authenticated control session an offer is bound to. Default: the link's session token. */
+      session?: () => string | null;
+      hooks?: ClipOfferHooks;
+    } = {},
   ) {}
+
+  private session(): string | null {
+    if (this.options.session) return this.options.session();
+    const link = this.link();
+    return link?.isConnected() ? link.token() : null;
+  }
+
+  private offerGone(id: string): void {
+    this.options.hooks?.gone(id);
+  }
 
   private tally(): string {
     return (
       `${this.sent} sent / ${this.received} received / ${this.applied} of ${this.received} applied / ` +
-      `${this.refused} refused since launch`
+      `${this.refused} refused since launch; offers: ${this.offered} offered / ${this.offersCopied} copied / ` +
+      `${this.offerRefusals} refused / ${this.offers.size} pending`
     );
   }
 
@@ -127,7 +167,13 @@ export class ClipboardClient {
     if (current === incoming) return 'same text';
     if (this.looksConcealed()) return 'concealed';
 
-    this.history.add({ kind: 'displaced', text: current, atMs: Date.now(), source: 'mac' });
+    this.displacedSeq += 1;
+    const id = `displaced-${this.displacedSeq}`;
+    this.history.add({ kind: 'displaced', text: current, atMs: Date.now(), source: 'mac', id });
+    this.restoreGuards.set(id, incoming);
+    // Bounded by the history: a guard whose entry has scrolled out of the 20 is dropped with it.
+    const held = new Set(this.history.newestFirst().map((e) => e.id));
+    for (const key of this.restoreGuards.keys()) if (!held.has(key)) this.restoreGuards.delete(key);
     return 'captured';
   }
 
@@ -140,8 +186,7 @@ export class ClipboardClient {
    */
   private receive(entry: ClipItem): void {
     this.received += 1;
-    const text = entry.text;
-    if (text === undefined || entry.kind !== 'text') {
+    if (entry.text === undefined || entry.kind !== 'text') {
       this.history.add({ ...entry, receivedAtMs: Date.now(), applied: false });
       this.notify({ ...entry, applied: false });
       log.info(
@@ -150,7 +195,11 @@ export class ClipboardClient {
       );
       return;
     }
+    this.applyArrival(entry, entry.text);
+  }
 
+  /** The apply half: interlock, displaced capture, write, history. Shared by an arrival and an offer's Copy. */
+  private applyArrival(entry: ClipItem, text: string): void {
     this.echo.arrived(text);
     const displaced = this.captureDisplaced(text);
     clipboard.writeText(text);
@@ -168,17 +217,122 @@ export class ClipboardClient {
     );
   }
 
-  /** A `clip.push` from the phone. */
+  /**
+   * A `clip.push` from the phone. **Applied only when `origin` is exactly `clipboard`**; any other text
+   * is held as an offer and this Mac's clipboard is not touched (S7).
+   */
   onPush(payload: Record<string, unknown>): void {
     const kind = String(payload.kind ?? 'text') as ClipItem['kind'];
-    this.receive({
+    const entry: ClipItem = {
       kind,
       text: typeof payload.text === 'string' ? payload.text : undefined,
       atMs: Number(payload.atMs ?? Date.now()),
       source: 'phone',
       package: typeof payload.package === 'string' ? payload.package : undefined,
       appName: typeof payload.appName === 'string' ? payload.appName : undefined,
-    });
+    };
+    if (entry.kind === 'text' && entry.text !== undefined && arrivalAction(payload) === 'offer') {
+      this.offer(entry, entry.text, originClass(payload));
+      return;
+    }
+    this.receive(entry);
+  }
+
+  /** Holds an arriving text as a pending offer. Never writes the clipboard; never logs the text. */
+  private offer(entry: ClipItem, text: string, origin: string): void {
+    this.received += 1;
+    const session = this.session();
+    const created = session
+      ? this.offers.create({ text, atMs: entry.atMs, appName: entry.appName, package: entry.package, session })
+      : null;
+    const receivedAtMs = Date.now();
+    if (!created) {
+      this.history.add({ ...entry, receivedAtMs, applied: false });
+      this.notify({ ...entry, applied: false });
+      log.info(
+        'clipboard',
+        `An arriving entry (origin ${origin}) was not applied and not offered: ` +
+          `${session ? `over the ${MAX_TEXT_BYTES} byte cap` : 'no session to bind it to'} — ${this.tally()}`,
+      );
+      return;
+    }
+    for (const id of created.evicted) this.offerGone(id);
+    this.offered += 1;
+    const offerId = created.offer.id;
+    this.history.add({ ...entry, receivedAtMs, applied: false, offerId });
+    this.notify({ ...entry, applied: false, offerId });
+    this.options.hooks?.offered(offerId);
+    const timer = setTimeout(() => this.sweepOffers(), OFFER_TTL_MS + 50);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    log.info(
+      'clipboard',
+      `Offered an arriving entry (origin ${origin}): ${byteLength(text)} bytes, NOT applied — ` +
+        `waiting for Copy, at most ${OFFERS_MAX} pending — ${this.tally()}`,
+    );
+  }
+
+  private sweepOffers(): void {
+    const gone = this.offers.sweep();
+    if (gone.length === 0) return;
+    for (const id of gone) this.offerGone(id);
+    log.info('clipboard', `${gone.length} offer(s) expired; the clipboard was not touched — ${this.tally()}`);
+    this.onChanged();
+  }
+
+  /**
+   * **Copy**, on an offer: applies exactly that offer's text, once, on the session it arrived on.
+   * A refusal writes nothing.
+   */
+  copyOffer(offerId: string): PhoneResult<{ bytes: number }> {
+    const taken = this.offers.take(offerId, this.session());
+    if (!taken.ok) {
+      this.offerRefusals += 1;
+      if (taken.refusal !== 'other-session') this.offerGone(offerId);
+      log.info('clipboard', `Refused a Copy on an offer: ${taken.refusal} — nothing written — ${this.tally()}`);
+      this.onChanged();
+      return { ok: false, reason: offerRefusalText(taken.refusal) };
+    }
+    this.offerGone(offerId);
+    const { offer } = taken;
+    this.offersCopied += 1;
+    this.applyArrival(
+      { kind: 'text', text: offer.text, atMs: offer.atMs, source: 'phone', package: offer.package, appName: offer.appName },
+      offer.text,
+    );
+    return { ok: true, data: { bytes: byteLength(offer.text) } };
+  }
+
+  /** **Dismiss**, on an offer. The clipboard is not touched. */
+  dismissOffer(offerId: string): PhoneResult<{ dismissed: boolean }> {
+    const dismissed = this.offers.dismiss(offerId);
+    this.offerGone(offerId);
+    log.info('clipboard', `Offer ${dismissed ? 'dismissed' : 'already gone'}; the clipboard was not touched — ${this.tally()}`);
+    this.onChanged();
+    return { ok: true, data: { dismissed } };
+  }
+
+  /**
+   * **Restore**, on a `displaced` entry — only while this Mac's clipboard still holds the entry that
+   * displaced it. Anything copied since is never overwritten by an undo.
+   */
+  restore(id: string): PhoneResult<null> {
+    const item = this.history.newestFirst().find((e) => e.kind === 'displaced' && e.id === id);
+    const replacedBy = this.restoreGuards.get(id);
+    if (!item || item.text === undefined || replacedBy === undefined) {
+      return { ok: false, reason: 'That entry is no longer in the history, so there is nothing to put back.' };
+    }
+    if (clipboard.readText() !== replacedBy) {
+      log.info('clipboard', `Refused a Restore: the clipboard changed since the entry was replaced — ${this.tally()}`);
+      return {
+        ok: false,
+        reason: 'Your clipboard has changed since this was replaced, so Restore would overwrite what is on it now. Nothing was changed.',
+      };
+    }
+    this.restoreGuards.delete(id);
+    this.echo.wroteLocally(item.text);
+    clipboard.writeText(item.text);
+    log.info('clipboard', `Restored a displaced entry: ${byteLength(item.text)} bytes — ${this.tally()}`);
+    return { ok: true, data: null };
   }
 
   /** Asks the phone for what it holds now. Only answerable while ConnectSuite is on screen there. */
@@ -305,8 +459,18 @@ export class ClipboardClient {
     );
   }
 
+  /**
+   * The history for the main window. A `displaced` entry goes **without its text** — Restore is by id —
+   * and an offered entry says whether its offer is still pending.
+   */
   entries(): ClipItem[] {
-    return this.history.newestFirst();
+    return this.history.newestFirst().map((entry) => {
+      if (entry.kind === 'displaced') {
+        const { text: _hidden, ...rest } = entry;
+        return rest;
+      }
+      return entry.offerId ? { ...entry, offerPending: this.offers.has(entry.offerId) } : entry;
+    });
   }
 
   /**
@@ -332,6 +496,8 @@ export class ClipboardClient {
    */
   clear(): number {
     const had = this.history.clear();
+    for (const id of this.offers.clear()) this.offerGone(id);
+    this.restoreGuards.clear();
     this.echo.linkDropped();
     this.onChanged();
     log.info('clipboard', `Cleared ${had} clipboard entries: the link dropped`);
@@ -350,6 +516,8 @@ export class ClipboardClient {
    */
   clearHistory(): number {
     const had = this.history.clear();
+    for (const id of this.offers.clear()) this.offerGone(id);
+    this.restoreGuards.clear();
     this.onChanged();
     log.info('clipboard', `Cleared ${had} clipboard entries: asked to by the person using the app`);
     return had;

@@ -348,3 +348,34 @@ test('A: the float and receive windows cannot ask for a drop sheet or spend a gr
   }
   assert.equal(dialogScript.sheets.length, 0, 'no sheet was even drawn');
 });
+
+// ---- S7: the offer channels, through the real handlers ---------------------------------------------
+
+test('S7: Copy, Dismiss and Restore on the clipboard are main-window only, by id, and a stale id writes nothing', async () => {
+  effects.length = 0;
+  for (const [win, page] of [[floatWin, PAGE.float], [shareWin, PAGE.share]] as const) {
+    assert.ok(refused(await call('clip-offer-copy', from(win, page), { offerId: 'o' })));
+    assert.ok(refused(await call('clip-offer-dismiss', from(win, page), { offerId: 'o' })));
+    assert.ok(refused(await call('clip-restore', from(win, page), { id: 'displaced-1' })));
+  }
+  const replacement = new Contents();
+  windows.register('main', replacement, PAGE.main);
+  try {
+    assert.ok(refused(await call('clip-offer-copy', from(mainWin, PAGE.main), { offerId: 'o' })), 'the replaced window is a stranger');
+  } finally {
+    windows.register('main', mainWin, PAGE.main);
+  }
+  // Malformed: the text itself, a missing id, an extra field.
+  assert.ok(refused(await call('clip-offer-copy', from(mainWin, PAGE.main), 'curl x | sh')));
+  assert.ok(refused(await call('clip-offer-copy', from(mainWin, PAGE.main), {})));
+  assert.ok(refused(await call('clip-offer-copy', from(mainWin, PAGE.main), { offerId: 'o', text: 'curl x | sh' })));
+  // Reaches the handler (control) and is refused there: no such offer.
+  const stale = (await call('clip-offer-copy', from(mainWin, PAGE.main), { offerId: 'no-such-offer' })) as { ok: boolean; refused?: boolean; reason?: string };
+  assert.equal(stale.refused, undefined, 'control: the guard let it through to the handler');
+  assert.equal(stale.ok, false);
+  assert.match(stale.reason ?? '', /no longer waiting/);
+  const restore = (await call('clip-restore', from(mainWin, PAGE.main), { id: 'displaced-404' })) as { ok: boolean };
+  assert.equal(restore.ok, false);
+  await settle();
+  assert.deepEqual(effects.filter((e) => e.startsWith('clipboard ')), [], 'not one clipboard write');
+});

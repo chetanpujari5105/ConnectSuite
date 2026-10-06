@@ -210,6 +210,10 @@ interface ConnectBridge {
     { ok: true; data: ClipEntryRow[] } | { ok: false; reason?: string; fixHint?: string }
   >;
   clipUse(text: string): Promise<{ ok: true; data: null } | { ok: false; reason?: string }>;
+  /** S7: Copy and Dismiss on an offer, by id. Restore on a displaced entry, by id. */
+  clipOfferCopy(offerId: string): Promise<{ ok: true; data: { bytes: number } } | { ok: false; reason?: string }>;
+  clipOfferDismiss(offerId: string): Promise<{ ok: true; data: { dismissed: boolean } } | { ok: false; reason?: string }>;
+  clipRestore(id: string): Promise<{ ok: true; data: null } | { ok: false; reason?: string }>;
   /** Empties the list. Not the pasteboard and not the echo interlock — see `clearHistory`. */
   clipClear(): Promise<
     { ok: true; data: { cleared: number } } | { ok: false; reason?: string; fixHint?: string }

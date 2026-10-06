@@ -56,6 +56,12 @@ export interface ClipItem {
    * entry*, which is a different fact from `false`, and the pane draws the two differently.
    */
   applied?: boolean;
+  /** A `displaced` entry's local handle, for Restore. **Local; never on the wire.** */
+  id?: string;
+  /** Set when the arrival was **offered** rather than applied (S7). **Local; never on the wire.** */
+  offerId?: string;
+  /** Whether that offer still waits for Copy — computed when the history is read. **Local.** */
+  offerPending?: boolean;
 }
 
 /** UTF-8 bytes, not `String.length` — an emoji is 2 units and 4 bytes, and the wire carries bytes. */

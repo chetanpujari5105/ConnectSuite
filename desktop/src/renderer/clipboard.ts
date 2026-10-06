@@ -67,6 +67,11 @@ interface ClipEntryRow {
   receivedAtMs?: number;
   /** Whether it reached this Mac's pasteboard. `undefined` is *not asked*, which is not `false`. */
   applied?: boolean;
+  /** A `displaced` entry's handle for Restore. Its text never reaches this page. */
+  id?: string;
+  /** S7: set when the arrival was **offered** rather than applied; `offerPending` while Copy can still use it. */
+  offerId?: string;
+  offerPending?: boolean;
 }
 
 /** Which of the three filters is showing. See the markup for why it is not History / Favourites. */
@@ -95,6 +100,11 @@ interface ClipBridge {
   clipRequest(): Promise<ClipResult<ClipEntryRow>>;
   clipHistory(): Promise<ClipResult<ClipEntryRow[]>>;
   clipUse(text: string): Promise<ClipResult<null>>;
+  /** S7: Copy and Dismiss name the offer, never its text — the main process holds it. */
+  clipOfferCopy(offerId: string): Promise<ClipResult<{ bytes: number }>>;
+  clipOfferDismiss(offerId: string): Promise<ClipResult<{ dismissed: boolean }>>;
+  /** Restore names the displaced entry; refused if the clipboard changed since it was replaced. */
+  clipRestore(id: string): Promise<ClipResult<null>>;
   /** `applied` says whether it reached the pasteboard — a `sensitive` or `empty` entry does not. */
   onClipArrived(callback: (entry: ClipEntryRow & { applied?: boolean }) => void): void;
   onClipChanged(callback: () => void): void;
@@ -174,6 +184,8 @@ function clipDirection(entry: ClipEntryRow): { label: string; icon: string } | n
  * because the design has no notion of an entry that arrived and was not applied.
  */
 function clipRowBadge(entry: ClipEntryRow): { text: string; tone: string } {
+  // S7: an offer is not on the clipboard, and its badge says so before anything else does.
+  if (entry.offerId) return { text: 'OFFER', tone: 'warn' };
   switch (entry.kind) {
     case 'text':
       return openableUrl(entry.text) ? { text: 'URL', tone: 'url' } : { text: 'Aa', tone: 'text' };
@@ -192,6 +204,7 @@ function clipRowBadge(entry: ClipEntryRow): { text: string; tone: string } {
 
 /** The detail column's *Type* row. The badge in words. */
 function clipTypeLabel(entry: ClipEntryRow): string {
+  if (entry.offerId) return 'Sent by another app on the phone — offered, not copied';
   switch (entry.kind) {
     case 'text':
       return openableUrl(entry.text) ? 'Link / URL' : 'Text';
@@ -243,6 +256,20 @@ function clipTimeline(entry: ClipEntryRow): ClipStep[] {
       { label: 'Copied on this Mac', at: entry.atMs, clock: 'mac', tone: 'done' },
       { label: 'Sent to the phone — what it did with it is in Activity', tone: 'unknown' },
     ];
+  }
+  if (entry.offerId) {
+    // S7: the phone did not read its clipboard here — another app handed this text over, so the first
+    // step says that, and the last says what this Mac is waiting for.
+    const offered: ClipStep[] = [{ label: 'Sent from an app on the phone', at: entry.atMs, clock: 'phone', tone: 'done' }];
+    if (entry.receivedAtMs !== undefined) {
+      offered.push({ label: 'Arrived on this Mac — not copied', at: entry.receivedAtMs, clock: 'mac', tone: 'done' });
+    }
+    offered.push(
+      entry.offerPending
+        ? { label: 'Waiting for you to press Copy', tone: 'unknown' }
+        : { label: 'Not put on this Mac’s clipboard — the offer ended', tone: 'refused' },
+    );
+    return offered;
   }
   const steps: ClipStep[] = [
     { label: 'The phone read its clipboard', at: entry.atMs, clock: 'phone', tone: 'done' },
@@ -335,9 +362,10 @@ class ClipboardView {
     // ours.
     this.wall.textContent =
       'Copy anything on this Mac and it goes to your phone on its own — the button is there if you ' +
-      'want it, but you should not need it. Anything the phone sends lands on this Mac’s clipboard ' +
+      'want it, but you should not need it. The phone’s own clipboard lands on this Mac’s clipboard ' +
       'the moment it arrives, so ⌘V just works, and whatever the clipboard held is kept below so ' +
-      'you can put it back.';
+      'you can put it back. Text another app on the phone sends with Send to Mac is only offered: ' +
+      'it waits here until you press Copy.';
 
     // **Whose limit it is, said in the first clause.** The previous line was accurate and ownerless
     // — *"Android does not let any app read the clipboard in the background, so the phone sends
@@ -434,6 +462,19 @@ class ClipboardView {
       // what it had just replaced. Measured on hardware, 2026-09-02: after an auto-apply the list
       // held the arrival and the *previous* displaced row, and the one belonging to that arrival
       // appeared only on the next refresh. The undo was missing at the one moment it exists for.
+      if (entry.offerId) {
+        // S7: an offer is selected so its Copy is one click away, and the sentence says it is NOT on
+        // the clipboard. No auto-open, no paste, nothing else happens.
+        this.selected = ClipboardView.keyOf(entry);
+        this.prepend({ ...entry, offerPending: true });
+        void this.refresh();
+        this.say(
+          `${entry.appName ? `From ${entry.appName} on your phone` : 'From your phone'} — not on this Mac’s ` +
+            'clipboard. Review it, then press Copy to use it.',
+          false,
+        );
+        return;
+      }
       this.prepend(entry);
       void this.refresh();
       // Says which of the two things happened rather than assuming the happy one. A `sensitive` or
@@ -710,25 +751,57 @@ class ClipboardView {
     const actions = document.createElement('div');
     actions.className = 'clip-detail-actions';
 
-    // Restore and Use this are the same call and two different sentences: one puts an older
-    // entry on the clipboard, the other undoes an automatic write. Naming them the same thing
-    // would leave the undo unlabelled on the one row that exists to be an undo.
-    if ((entry.kind === 'text' || entry.kind === 'displaced') && entry.text) {
-      const restoring = entry.kind === 'displaced';
+    if (entry.offerId) {
+      // S7: an offer gets Copy and Dismiss, both naming the offer — never the generic Copy, which would
+      // send this page's copy of the text, and never Open. Once the offer has ended there is nothing
+      // to press: it is history.
+      if (entry.offerPending) {
+        const offerId = entry.offerId;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'button-primary clip-offer-copy';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', () => {
+          void this.bridge.clipOfferCopy(offerId).then((result) => {
+            this.say(result.ok ? 'On this Mac’s clipboard now — ⌘V to paste.' : (result.reason ?? 'Nothing was copied.'), !result.ok);
+            void this.refresh();
+          });
+        });
+        const dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.className = 'button-secondary clip-offer-dismiss';
+        dismiss.textContent = 'Dismiss';
+        dismiss.addEventListener('click', () => {
+          void this.bridge.clipOfferDismiss(offerId).then(() => {
+            this.say('Dismissed. This Mac’s clipboard was not touched.', false);
+            void this.refresh();
+          });
+        });
+        actions.append(copy, dismiss);
+      }
+    } else if (entry.kind === 'displaced' && entry.id) {
+      // Restore by id: the text never reaches this page, and the main process refuses if anything has
+      // been copied since — an undo must not overwrite something newer.
+      const id = entry.id;
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'button-primary clip-use';
+      restore.textContent = 'Restore';
+      restore.addEventListener('click', () => {
+        void this.bridge.clipRestore(id).then((result) => {
+          this.say(result.ok ? 'Put back on this Mac’s clipboard.' : (result.reason ?? 'Nothing was changed.'), !result.ok);
+          void this.refresh();
+        });
+      });
+      actions.append(restore);
+    } else if (entry.kind === 'text' && entry.text) {
       const use = document.createElement('button');
       use.type = 'button';
       use.className = 'button-primary clip-use';
-      use.textContent = restoring ? 'Restore' : 'Copy';
+      use.textContent = 'Copy';
       const text = entry.text;
       use.addEventListener('click', () => {
-        void this.bridge
-          .clipUse(text)
-          .then(() =>
-            this.say(
-              restoring ? 'Put back on this Mac’s clipboard.' : 'Copied to this Mac’s clipboard.',
-              false,
-            ),
-          );
+        void this.bridge.clipUse(text).then(() => this.say('Copied to this Mac’s clipboard.', false));
       });
       actions.append(use);
 
@@ -736,7 +809,7 @@ class ClipboardView {
       // decided with its own regex would eventually draw a button the main process refuses, or
       // worse, argue for one it should not.
       const url = openableUrl(text);
-      if (url && !restoring) {
+      if (url) {
         const open = document.createElement('button');
         open.type = 'button';
         open.className = 'button-secondary';

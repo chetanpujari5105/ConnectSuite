@@ -25,7 +25,7 @@ import './clipboard';
  * leaves unmeasured.
  */
 
-type Row = { kind: string; text?: string; atMs: number; source: string; applied?: boolean };
+type Row = { kind: string; text?: string; atMs: number; source: string; applied?: boolean; id?: string; offerId?: string; offerPending?: boolean; appName?: string };
 
 /** A bridge that records what was asked of it and hands back what a test tells it to. */
 class FakeBridge {
@@ -46,6 +46,21 @@ class FakeBridge {
   async clipHistory() {
     this.calls.push('clipHistory');
     return { ok: true as const, data: this.history };
+  }
+  /** S7: what Copy/Dismiss answer. */
+  offerCopyResult: { ok: true; data: { bytes: number } } | { ok: false; reason: string } = { ok: true, data: { bytes: 1 } };
+  async clipOfferCopy(offerId: string) {
+    this.calls.push(`clipOfferCopy:${offerId}`);
+    return this.offerCopyResult;
+  }
+  async clipOfferDismiss(offerId: string) {
+    this.calls.push(`clipOfferDismiss:${offerId}`);
+    return { ok: true as const, data: { dismissed: true } };
+  }
+  restoreResult: { ok: true; data: null } | { ok: false; reason: string } = { ok: true, data: null };
+  async clipRestore(id: string) {
+    this.calls.push(`clipRestore:${id}`);
+    return this.restoreResult;
   }
   async clipUse(text: string) {
     this.calls.push(`clipUse:${text}`);
@@ -172,7 +187,8 @@ test('defect 58 — an arrival draws its Restore row without a second click', as
   // What the main process holds after an auto-apply: the arrival, and the clipboard it displaced.
   pane.bridge.history = [
     { kind: 'text', text: 'from the phone', atMs: 2, source: 'phone' },
-    { kind: 'displaced', text: 'what I was about to paste', atMs: 2, source: 'mac' },
+    // As the main process now sends it: an id for Restore, and no text (S7).
+    { kind: 'displaced', atMs: 2, source: 'mac', id: 'displaced-1' },
   ];
   pane.bridge.fireArrived({ kind: 'text', text: 'from the phone', atMs: 2, source: 'phone', applied: true });
   await settle();
@@ -194,7 +210,8 @@ test('a displaced row never renders the text it holds, even here', async () => {
   // the drawn tree rather than against `clipRowText`, because the row could leak it by any other
   // route — a title, a second body, a debug span — and only the tree can say it did not.
   const secret = 'correct-horse-battery-staple';
-  const pane = mount([{ kind: 'displaced', text: secret, atMs: 1, source: 'mac' }]);
+  // The text is present here on purpose: the worst case, a main process that leaked it to the page.
+  const pane = mount([{ kind: 'displaced', text: secret, atMs: 1, source: 'mac', id: 'displaced-1' }]);
   await settle();
 
   assert.ok(!pane.list.textContent.includes(secret), 'the pane drew a displaced entry’s text');
@@ -463,4 +480,63 @@ test('every row that crossed the link says which way, and the one that did not s
   assert.equal(rows[0]!.queryAll('.clip-direction')[0]?.textContent, 'From phone');
   assert.equal(rows[1]!.queryAll('.clip-direction')[0]?.textContent, 'To phone');
   assert.equal(rows[2]!.queryAll('.clip-direction').length, 0, 'a displaced row claimed a direction');
+});
+
+// ---- S7 (defect 185): offers ----------------------------------------------------------------------
+
+const OFFER: Row = {
+  kind: 'text', text: 'https://evil.example/run.sh', atMs: 5, source: 'phone', applied: false,
+  offerId: 'offer-1', offerPending: true, appName: 'Some App',
+};
+
+test('S7: an arriving offer is selected, says it is NOT on the clipboard, and offers Copy and Dismiss — never Open', async () => {
+  const pane = mount([]);
+  await settle();
+  pane.bridge.history = [OFFER];
+  pane.bridge.fireArrived({ ...OFFER, offerPending: undefined });
+  await settle();
+  assert.match(pane.notice.textContent, /not on this Mac’s clipboard/);
+  assert.ok(!pane.notice.textContent.includes('⌘V'), 'an offer must not read as pasteable');
+  const buttons = pane.detail.queryAll('button').map((b) => b.textContent);
+  assert.deepEqual(buttons, ['Copy', 'Dismiss'], 'no Open on an offered link, no generic Copy');
+  assert.deepEqual(pane.bridge.calls.filter((c) => !c.startsWith('clipHistory')), [], 'arrival alone asks the main process for nothing');
+});
+
+test('S7: Copy names the offer by id and never sends the text; Dismiss names it too', async () => {
+  const pane = mount([OFFER]);
+  await settle();
+  pane.detail.queryAll('button').find((b) => b.textContent === 'Copy')!.click();
+  await settle();
+  assert.ok(pane.bridge.calls.includes('clipOfferCopy:offer-1'));
+  assert.ok(!pane.bridge.calls.some((c) => c.startsWith('clipUse:')), 'Copy on an offer must not go through clip-use with this page’s text');
+  pane.detail.queryAll('button').find((b) => b.textContent === 'Dismiss')!.click();
+  await settle();
+  assert.ok(pane.bridge.calls.includes('clipOfferDismiss:offer-1'));
+});
+
+test('S7: a refused Copy (stale, expired, other session) is said as a problem, not as success', async () => {
+  const pane = mount([OFFER]);
+  await settle();
+  pane.bridge.offerCopyResult = { ok: false, reason: 'That offer expired after 10 minutes. Nothing was copied.' };
+  pane.detail.queryAll('button').find((b) => b.textContent === 'Copy')!.click();
+  await settle();
+  assert.match(pane.notice.textContent, /expired/);
+  assert.ok(!pane.notice.textContent.includes('⌘V'));
+});
+
+test('S7: an offer that has ended has nothing to press', async () => {
+  const pane = mount([{ ...OFFER, offerPending: false }]);
+  await settle();
+  assert.deepEqual(pane.detail.queryAll('button').map((b) => b.textContent), []);
+});
+
+test('Restore names the displaced entry by id; a refusal is said, not hidden', async () => {
+  const pane = mount([{ kind: 'displaced', atMs: 1, source: 'mac', id: 'displaced-7' }]);
+  await settle();
+  pane.bridge.restoreResult = { ok: false, reason: 'Your clipboard has changed since this was replaced, so Restore would overwrite what is on it now. Nothing was changed.' };
+  pane.detail.queryAll('button').find((b) => b.textContent === 'Restore')!.click();
+  await settle();
+  assert.ok(pane.bridge.calls.includes('clipRestore:displaced-7'));
+  assert.ok(!pane.bridge.calls.some((c) => c.startsWith('clipUse:')));
+  assert.match(pane.notice.textContent, /changed since/);
 });

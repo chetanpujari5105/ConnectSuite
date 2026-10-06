@@ -358,6 +358,14 @@ contextBridge.exposeInMainWorld('connect', {
   clipPhoneHistory: (limit?: number): Promise<PhoneResult<ClipEntry[]>> =>
     ipcRenderer.invoke('clip-phone-history', limit),
   clipUse: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-use', text),
+  /** S7: Copy on an offer — by id; the main process holds the text and applies it once. */
+  clipOfferCopy: (offerId: string): Promise<PhoneResult<{ bytes: number }>> =>
+    ipcRenderer.invoke('clip-offer-copy', { offerId }),
+  /** S7: Dismiss an offer. The clipboard is not touched. */
+  clipOfferDismiss: (offerId: string): Promise<PhoneResult<{ dismissed: boolean }>> =>
+    ipcRenderer.invoke('clip-offer-dismiss', { offerId }),
+  /** Restore a displaced entry by id — refused if the clipboard changed since it was replaced. */
+  clipRestore: (id: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-restore', { id }),
   /** Empties the list. Not the pasteboard, and not the echo interlock — see `clearHistory`. */
   clipClear: (): Promise<PhoneResult<{ cleared: number }>> => ipcRenderer.invoke('clip-clear'),
   /**

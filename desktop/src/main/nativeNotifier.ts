@@ -370,3 +370,12 @@ export class NativeNotifier {
     log.info('native-notif', `${why} — ${this.tallyLine()}`);
   }
 }
+
+/**
+ * A bare native notification, for the clipboard-offer banner (S7, `clipOfferNotifier.ts`). Here rather
+ * than in `main.ts` so that `main.ts` imports no `Notification` at all — `shareDecision.test.ts` holds it
+ * to that, so an incoming share can never grow a banner by accident.
+ */
+export function createNativeNotification(options: { title: string; body: string; silent: boolean }): Notification {
+  return new Notification(options);
+}

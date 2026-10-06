@@ -149,6 +149,9 @@ export const IPC_POLICY: Readonly<Record<string, ChannelPolicy>> = {
   'clip-clear': p(M, 'action'),
   'clip-open': p(M, 'action', [messageText]),
   'clip-use': p(M, 'action', [messageText]),
+  'clip-offer-copy': p(M, 'action', [obj({ offerId: id })]),
+  'clip-offer-dismiss': p(M, 'action', [obj({ offerId: id })]),
+  'clip-restore': p(M, 'action', [obj({ id })]),
 
   // ---- media remote, apps, device -------------------------------------------------------------
   'remote-state': p(M, 'read'),

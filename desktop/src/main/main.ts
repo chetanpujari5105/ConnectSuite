@@ -24,6 +24,8 @@ import {
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
+import { ClipOfferNotifier } from './clipOfferNotifier';
+import { arrivalAction } from './clipOffers';
 import { ClipboardWatcher } from './clipboardWatcher';
 import {
   checkWritableFolder,
@@ -93,7 +95,7 @@ import { ask } from './feature';
 import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
-import { NativeNotifier } from './nativeNotifier';
+import { NativeNotifier, createNativeNotification } from './nativeNotifier';
 import { pairRejectionCopy } from '../shared/pairRejection';
 import { buildAppMenu, type MenuRoute } from './appMenu';
 import { localPairAddress } from '../shared/pairReach';
@@ -297,10 +299,32 @@ const contacts = new ContactsClient(() => link);
  * The renderer is told whether the entry was applied, because "it is on your clipboard" and "it is
  * in your history" are two different sentences and the pane says the right one.
  */
+/**
+ * S7: the banner for a clipboard **offer** — fixed copy, no clipboard content, posted only when the window
+ * is not focused, and a click only opens the Clipboard pane. `clipOfferNotifier.ts`.
+ */
+const clipOfferNotifier = new ClipOfferNotifier(
+  createNativeNotification,
+  () => nativeNotifier.view().windowFocused,
+  () => {
+    if (!window) createWindow();
+    window?.show();
+    window?.focus();
+    sendAll('menu-route', { id: 'clipboard' });
+  },
+  () => !store.get('notificationSound'),
+  (line) => log.info('clipboard', line),
+);
 const clip = new ClipboardClient(
   () => link,
   (entry) => sendAll('clip-arrived', entry),
   () => sendAll('clip-changed'),
+  {
+    hooks: {
+      offered: (offerId) => clipOfferNotifier.announce(offerId),
+      gone: (offerId) => clipOfferNotifier.withdraw(offerId),
+    },
+  },
 );
 
 /**
@@ -1903,7 +1927,8 @@ app.whenReady().then(() => {
       const bytes = Number((message.payload as { bytes?: unknown }).bytes ?? 0);
       activity.record(
         'clipboard',
-        'Received from phone',
+        // S7: an offer is not on the clipboard, and the Activity row must not say it arrived as if it were.
+        arrivalAction(message.payload as Record<string, unknown>) === 'offer' ? 'Offered from phone — not copied' : 'Received from phone',
         bytes > 0 ? `${bytes} bytes` : 'an entry arrived',
       );
     }
@@ -2496,6 +2521,16 @@ ipc.handle('clip-use', (_event, text: string) => {
   clip.use(text);
   return { ok: true, data: null };
 });
+// S7: Copy and Dismiss on an offer name the offer, never its text — the text is looked up here, bound to
+// the session it arrived on, and an offer can be copied once. Restore names a displaced entry by id and
+// is refused if anything has been copied since.
+ipc.handle('clip-offer-copy', (_event, options: { offerId: string }) => {
+  const result = clip.copyOffer(options.offerId);
+  activity.record('clipboard', result.ok ? 'Copied an offer from phone' : 'Offer not copied', result.ok ? `${result.data.bytes} bytes` : describeFailure(result));
+  return result;
+});
+ipc.handle('clip-offer-dismiss', (_event, options: { offerId: string }) => clip.dismissOffer(options.offerId));
+ipc.handle('clip-restore', (_event, options: { id: string }) => clip.restore(options.id));
 
 ipc.handle(
   'contacts-list',
