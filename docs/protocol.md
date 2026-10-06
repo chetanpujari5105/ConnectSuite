@@ -121,7 +121,7 @@ Media remote: `remote.state`, `remote.command`, `remote.artwork`
 Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
 Share: `share.offer`, `share.respond`, `share.cancel`, `share.saved` — see [Share](#share-42501);
 `share.saved` belongs to version 2, built on both sides and unreachable while both advertise 1
-Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
+Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.proof`, `pair.confirm`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
 #### Namespace rule
@@ -3292,28 +3292,159 @@ does not do networking.
 
 ## Session tokens
 
-`hello.ack` carries a 32-byte random token, hex encoded. The video and bulk sockets must present
-it as their first frame within 10 seconds of connecting or they are dropped. A token dies with
-its control connection.
+`hello.ack` carries a 32-byte random token from the phone's CSPRNG (`SecureRandom`), hex encoded. The
+video and bulk sockets must present it as their first frame within 10 seconds of connecting or they
+are dropped. A token dies with its control connection.
 
-## Pairing
+**A token is bound to its session's Mac, not only to the session** (audit S2b). The phone accepts a
+side-channel socket only when the token resolves to a live control session **and** the TLS client
+certificate on that socket has the same fingerprint as that session's peer. A token presented by any
+other Mac — even one this phone trusts — is refused and the socket closed. A token is revoked when its
+session ends (disconnect, Forget on the phone, protocol error), so a reconnect gets a new token and the
+old one authorises nothing.
 
-The Mac renders a QR code; the phone scans it. Payload:
+**A session token is not a pairing secret and is never derived from one.** It is issued only after the
+handshake below has completed; the pairing secret never authorises anything after pairing.
+
+## Pairing (version 2)
+
+Version 2 replaced the 2026 v1 flow on **2026-10-06** (audit S1, defect 182). In v1 the Mac sent the QR's
+token to whichever TLS peer answered and pinned that peer, so anyone on the network who answered first
+became "the phone". **v1 pairing is not accepted by either side any more** — see *Compatibility*.
+
+### What each side knows before it starts
+
+The Mac renders a QR code; the phone scans it. Payload, UTF-8 JSON:
 
 ```json
-{"host":"<mac ip>","fp":"<mac cert sha256>","token":"<one time token>","name":"<mac name>"}
+{"v":2,"host":"<mac ip>","fp":"<mac cert sha256>","secret":"<64 lowercase hex>","name":"<mac name>"}
 ```
 
-`fp` is colon-separated uppercase hex of the SHA-256 over the DER certificate. The phone stores
-`fp` in its trusted-device table and thereafter accepts TLS only from peers whose certificate
-fingerprint is in that table. `token` is single-use and expires 5 minutes after the QR is drawn;
-it is presented in the `hello` payload as `pairToken` on the first connection after a scan.
+- `v` — integer, `2`. A code without `v` (a v1 Mac) is refused **at scan time** with *"This Mac's
+  Sidekick is too old to pair securely. Update it on the Mac, then scan a fresh code."*
+- `fp` — colon-separated uppercase hex of SHA-256 over the Mac's DER certificate (any punctuation is
+  tolerated on read; it is compared as 32 bytes).
+- `secret` — **the pairing secret `K`**: 32 bytes from the Mac's CSPRNG (`crypto.randomBytes`), as 64
+  lowercase hex. It is shown only inside the QR and is **never** sent on the wire, logged, persisted or
+  handed to the renderer.
+
+### The exchange
+
+All four messages travel on the control channel after a successful TLS 1.3 handshake. The phone's TLS
+layer admits the Mac's certificate when `fp` is in its trust store **or** is the fingerprint of a
+pairing currently armed on the phone; the Mac admits any certificate **only** while it has a pairing
+armed and nothing stored, and then trusts nothing until step 3 passes.
+
+1. **`hello` — Mac to phone**, with one extra field, present only while the Mac is pairing:
+   ```json
+   "pair": { "v": 2, "nonce": "<64 lowercase hex: Nm>" }
+   ```
+   `Nm` is 32 fresh CSPRNG bytes per connection attempt. The hello carries **no** `pairToken`, no
+   proof and nothing derived from `K`.
+
+2. **`pair.proof`** — phone to Mac, same envelope `id` as the `hello`:
+   ```json
+   {"type":"pair.proof","id":"<hello id>","payload":{ "v": 2, "nonce": "<Np>", "proof": "<64 hex>" }}
+   ```
+   `Np` is 32 fresh CSPRNG bytes. `proof = HMAC-SHA256(K, T("phone"))`.
+
+3. **`pair.confirm`** — Mac to phone, same envelope `id`, sent **only after** the Mac has verified the
+   phone's proof:
+   ```json
+   {"type":"pair.confirm","id":"<hello id>","payload":{ "v": 2, "proof": "<64 hex>" }}
+   ```
+   `proof = HMAC-SHA256(K, T("mac"))`.
+
+4. **`hello.ack`** — phone to Mac, as today, sent **only after** the phone has verified the Mac's proof
+   and persisted its trust. Carries the session token.
+
+**The transcript `T(role)`** is these bytes, concatenated, with no separators beyond the NULs shown:
+
+```
+"sidekick/pair/v2" 0x00  role 0x00  Fm(32)  Fp(32)  Nm(32)  Np(32)
+```
+
+- `role` is the ASCII string `phone` or `mac` — **domain separation**: a proof for one direction is
+  never valid for the other.
+- `Fm` is the SHA-256 of the Mac's certificate and `Fp` of the phone's, **as each side observed them in
+  this TLS handshake** (raw 32 bytes, not hex). An impostor's proof would have to be made with the
+  impostor's own `Fp`, and a relayed proof fails because the Mac recomputes `T` with the certificate it
+  actually sees.
+- `Nm` and `Np` are the raw 32 bytes of the two nonces. Both proofs bind both nonces, so neither can be
+  replayed into another connection.
+
+Fixed vectors, computed by an independent implementation, are `docs/fixtures/pairing-v2-vectors.json`;
+both apps' tests read the same file.
+
+**Verification** decodes `proof` from exactly 64 lowercase hex characters (anything else is invalid
+without further work), recomputes the HMAC, and compares in **constant time**
+(`crypto.timingSafeEqual` / `MessageDigest.isEqual`).
+
+### `pair.proof` — phone to Mac
+
+Sent only in answer to a `hello` that carried `pair`, from a phone armed for that Mac. Envelope `id`
+is the hello's `id`.
+
+| Field | Type | Encoding |
+|---|---|---|
+| `v` | integer | `2` |
+| `nonce` | string | `Np`, exactly 64 lowercase hex characters (32 bytes) |
+| `proof` | string | HMAC-SHA256(`K`, `T("phone")`), exactly 64 lowercase hex characters |
+
+Any other shape is a failed proof.
+
+### `pair.confirm` — Mac to phone
+
+Sent only after the Mac verified `pair.proof` on the same connection. Envelope `id` is the hello's
+`id`. The phone answers with `hello.ack` (success) or `error` + `pair.rejected` (failure); it sends no
+separate ack.
+
+| Field | Type | Encoding |
+|---|---|---|
+| `v` | integer | `2` |
+| `proof` | string | HMAC-SHA256(`K`, `T("mac")`), exactly 64 lowercase hex characters |
+
+The third new field is the hello's `pair` object: `{ "v": 2, "nonce": "<Nm, 64 lowercase hex>" }`,
+present only while the Mac is pairing. It is a field of `hello`, not a message type.
+
+### When trust is stored and data may flow
+
+| | Mac | Phone |
+|---|---|---|
+| Persists trust | on `hello.ack`, **only** if it verified `pair.proof` on this connection. Stored with `pairing: 2` | after verifying `pair.confirm`, **before** sending `hello.ack`. Recorded as v2-authenticated |
+| Before that | handles only `pair.proof`, `pair.rejected`, `error` and `hello.ack` for this hello; **every other message is dropped and counted**; no feature starts; no side channel opens; nothing is stored, not even the last address | answers only `ping`; refuses every other request as today (`UNAUTHORIZED`, then close); issues no session token; replays nothing |
+| A peer that answers `hello` with `hello.ack` and no `pair.proof` while pairing | **refused**: nothing stored, socket closed, counted as a failed attempt | — |
+
+### Lifetime of the pairing secret `K`
+
+- **Mac:** created when a code is drawn; held in memory only; discarded at the earliest of 5 minutes
+  (`PAIR_TOKEN_TTL_MS`, extended only while the same code stays on screen), a fresh code, leaving the
+  pairing screen, Forget, a completed pairing, or **8** failed phone proofs (then the screen says so and
+  draws a fresh code on request).
+- **Phone:** held in memory only, from the scan until the earliest of 5 minutes after the scan, Cancel,
+  a completed pairing, or **5** failed Mac proofs.
+- Neither side writes `K` to a log, a file, preferences, a database or the renderer.
+
+### Failures
+
+| What happened | Mac | Phone |
+|---|---|---|
+| `pair.proof` does not verify (wrong `K`, wrong certificate, altered or replayed transcript) | closes; logs *a device at `<host>` could not prove it scanned this code* with the running count; **keeps `K`** and tries the next candidate | — |
+| `pair.confirm` does not verify | — | `error` + `pair.rejected { reason: PROOF_INVALID }`, close; counts toward the 5 |
+| The connection ends mid-exchange | nothing stored; `K` kept; the next attempt uses fresh nonces | nothing stored; the arm kept |
+| The phone stored trust but the Mac never received `hello.ack` | still armed; next attempt gets `pair.rejected { NOT_ARMED }` → fresh code, scan again | the arm was retired at success |
+
+### Concurrency
+
+The Mac tries discovery candidates **one at a time**; a candidate that fails the proof does not end
+the attempt. The phone runs one exchange per connection with its own `Np`; the first `pair.confirm`
+that verifies retires the arm, and any later confirm for the same arm gets `NOT_ARMED`. A different,
+already-trusted Mac connecting while a pairing is armed for someone else is unaffected.
 
 ### `pair.rejected` — phone to Mac
 
-Sent immediately before the phone closes a connection whose `hello` carried a pair token it would
-not accept. The Mac is showing a QR code at that moment and, without this, learns only that a socket
-closed — which is indistinguishable from the network dropping.
+Sent immediately before the phone closes a connection whose pairing it would not accept. The Mac is
+showing a QR code at that moment and, without this, learns only that a socket closed.
 
 ```json
 {"type":"pair.rejected","payload":{
@@ -3324,22 +3455,49 @@ closed — which is indistinguishable from the network dropping.
 
 | `reason` | What happened | What the Mac does |
 |---|---|---|
-| `TOKEN_EXPIRED` | The QR was scanned, but more than `PAIR_TOKEN_TTL_MS` passed before the Mac connected | Draw a fresh code automatically and say the old one timed out |
-| `TOKEN_MISMATCH` | A token was presented and is not the armed one | Draw a fresh code and say the scan did not match — a stale QR was still on screen somewhere |
-| `TOKEN_MISSING` | A pairing is armed for this fingerprint and the `hello` carried no token at all | Same as mismatch. Usually an older Mac build |
+| `TOKEN_EXPIRED` | The arm is older than `PAIR_TOKEN_TTL_MS` | Draw a fresh code and say the old one timed out |
+| `TOKEN_MISMATCH` | Kept for older peers; not sent by a v2 phone | Draw a fresh code |
+| `TOKEN_MISSING` | Armed for this Mac, and its `hello` carried neither `pair` nor `pairToken`. From a v1 phone talking to a v2 Mac this is how the phone says it expected a v1 token | Say *update Sidekick on your phone* when this Mac sent `pair`; otherwise draw a fresh code |
+| `UPGRADE_REQUIRED` | Armed for this Mac, and its `hello` carried a v1 `pairToken` | — (only a v1 Mac receives it; it shows the sentence) |
+| `PROOF_INVALID` | `pair.confirm` did not verify, or `hello.pair` was malformed | Draw a fresh code |
+| `NOT_ARMED` | The Mac asked to pair and this phone is not waiting for it (expired and cleared, cancelled, or already completed) | Draw a fresh code |
+| `TOO_MANY_ATTEMPTS` | 5 failed Mac proofs; the arm is cleared | Draw a fresh code; the phone must scan again |
 
-`fingerprint` is the **connecting Mac's own** fingerprint as the phone computed it, so a Mac can tell
-a rejection meant for it from one it is merely observing. `message` is a complete sentence for a
-person, and the Mac must prefer its own copy keyed on `reason` — the string is a fallback and a log
-line, not the UI.
+`fingerprint` is the **connecting Mac's own** fingerprint as the phone computed it, so a Mac can tell a
+rejection meant for it from one it is merely observing. `message` is a complete sentence for a person,
+and the Mac prefers its own copy keyed on `reason`.
 
-**This message is only reachable when TLS succeeded**, which means the certificate was already
-pinned. A Mac that is not paired at all fails during the handshake and there is no channel to send
-anything on; the phone shows *that* case on its own screen instead. The two are different failures
-and neither substitutes for the other.
+**This message is only reachable when TLS succeeded.** A Mac the phone neither trusts nor is armed for
+fails during the handshake and there is no channel to send anything on.
 
-**The Mac must not treat a rejection as a reason to stop retrying.** The user's next action is to
-scan the fresh code, and the discovery loop has to be running when they do.
+**The Mac must not treat a rejection as a reason to stop retrying.** The user's next action is to scan
+the fresh code, and the discovery loop has to be running when they do.
+
+### Compatibility — fail closed, no fallback
+
+| Pair | Result |
+|---|---|
+| v2 Mac, v2 phone | pairs |
+| v2 Mac, **v1 phone** | the v1 phone cannot parse the v2 code (no `token`) and says it is not a pairing code; if it is somehow armed, it answers `TOKEN_MISSING` and the Mac says *update Sidekick on your phone*. **Never pairs** |
+| **v1 Mac**, v2 phone | the phone refuses the v1 code at scan time; a v1 `hello` with `pairToken` gets `UPGRADE_REQUIRED`. **Never pairs** |
+| A peer answering `hello.ack` without `pair.proof` | refused (the downgrade the old flow allowed) |
+
+There is no setting, flag or build type that re-enables v1 pairing.
+
+### Existing pairings ("legacy")
+
+A pairing stored before v2 keeps working: reconnects are pinned on both sides exactly as before. It is
+**not** marked v2-authenticated because the apps were updated — nothing proved, at the time, that the
+peer was the device the user scanned. How each side tells them apart:
+
+- **Mac:** the stored record has no `pairing: 2` field. Settings → Connection → *Trusted device* says
+  *"Paired before secure pairing — forget and pair again to verify this phone."* The log line at each
+  connection says `pairing: legacy (v1, not authenticated)`.
+- **Phone:** the Mac's fingerprint is not in the v2-authenticated set. The log line at each session says
+  the same.
+
+**Secure re-pairing:** Forget the phone on the Mac (Settings → Connection) **and** forget the Mac on the
+phone, then pair from a fresh code. Re-pairing is required for release verification.
 
 ### Pairing intent in the discovery record
 

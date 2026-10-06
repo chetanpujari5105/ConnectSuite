@@ -76,7 +76,7 @@ sealed interface ConnectStage {
      * The server turned a Mac away over its pairing token, and said which of three reasons.
      *
      * This is the **authoritative** failure: a Mac got through TLS, presented a token, and
-     * `acceptPairToken` refused it. It outranks [Expired] because the two can both apply at once —
+     * the phone's pairing check (`PhonePairing`) refused it. It outranks [Expired] because the two can both apply at once —
      * a Mac arriving one second late produces a real `TOKEN_EXPIRED` *and* satisfies the local
      * clock — and only one of them knows whether anything actually turned up. "Your Mac connected
      * too late" and "nothing ever came" are different things to tell somebody.

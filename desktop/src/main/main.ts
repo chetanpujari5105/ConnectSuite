@@ -1634,19 +1634,29 @@ app.whenReady().then(() => {
       return;
     }
     activity.record('system', 'Pairing refused', copy.headline);
-    let qr: string | null = null;
-    if (copy.refreshCode && link) {
-      try {
-        const payload = link.armPairing(localAddress(), true);
-        qr = JSON.stringify(payload);
-        log.info('pairing', `Fresh QR armed after ${rejection.reason}`);
-      } catch (error) {
-        // The screen still gets the explanation; it simply keeps the code it has. Saying nothing
-        // because the refresh failed would leave the user staring at a refused code with no reason.
-        log.warn('pairing', `Could not arm a fresh QR after ${rejection.reason}: ${String(error)}`);
-      }
-    }
-    send('pair-rejected', { ...copy, reason: rejection.reason, qr });
+    void freshCodeFor(copy.refreshCode, rejection.reason).then((qrDataUrl) =>
+      send('pair-rejected', { ...copy, reason: rejection.reason, qrDataUrl }),
+    );
+  });
+
+  /*
+   * Pairing v2: a device answered and could not prove it scanned this code. The code stays valid for the
+   * real phone unless this was the last failure the code survives, in which case it is retired and a
+   * fresh one drawn. Said on the pairing screen once per event; the log carries the running count.
+   */
+  link.on('pair-proof-failed', (info: { host: string; retired: boolean }) => {
+    activity.record('system', 'Pairing attempt refused', 'A device could not prove it scanned the code');
+    void freshCodeFor(info.retired, 'PROOF_FAILED').then((qrDataUrl) =>
+      send('pair-rejected', {
+        headline: info.retired ? 'Too many devices failed to prove this code' : 'Something on this network could not prove it scanned this code',
+        body: info.retired
+          ? 'For safety this code was retired. Scan this fresh one on your phone.'
+          : 'Nothing was trusted. Keep this code on screen — your phone will still connect.',
+        refreshCode: info.retired,
+        reason: 'PROOF_FAILED',
+        qrDataUrl,
+      }),
+    );
   });
 
   link.on('status', (status: ConnectionStatus) => {
@@ -2238,8 +2248,17 @@ ipcMain.handle('input-text', (_event, payload: { text: string; mode?: 'replace' 
 ipcMain.handle('input-global', (_event, action: string) => input.global(action));
 
 // ---- Phase 4: notifications ------------------------------------------------------------------
+let currentRoute = '';
 ipcMain.on('route-changed', (_event, screen: unknown) => {
-  if (typeof screen === 'string') nativeNotifier.setCurrentScreen(screen);
+  if (typeof screen !== 'string') return;
+  nativeNotifier.setCurrentScreen(screen);
+  // Pairing v2: the code is valid only while it is on screen. Leaving the pairing screen discards it;
+  // coming back draws it again (renderer's route handler).
+  if (currentRoute === 'pairing' && screen !== 'pairing') {
+    link?.cancelPairing('left the pairing screen');
+    stopPairIntentWatch();
+  }
+  currentRoute = screen;
 });
 
 ipcMain.handle('notif-permission', () => nativeNotifier.permissionState());
@@ -3450,6 +3469,23 @@ const QR_OPTIONS = { errorCorrectionLevel: 'M', margin: 1, width: 320 } as const
  * after a rejection would rotate the code a second time and invalidate the one the main process
  * just told the user to scan.
  */
+/**
+ * A fresh pairing code after a refusal, as an image — or null when none is wanted or it could not be
+ * armed. Rendered here so the pairing secret never crosses IPC (docs/protocol.md → Pairing (version 2)).
+ */
+async function freshCodeFor(wanted: boolean, why: string): Promise<string | null> {
+  if (!wanted || !link) return null;
+  try {
+    const armed = link.armPairing(localAddress(), true);
+    log.info('pairing', `Fresh QR armed after ${why}`);
+    return await QRCode.toDataURL(JSON.stringify(armed), QR_OPTIONS);
+  } catch (error) {
+    // The screen still gets the explanation; it simply keeps the code it has.
+    log.warn('pairing', `Could not arm a fresh QR after ${why}: ${String(error)}`);
+    return null;
+  }
+}
+
 ipcMain.handle('pairing-qr-render', async (_event, payload: unknown) => {
   if (typeof payload !== 'string' || payload.length === 0) return null;
   return QRCode.toDataURL(payload, QR_OPTIONS);
@@ -3471,8 +3507,10 @@ function stopPairIntentWatch(): void {
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
   const reachable = pairingReachable();
-  const payload = armPairingCode(link, localAddress(), rotate === true);
-  const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), QR_OPTIONS);
+  const armed = armPairingCode(link, localAddress(), rotate === true);
+  const dataUrl = await QRCode.toDataURL(JSON.stringify(armed), QR_OPTIONS);
+  // The pairing secret stays in this process: the renderer gets the image and the public fields only.
+  const payload = { host: armed.host, name: armed.name };
   // Both halves on one line, because a count of armed codes with no reachability beside it reads
   // as whichever story the reader already believes — and for a whole phase it read as the good one.
   log.info('pairing', `QR armed for ${payload.host} — scannable=${reachable}`);
@@ -3515,6 +3553,7 @@ ipcMain.handle('forget-device', () => {
   }
   store.set('paired', null);
   store.set('lastAddress', null);
+  link?.cancelPairing('phone forgotten');
   link?.stop('device forgotten');
   log.info('pairing', 'Forgot the paired phone');
 });

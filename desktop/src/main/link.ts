@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import {
   MAX_CONTROL_FRAME,
@@ -27,11 +27,34 @@ import { fingerprintOfDer, type Identity } from './identity';
 import { log } from './logger';
 import { FrameReader, writeFrame } from './framing';
 import { store } from './store';
+import { isHex64, newNonceHex, newSecretHex, PAIRING_VERSION, verifyProof, proof as pairingProof } from '../shared/pairingV2';
 
 const BACKOFF_START_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
 /** A QR code is only worth scanning for this long; matches Link.PAIR_TOKEN_TTL_MS on the phone. */
 const PAIR_TOKEN_TTL_MS = 5 * 60 * 1000;
+/** Failed phone proofs one pairing code survives before it is retired (docs/protocol.md → Pairing (version 2)). */
+export const PAIR_MAX_FAILURES = 8;
+
+/** Test seams. The product passes nothing: discovery is `discoverCandidates`, the clock is `Date.now`. */
+export interface LinkClientOptions {
+  candidates?: () => AsyncIterable<Candidate>;
+  now?: () => number;
+}
+
+/**
+ * One connection's pairing v2 exchange — set while a `hello` with `pair` is outstanding, and the only
+ * state that may make an unpinned peer trusted. `verified` turns true only when `pair.proof` checked
+ * out against the certificate this socket actually presented.
+ */
+interface PairingAttempt {
+  helloId: string;
+  secret: string;
+  macNonce: string;
+  peerFingerprint: string;
+  host: string;
+  verified: boolean;
+}
 
 interface Pending {
   resolve: (envelope: Envelope) => void;
@@ -124,7 +147,14 @@ export class LinkClient extends EventEmitter {
   private connecting = false;
 
   /** Non-null while a pairing QR is on screen; consumed by the next successful handshake. */
-  private armedPairing: { token: string; expiresAt: number } | null = null;
+  /**
+   * The pairing secret `K` and its lifetime. Memory only: never logged, persisted, or handed to the
+   * renderer (docs/protocol.md → Pairing (version 2) → Lifetime).
+   */
+  private armedPairing: { secret: string; expiresAt: number; failures: number } | null = null;
+  private pairingAttempt: PairingAttempt | null = null;
+  /** Frames a peer sent before authentication completed, dropped unread. Published on the log line. */
+  private droppedBeforeAuth = 0;
 
   constructor(
     private readonly identity: Identity,
@@ -138,8 +168,13 @@ export class LinkClient extends EventEmitter {
      * has passed every condition for a development version-2 session.
      */
     private readonly advertised: () => Readonly<Record<string, number>> = () => MAC_EXT,
+    private readonly options: LinkClientOptions = {},
   ) {
     super();
+  }
+
+  private now(): number {
+    return (this.options.now ?? Date.now)();
   }
 
   // ---- public API ---------------------------------------------------------------------
@@ -195,6 +230,9 @@ export class LinkClient extends EventEmitter {
       lastFailureKind: this.lastFailure?.kind,
       pairing: pairingHealth(store.get('paired') !== null, this.lastFailure, Date.now()),
       paired: store.get('paired') !== null,
+      // Pairing v2: a stored phone without `pairing: 2` was paired by the v1 flow and is legacy —
+      // shown, never upgraded by an update (docs/protocol.md → Existing pairings).
+      pairedLegacy: (() => { const p = store.get('paired'); return p !== null && p.pairing !== 2; })(),
       /*
        * P5. When the token behind the QR currently on screen stops being accepted.
        *
@@ -225,20 +263,36 @@ export class LinkClient extends EventEmitter {
    * already photographed.
    */
   armPairing(localAddress: string, rotate = false): PairingQrPayload {
-    const existing = this.armedPairing;
-    const token = !rotate && existing ? existing.token : randomBytes(16).toString('hex');
-    this.armedPairing = { token, expiresAt: Date.now() + PAIR_TOKEN_TTL_MS };
+    const existing = this.isPairingArmed() ? this.armedPairing : null;
+    const secret = !rotate && existing ? existing.secret : newSecretHex();
+    this.armedPairing = {
+      secret,
+      expiresAt: this.now() + PAIR_TOKEN_TTL_MS,
+      failures: !rotate && existing ? existing.failures : 0,
+    };
     return {
+      v: PAIRING_VERSION,
       host: localAddress,
       fp: this.identity.fingerprint,
-      token,
+      secret,
       name: this.identity.deviceName,
     };
   }
 
   isPairingArmed(): boolean {
     const armed = this.armedPairing;
-    return armed !== null && Date.now() < armed.expiresAt;
+    return armed !== null && this.now() < armed.expiresAt;
+  }
+
+  /**
+   * Discards the pairing secret now — a fresh code replaces it through [armPairing], and this covers
+   * leaving the pairing screen and Forget. An exchange in flight is torn down without storing anything.
+   */
+  cancelPairing(reason: string): void {
+    if (!this.armedPairing && !this.pairingAttempt) return;
+    this.armedPairing = null;
+    log.info('pairing', `Pairing code discarded: ${reason}`);
+    if (this.pairingAttempt && !this.isConnected()) this.teardown(`pairing cancelled: ${reason}`, true);
   }
 
   send(type: string, payload: Record<string, unknown> = {}): void {
@@ -296,7 +350,7 @@ export class LinkClient extends EventEmitter {
     this.setPhase(this.lastFailure ? 'reconnecting' : 'searching');
 
     try {
-      for await (const candidate of discoverCandidates()) {
+      for await (const candidate of (this.options.candidates ?? discoverCandidates)()) {
         if (!this.running) return;
         log.info('link', `Trying ${candidate.host}:${candidate.port} (${candidate.via})`);
         const connected = await this.tryCandidate(candidate);
@@ -376,6 +430,8 @@ export class LinkClient extends EventEmitter {
           finish(false, 'Not paired yet — show the pairing QR code and scan it with the phone');
           return;
         }
+        // Unpaired and armed: this peer is NOT trusted yet. It becomes trusted only if it proves the
+        // pairing code over this very connection (pair.proof), and nothing it sends before then is used.
 
         this.adopt(socket, candidate, fingerprint, () => finish(true), (reason) => finish(false, reason));
       });
@@ -424,12 +480,27 @@ export class LinkClient extends EventEmitter {
       deviceName: this.identity.deviceName,
       fingerprint: this.identity.fingerprint,
     };
-    if (this.isPairingArmed()) hello.pairToken = this.armedPairing?.token;
+    const helloId = randomUUID();
+    const pairingNow = !store.get('paired') && this.isPairingArmed();
+    if (pairingNow) {
+      // Pairing v2: a fresh nonce and nothing derived from the secret. The raw secret is never sent.
+      const macNonce = newNonceHex();
+      this.pairingAttempt = {
+        helloId,
+        secret: this.armedPairing!.secret,
+        macNonce,
+        peerFingerprint,
+        host: candidate.host,
+        verified: false,
+      };
+      hello.pair = { v: PAIRING_VERSION, nonce: macNonce };
+    } else {
+      this.pairingAttempt = null;
+    }
     // docs/protocol.md → Extensions. Optional: an old phone reads hello fields by key and never
     // sees it. `shareOmitExt` (debug only) leaves it out so this Mac is an old peer on purpose.
     if (!debugSwitches().shareOmitExt) hello.ext = { ...this.advertised() };
 
-    const helloId = randomUUID();
     const timer = setTimeout(() => {
       this.pending.delete(helloId);
       onFail('Handshake timed out');
@@ -455,7 +526,26 @@ export class LinkClient extends EventEmitter {
       return;
     }
 
+    // Before authentication completes only the handshake's own replies are read. An unpinned peer
+    // (pairing) or a pinned one that has not answered hello yet can inject nothing into the features.
+    if (!this.isConnected()) {
+      const handshake =
+        envelope.type === MessageType.HELLO_ACK ||
+        envelope.type === MessageType.PAIR_PROOF ||
+        envelope.type === MessageType.PAIR_REJECTED ||
+        envelope.type === MessageType.ERROR ||
+        envelope.type === MessageType.PONG;
+      if (!handshake) {
+        this.droppedBeforeAuth += 1;
+        log.warn('link', `Dropped a ${String(envelope.type).slice(0, 40)} before authentication — ${this.droppedBeforeAuth} dropped since launch`);
+        return;
+      }
+    }
+
     switch (envelope.type) {
+      case MessageType.PAIR_PROOF:
+        this.onPairProof(envelope);
+        return;
       case MessageType.PAIR_REJECTED: {
         /*
          * F7. The phone refused the pair token and is about to close.
@@ -550,6 +640,16 @@ export class LinkClient extends EventEmitter {
     peerFingerprint: string,
     onReady: () => void,
   ): void {
+    // Pairing v2: while pairing, a hello.ack is accepted only after this connection's pair.proof
+    // verified. A peer that skips the proof — the downgrade the v1 flow allowed — is refused and
+    // nothing is stored. Checked before the pending hello is settled, so the
+    // teardown below rejects it and the discovery loop moves on to the next candidate.
+    const attempt = this.pairingAttempt;
+    if (attempt && (!attempt.verified || envelope.id !== attempt.helloId)) {
+      this.pairingFailed(attempt, 'it answered without proving the pairing code');
+      return;
+    }
+
     const pending = this.pending.get(envelope.id);
     if (pending) {
       clearTimeout(pending.timer);
@@ -589,18 +689,22 @@ export class LinkClient extends EventEmitter {
     // this line's absence cost — it is the reason there is one field here instead of two.
     this.succeeded();
 
-    // First successful handshake after a scan is what completes pairing on this side: the phone
-    // already proved it trusts us by accepting the TLS connection at all.
-    if (!store.get('paired')) {
+    // Pairing v2: trust is stored only here, only for the certificate this connection presented, and
+    // only when this connection's pair.proof verified (checked at the top of this function).
+    if (!store.get('paired') && attempt?.verified) {
       store.set('paired', {
         deviceId: payload.deviceId,
         deviceName: payload.deviceName,
         fingerprint: peerFingerprint,
         pairedAt: Date.now(),
+        pairing: PAIRING_VERSION,
       });
-      log.info('link', `Paired with ${payload.deviceName} (${peerFingerprint.slice(0, 23)}…)`);
+      log.info('link', `Paired with ${payload.deviceName} (${peerFingerprint.slice(0, 23)}…) — pairing v2, both sides proved the code`);
+      this.armedPairing = null;
     }
-    this.armedPairing = null;
+    this.pairingAttempt = null;
+    const stored = store.get('paired');
+    log.info('link', `pairing: ${stored?.pairing === PAIRING_VERSION ? 'v2' : 'legacy (v1, not authenticated) — forget and pair again to verify'}`);
 
     if (this.address) store.set('lastAddress', this.address);
     if (this.via) store.set('lastDiscoveryVia', this.via);
@@ -616,6 +720,66 @@ export class LinkClient extends EventEmitter {
       'link',
       `Phone advertises: ${this.session.capabilities.length > 0 ? this.session.capabilities.join(', ') : 'nothing'}`,
     );
+  }
+
+  /**
+   * `pair.proof` — the phone's proof that it scanned this code, over this connection's certificates
+   * and nonces. Verified in constant time; only then does this Mac send its own proof.
+   */
+  private onPairProof(envelope: Envelope): void {
+    const attempt = this.pairingAttempt;
+    if (!attempt || attempt.verified || envelope.id !== attempt.helloId) {
+      if (attempt) this.pairingFailed(attempt, 'it sent a pairing proof out of turn');
+      else this.teardown('protocol error: pair.proof with no pairing in progress');
+      return;
+    }
+    const armed = this.armedPairing;
+    if (!armed || this.now() >= armed.expiresAt || armed.secret !== attempt.secret) {
+      // The code was rotated, cancelled or expired under this exchange: nothing from it may be trusted.
+      this.teardown('pairing code no longer current');
+      return;
+    }
+    const p = (envelope.payload ?? {}) as { v?: unknown; nonce?: unknown; proof?: unknown };
+    const transcript = {
+      macFingerprint: this.identity.fingerprint,
+      phoneFingerprint: attempt.peerFingerprint,
+      macNonce: attempt.macNonce,
+      phoneNonce: typeof p.nonce === 'string' ? p.nonce : '',
+    };
+    if (p.v !== PAIRING_VERSION || !isHex64(p.nonce) || !verifyProof(attempt.secret, 'phone', transcript, p.proof)) {
+      this.pairingFailed(attempt, 'it could not prove it scanned this code');
+      return;
+    }
+    attempt.verified = true;
+    log.info('pairing', `${attempt.host} proved the pairing code — sending this Mac's proof`);
+    this.write({
+      v: PROTOCOL_MAJOR,
+      id: attempt.helloId,
+      type: MessageType.PAIR_CONFIRM,
+      ts: Date.now(),
+      payload: { v: PAIRING_VERSION, proof: pairingProof(attempt.secret, 'mac', transcript) },
+    });
+  }
+
+  /**
+   * A peer failed the pairing exchange. The secret is **kept** (an impostor answering first must not
+   * burn the code for the real phone) unless this was the [PAIR_MAX_FAILURES]th failure.
+   */
+  private pairingFailed(attempt: PairingAttempt, why: string): void {
+    const armed = this.armedPairing;
+    let tally = '';
+    if (armed && armed.secret === attempt.secret) {
+      armed.failures += 1;
+      tally = `${armed.failures} of ${PAIR_MAX_FAILURES} failed`;
+      if (armed.failures >= PAIR_MAX_FAILURES) {
+        this.armedPairing = null;
+        tally += ' — code retired';
+      }
+    }
+    log.warn('pairing', `A device at ${attempt.host} was not trusted: ${why}${tally ? ` (${tally})` : ''}`);
+    this.emit('pair-proof-failed', { host: attempt.host, retired: this.armedPairing === null });
+    this.pairingAttempt = null;
+    this.teardown(`pairing: a device at ${attempt.host} ${why}`);
   }
 
   // ---- heartbeat and retries ----------------------------------------------------------
@@ -701,6 +865,7 @@ export class LinkClient extends EventEmitter {
     // capability list was (defect 25) — the claim must not outlive the connection that made it.
     this.session = clearedSession();
     this.sessionPeer = null;
+    this.pairingAttempt = null;
     this.reader?.reset();
     const socket = this.socket;
     this.socket = null;

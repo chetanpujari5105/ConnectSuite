@@ -83,6 +83,12 @@ object MessageType {
      * only that a socket closed, which is indistinguishable from the network dropping.
      */
     const val PAIR_REJECTED = "pair.rejected"
+
+    /** Pairing v2 (docs/protocol.md → Pairing (version 2)): the phone's proof of the QR secret. */
+    const val PAIR_PROOF = "pair.proof"
+
+    /** Pairing v2: the Mac's proof, sent only after it verified [PAIR_PROOF]. */
+    const val PAIR_CONFIRM = "pair.confirm"
     const val ACK = "ack"
     const val ERROR = "error"
     const val PING = "ping"

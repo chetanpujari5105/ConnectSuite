@@ -1,0 +1,4 @@
+HEAD RESULT: connected=true pinned=IMPOSTOR tokenSentToImpostor=true
+ℹ pass 0
+ℹ fail 1
+  AssertionError [ERR_ASSERTION]: HEAD stored the impostor as the paired phone

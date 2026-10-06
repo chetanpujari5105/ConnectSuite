@@ -79,13 +79,21 @@ object LinkTls {
     }
 
     @Suppress("CustomX509TrustManager")
-    private class TrustStoreTrustManager(private val store: TrustStore) : X509TrustManager {
+    private class TrustStoreTrustManager(
+        private val store: TrustStore,
+        /** The Mac a v2 pairing is currently armed for, or null — admitted only while the arm lasts. */
+        private val pending: () -> String?,
+    ) : X509TrustManager {
 
         override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
             val peer = chain?.firstOrNull()
                 ?: throw CertificateException("Client presented no certificate")
             val fingerprint = DeviceIdentity.fingerprintOf(peer)
-            if (!store.isTrusted(fingerprint)) {
+            val armedFor = pending()?.let(PairingQrPayload::normalizeFingerprint)
+            // Pairing v2: a scanned Mac is not persisted until it proves the code, so while the arm lasts
+            // its fingerprint is admitted here — and admits it to nothing but the pairing exchange, since
+            // no session token exists for it until that exchange completes.
+            if (!store.isTrusted(fingerprint) && armedFor != PairingQrPayload.normalizeFingerprint(fingerprint)) {
                 LinkLog.w("tls", "Rejected unpaired client ${fingerprint.take(23)}…")
                 throw CertificateException(
                     "This Mac is not paired with the phone. Scan the pairing QR code first.",
@@ -105,12 +113,13 @@ object LinkTls {
         identity: DeviceIdentity,
         store: TrustStore,
         port: Int,
+        pending: () -> String?,
         backlog: Int = 8,
     ): SSLServerSocket {
         val keyManagers = arrayOf(IdentityKeyManager(identity))
 
         val context = SSLContext.getInstance("TLSv1.3").apply {
-            init(keyManagers, arrayOf(TrustStoreTrustManager(store)), SecureRandom())
+            init(keyManagers, arrayOf(TrustStoreTrustManager(store, pending)), SecureRandom())
         }
 
         return (context.serverSocketFactory.createServerSocket(port, backlog) as SSLServerSocket)

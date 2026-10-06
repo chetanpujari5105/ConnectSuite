@@ -195,7 +195,8 @@ fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
             localEndpoint = localEndpoint,
             onScan = { scanning = true },
             onShowAddress = { showAddress = true },
-            onCancel = { scanned = null },
+            // Cancel drops the pairing secret and the TLS admission, not only the screen state.
+            onCancel = { server.cancelPairing(); scanned = null },
             onRetry = { scanned = null; scanning = true },
             onOpenWifiSettings = {
                 context.startActivity(

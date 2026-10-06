@@ -141,10 +141,18 @@ fun QrScanScreen(
                 CameraPreview(
                     onBarcode = { raw ->
                         if (consumed) return@CameraPreview
-                        val payload = PairingQrPayload.parse(raw)
-                        if (payload == null) {
-                            status = "That code is not a Sidekick pairing code."
-                            return@CameraPreview
+                        // Pairing v2: a v1 Mac's code is refused here, before anything is armed or sent —
+                        // docs/protocol.md → Pairing (version 2) → Compatibility. No fallback.
+                        val payload = when (val scan = PairingQrPayload.classify(raw)) {
+                            is PairingQrPayload.Scan.V2 -> scan.payload
+                            PairingQrPayload.Scan.LegacyMac -> {
+                                status = PairingQrPayload.LEGACY_MAC_MESSAGE
+                                return@CameraPreview
+                            }
+                            PairingQrPayload.Scan.Invalid -> {
+                                status = "That code is not a Sidekick pairing code."
+                                return@CameraPreview
+                            }
                         }
                         consumed = true
                         status = "Pairing with ${payload.name}…"

@@ -96,7 +96,7 @@ test('re-opening the pairing screen keeps the code already on screen', () => {
   const { client } = connectedClient();
   const first = armPairingCode(client, '192.168.1.5', false);
   const second = armPairingCode(client, '192.168.1.5', false);
-  assert.equal(second.token, first.token);
+  assert.equal(second.secret, first.secret);
   assert.equal(client.isPairingArmed(), true);
 });
 
@@ -105,7 +105,7 @@ test('only an explicit new code rotates the token', () => {
   const { client } = connectedClient();
   const first = armPairingCode(client, '192.168.1.5', false);
   const rotated = armPairingCode(client, '192.168.1.5', true);
-  assert.notEqual(rotated.token, first.token);
+  assert.notEqual(rotated.secret, first.secret);
   assert.equal(client.isConnected(), true, 'a rotation must not end the session either');
 });
 

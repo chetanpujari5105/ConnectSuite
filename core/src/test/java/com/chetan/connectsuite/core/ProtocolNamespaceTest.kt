@@ -57,6 +57,10 @@ class ProtocolNamespaceTest {
             // question the set already asks — "does this message belong to a feature?" — and the
             // answer is no, for a reason the test below asserts rather than merely assuming.
             MessageType.PAIR_REJECTED,
+            // Pairing v2's two handshake messages, for the same reason: both are exchanged before a
+            // session exists. Asserted below rather than assumed.
+            MessageType.PAIR_PROOF,
+            MessageType.PAIR_CONFIRM,
         )
 
         val unmapped = allTypes.filter { it !in system && FeatureOf.of(it) == null }
@@ -76,6 +80,8 @@ class ProtocolNamespaceTest {
         // The exemption above is asserted here rather than taken on trust. If someone ever teaches
         // `FeatureOf` that `pair` is a capability, the set membership would silently hide it.
         assertNull(FeatureOf.of(MessageType.PAIR_REJECTED))
+        assertNull(FeatureOf.of(MessageType.PAIR_PROOF))
+        assertNull(FeatureOf.of(MessageType.PAIR_CONFIRM))
         // battery.state and net.state have a dot and a prefix that is not a capability. They are
         // system state, not a feature, and must not invent one.
         assertNull(FeatureOf.of(MessageType.BATTERY_STATE))

@@ -168,9 +168,11 @@ class ShareDevGateTest {
 
     @Test fun `ControlSession consumes the arm once, after the pairing check, and sends what it negotiated with`() {
         val src = code(File(linkDir, "ControlSession.kt"))
-        val pairing = src.indexOf("acceptPairToken(")
+        // Pairing v2 split the check across hello and pair.confirm; the arm is consumed in the
+        // handshake that both reach only once the pairing check has passed.
+        val pairing = maxOf(src.indexOf("server.pairing.onHello("), src.indexOf("server.pairing.onConfirm("))
         val consume = src.indexOf("ShareDevGate.process.consumeForHandshake()")
-        assertTrue("control: the pairing check was found", pairing >= 0)
+        assertTrue("control: both pairing checks were found", src.indexOf("server.pairing.onHello(") >= 0 && src.indexOf("server.pairing.onConfirm(") >= 0)
         assertTrue("the arm is consumed in onHello", consume >= 0)
         assertTrue("after the pairing check, so a refused Mac cannot use it up", consume > pairing)
         // Was: one `consumeForHandshake(` in total. The version-2 hold (was the version-3 arm) answers a different

@@ -444,6 +444,10 @@ private fun RejectedStage(stage: ConnectStage.Rejected, onRetry: () -> Unit, onC
             PairRejectReason.TOKEN_EXPIRED -> "Pairing code expired"
             PairRejectReason.TOKEN_MISMATCH -> "That was a different code"
             PairRejectReason.TOKEN_MISSING -> "The Mac sent no code"
+            PairRejectReason.UPGRADE_REQUIRED -> "The Mac needs an update"
+            PairRejectReason.PROOF_INVALID -> "The Mac could not prove the code"
+            PairRejectReason.NOT_ARMED -> "Not waiting to pair"
+            PairRejectReason.TOO_MANY_ATTEMPTS -> "Too many failed attempts"
         },
         body = stage.reason.message,
         hintTitle = "${stage.macName} did reach this phone.",

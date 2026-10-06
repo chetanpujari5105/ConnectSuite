@@ -51,7 +51,15 @@ export const SERVICE_TYPE = 'connectsuite';
  * is not paired at all fails in the handshake with no channel to be told anything on; the phone
  * shows that case on its own screen. Do not collapse the two into one message.
  */
-export type PairRejectReason = 'TOKEN_EXPIRED' | 'TOKEN_MISMATCH' | 'TOKEN_MISSING';
+export type PairRejectReason =
+  | 'TOKEN_EXPIRED'
+  | 'TOKEN_MISMATCH'
+  | 'TOKEN_MISSING'
+  // Pairing v2 (docs/protocol.md → Pairing (version 2)).
+  | 'UPGRADE_REQUIRED'
+  | 'PROOF_INVALID'
+  | 'NOT_ARMED'
+  | 'TOO_MANY_ATTEMPTS';
 
 export interface PairRejected {
   reason: PairRejectReason;
@@ -194,6 +202,10 @@ export const MessageType = {
    * looking at — learns only that a socket closed, which is what a dropped network looks like too.
    */
   PAIR_REJECTED: 'pair.rejected',
+  /** Pairing v2: the phone's proof of the QR secret (phone → Mac). */
+  PAIR_PROOF: 'pair.proof',
+  /** Pairing v2: the Mac's proof, only after it verified `pair.proof` (Mac → phone). */
+  PAIR_CONFIRM: 'pair.confirm',
   ACK: 'ack',
   ERROR: 'error',
   PING: 'ping',
@@ -837,10 +849,15 @@ export const RemoteAction = {
 export type RemoteActionName = (typeof RemoteAction)[keyof typeof RemoteAction];
 
 /** What the Mac shows in its QR code. The phone scans exactly this. */
+/**
+ * The pairing QR — `docs/protocol.md` → Pairing (version 2). `secret` is the pairing secret `K`: it
+ * exists only inside the QR image and this process's memory, and never crosses IPC to the renderer.
+ */
 export interface PairingQrPayload {
+  v: 2;
   host: string;
   fp: string;
-  token: string;
+  secret: string;
   name: string;
 }
 
@@ -896,6 +913,8 @@ export interface ConnectionStatus {
    * slept with the pairing screen up, where the gap between those two instants is hours.
    */
   pairingExpiresAt?: number;
+  /** A stored phone paired by the v1 flow (no `pairing: 2`): legacy, shown, never upgraded by an update. */
+  pairedLegacy?: boolean;
 }
 
 /** Colon-separated uppercase hex is what both ends display; comparisons use this normal form. */

@@ -31,6 +31,8 @@ interface RendererStatus {
   lastError?: string;
   nextRetryInMs?: number;
   paired: boolean;
+  /** The stored phone was paired by the v1 flow: legacy (docs/protocol.md → Existing pairings). */
+  pairedLegacy?: boolean;
   /** P5. When the armed pairing token stops being accepted — absolute epoch ms, absent if none. */
   pairingExpiresAt?: number;
 }
@@ -61,7 +63,8 @@ interface ConnectBridge {
       body: string;
       refreshCode: boolean;
       reason: string;
-      qr: string | null;
+      /** A fresh code, already rendered by the main process — the secret never reaches this page. */
+      qrDataUrl: string | null;
     }) => void,
   ): void;
   /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
@@ -955,7 +958,9 @@ connect.onMenuRoute((id) => {
 });
 
 shell.onRoute((id) => {
-  if (id === 'pairing' && !el<HTMLImageElement>('qr').getAttribute('src')) void showQr();
+  // Pairing v2: leaving this screen discards the code, so entering it always draws one (the same
+  // code while it is still armed, a fresh one after a discard).
+  if (id === 'pairing') void showQr();
 });
 
 /**
@@ -985,13 +990,9 @@ function hidePairRejection(): void {
 }
 
 connect.onPairRejected((info) => {
-  if (info.qr) {
-    // Rendered from the payload rather than by re-asking, so the code on screen is the same one the
-    // phone will be shown — a second `pairingQr` call would rotate the token again.
-    void connect.pairingQrRender(info.qr).then((dataUrl) => {
-      if (dataUrl) el<HTMLImageElement>('qr').src = dataUrl;
-    });
-  }
+  // Drawn by the main process, so the code on screen is the one it armed and the pairing secret
+  // never crosses into this page (docs/protocol.md → Pairing (version 2)).
+  if (info.qrDataUrl) el<HTMLImageElement>('qr').src = info.qrDataUrl;
   const box = el('pair-rejection');
   box.replaceChildren();
   const headline = document.createElement('p');
@@ -2020,7 +2021,11 @@ shell.addSettingsPane(
     body.appendChild(
       settingRow(
         'Trusted device',
-        'Removes the phone\u2019s certificate from the trust store. You will pair again from scratch.',
+        // Pairing v2 (docs/protocol.md → Existing pairings): a phone stored by the v1 flow is legacy —
+        // it works, and nothing ever proved it was the phone you scanned. Said here, never hidden.
+        lastStatus?.pairedLegacy
+          ? 'Paired before secure pairing \u2014 forget and pair again to verify this phone. Forgetting removes its certificate; you will pair again from scratch.'
+          : 'Removes the phone\u2019s certificate from the trust store. You will pair again from scratch.',
         forget,
       ),
     );

@@ -40,9 +40,30 @@ const COPY: Record<PairRejectReason, PairRejectionCopy> = {
     body: 'Your phone scanned a different code — an old one may still be on screen somewhere. Here is a fresh one.',
     refreshCode: true,
   },
+  // A v2 Mac always sends `pair`; a phone that still asks for a v1 token is an older Sidekick.
   TOKEN_MISSING: {
-    headline: 'Your phone expected a pairing code',
-    body: 'This Mac connected without one. Here is a fresh code to scan.',
+    headline: 'Update Sidekick on your phone',
+    body: 'Your phone is running an older Sidekick that cannot pair securely with this Mac. Update it, then scan this fresh code.',
+    refreshCode: true,
+  },
+  UPGRADE_REQUIRED: {
+    headline: 'This Mac needs an update',
+    body: 'Your phone refused an older pairing method. Update Sidekick on this Mac, then scan a fresh code.',
+    refreshCode: true,
+  },
+  PROOF_INVALID: {
+    headline: "Your phone couldn't confirm this code",
+    body: 'The code your phone scanned did not match this one. Here is a fresh code to scan.',
+    refreshCode: true,
+  },
+  NOT_ARMED: {
+    headline: 'Your phone is not waiting to pair',
+    body: 'It finished, cancelled or timed out. Scan this fresh code on your phone.',
+    refreshCode: true,
+  },
+  TOO_MANY_ATTEMPTS: {
+    headline: 'Too many failed attempts',
+    body: 'Your phone stopped accepting that code. Scan this fresh one.',
     refreshCode: true,
   },
 };

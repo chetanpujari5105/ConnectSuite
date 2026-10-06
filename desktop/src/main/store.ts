@@ -9,6 +9,12 @@ interface PairedPhone {
   /** The phone certificate fingerprint we pin from here on. */
   fingerprint: string;
   pairedAt: number;
+  /**
+   * `2` when pairing v2 stored this record (both sides proved the QR secret). Absent on every record
+   * stored before 2026-10-06: a **legacy** pairing, which keeps working and is never marked 2 by an
+   * update — only by pairing again (docs/protocol.md → Existing pairings).
+   */
+  pairing?: 2;
 }
 
 interface Schema {

@@ -66,13 +66,13 @@ data class LinkState(
      */
     val lastRefusal: RefusedConnection? = null,
     /**
-     * The last `hello` turned away for a **pairing-token** reason, for the phone's own screen.
+     * The last `hello` turned away for a **pairing** reason, for the phone's own screen.
      *
      * Distinct from [lastRefusal] and not a substitute for it: a refusal happens *at the TLS
      * handshake*, when the certificate is not pinned; this happens **after** TLS succeeded, to a
-     * Mac this phone already trusts, because the one-time token was expired, wrong or absent.
-     * `PairTokenVerdict`'s own KDoc says the two are different failures and neither substitutes for
-     * the other, and that stays true of the two fields.
+     * Mac this phone trusts or is armed for, because its pairing was expired, unproven or absent
+     * ([PhonePairing]). The two are different failures and neither substitutes for the other, and
+     * that stays true of the two fields.
      *
      * It existed only as a `pair.rejected` message to the Mac and a log line. The phone showed the
      * user a plain wait, and at best a locally-derived timeout guess, while the server knew exactly
@@ -337,10 +337,12 @@ class LinkServer(
 
     // ---- pairing ------------------------------------------------------------------------
 
-    private data class ArmedPairing(val fingerprint: String, val token: String, val expiresAt: Long)
-
-    @Volatile
-    private var armedPairing: ArmedPairing? = null
+    /**
+     * Pairing v2 (`docs/protocol.md` → *Pairing (version 2)*; audit S1). The armed pairing, its secret,
+     * its lifetime and its failure limit live here, in memory only; the control session asks it for
+     * the two decisions. Nothing is trusted until [PhonePairing.onConfirm] accepts.
+     */
+    val pairing = PhonePairing()
 
     /** Called by the QR scanner once the user has scanned a Mac's pairing code. */
     /**
@@ -352,18 +354,39 @@ class LinkServer(
      */
     var pairIntentSink: ((String?) -> Unit)? = null
 
-    suspend fun completePairing(payload: PairingQrPayload) {
-        trustStore.trust(payload)
-        armedPairing = ArmedPairing(
-            fingerprint = payload.peerId,
-            token = payload.token,
-            expiresAt = System.currentTimeMillis() + Link.PAIR_TOKEN_TTL_MS,
-        )
-        // F6: from here until the Mac connects or the token expires, the discovery record says
-        // which Mac this phone is waiting for. That is the only way the Mac can tell "nobody
-        // scanned" from "scanned, and I have not got there yet".
+    /**
+     * Arms a pairing for a scanned **v2** code. Trusts nothing: the Mac's fingerprint is admitted at
+     * TLS while the arm lasts and is persisted only after it proves the code ([persistPairing]).
+     */
+    fun completePairing(payload: PairingQrPayload) {
+        val secret = requireNotNull(payload.secret) { "not a v2 pairing code" }
+        pairing.arm(payload.peerId, secret, payload.name, payload.host)
+        LinkLog.i("trust", "Pairing armed for ${payload.name} (${payload.peerId.take(16)}…) — waiting for it to prove the code")
+        // F6: from here until the Mac connects or the arm ends, the discovery record says which Mac
+        // this phone is waiting for. It decides nothing: an impostor advertising it still cannot prove
+        // the code.
         runCatching { pairIntentSink?.invoke(payload.peerId) }
     }
+
+    /** Cancel on the phone's pairing screen: the secret is dropped and the TLS admission ends. */
+    fun cancelPairing() {
+        pairing.cancel()
+        clearPairIntent()
+        LinkLog.i("trust", "Pairing cancelled on this phone")
+    }
+
+    /**
+     * Persists a Mac whose `pair.confirm` verified. Called by the control session **before** it sends
+     * `hello.ack`, so a Mac is never served data it has not been trusted for.
+     */
+    suspend fun persistPairing(paired: PhonePairing.Paired) {
+        trustStore.trustAuthenticated(paired)
+        clearPairIntent()
+        pairAccepted.incrementAndGet()
+    }
+
+    /** Whether [fingerprint]'s trust came from pairing v2; false for a legacy record. */
+    fun isPairedV2(fingerprint: String): Boolean = trustStore.isPairedV2(fingerprint)
 
     /**
      * Forget a peer **and end any session it is currently holding**.
@@ -397,46 +420,14 @@ class LinkServer(
     }
 
     /**
-     * Whether this hello may proceed, and **why not** when it may not.
+     * Publish a pairing rejection. **One writer**, deliberately.
      *
-     * This returned a `Boolean` until F7. The Mac was told only that a socket closed, which is
-     * indistinguishable from the network dropping — while it sits showing a QR code the user is
-     * staring at. `docs/protocol.md` → `pair.rejected` is the message; this is the decision behind
-     * it, and it is a `when`-able type rather than a flag so the reason cannot be lost between here
-     * and the wire.
-     *
-     * An armed pairing is consumed by the first matching connection; a peer trusted in an earlier
-     * session needs no token at all.
+     * Every refusal path in `ControlSession.refusePairing` comes through here, so the decision stays in
+     * [PhonePairing] and the *write* happens once — a new reason cannot forget to publish itself.
      */
-    fun acceptPairToken(peerFingerprint: String, pairToken: String?): PairTokenVerdict {
-        val armed = armedPairing ?: return PairTokenVerdict.Accepted
-        val normalized = PairingQrPayload.normalizeFingerprint(peerFingerprint)
-        // A different Mac, already trusted, connecting while a pairing is armed for someone else.
-        if (armed.fingerprint != normalized) return PairTokenVerdict.Accepted
-        if (System.currentTimeMillis() > armed.expiresAt) {
-            armedPairing = null
-            clearPairIntent()
-            return rejectPair(PairRejectReason.TOKEN_EXPIRED)
-        }
-        if (pairToken == null) return rejectPair(PairRejectReason.TOKEN_MISSING)
-        if (pairToken != armed.token) return rejectPair(PairRejectReason.TOKEN_MISMATCH)
-        armedPairing = null
-        clearPairIntent()
-        pairAccepted.incrementAndGet()
-        return PairTokenVerdict.Accepted
-    }
-
-    /**
-     * Publish the rejection and return it. **One writer**, deliberately.
-     *
-     * The three branches above could each have carried their own `_state.update`; that is three
-     * writers on one field, which is the shape `CLAUDE.md` records against the status island. Here
-     * the decision stays in `acceptPairToken` and the *write* happens once, so a fourth reason
-     * added later cannot forget to publish itself.
-     */
-    private fun rejectPair(reason: PairRejectReason): PairTokenVerdict {
+    fun publishPairRejected(reason: PairRejectReason) {
+        if (reason == PairRejectReason.TOKEN_EXPIRED || reason == PairRejectReason.TOO_MANY_ATTEMPTS) clearPairIntent()
         _state.update { it.afterPairRejected(reason, System.currentTimeMillis()) }
-        return PairTokenVerdict.Rejected(reason)
     }
 
     // ---- lifecycle ----------------------------------------------------------------------
@@ -450,9 +441,9 @@ class LinkServer(
         // because its lifetime is the process and not the server's. See defect 37 below.
 
         try {
-            controlSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_CONTROL)
-            videoSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_VIDEO)
-            bulkSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_BULK)
+            controlSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_CONTROL, pairing::pendingFingerprint)
+            videoSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_VIDEO, pairing::pendingFingerprint)
+            bulkSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_BULK, pairing::pendingFingerprint)
         } catch (e: IOException) {
             // Almost always "address already in use" from a previous process that has not died
             // yet. Say so instead of silently running with no listener.

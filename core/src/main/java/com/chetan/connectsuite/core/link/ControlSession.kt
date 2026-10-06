@@ -9,9 +9,13 @@ import com.chetan.connectsuite.core.protocol.ProtocolException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.io.BufferedInputStream
@@ -216,6 +220,7 @@ class ControlSession(
 
         when (envelope.type) {
             MessageType.HELLO -> onHello(envelope)
+            MessageType.PAIR_CONFIRM -> onPairConfirm(envelope)
             // The pong carries the phone's monotonic clock — the same clock that stamps video
             // frame PTS — so the Mac can work out the offset between the two machines and read a
             // frame's PTS as a latency rather than as a number from somewhere else.
@@ -262,38 +267,89 @@ class ControlSession(
         }
     }
 
+    /**
+     * The hello this connection is pairing under, and its exchange — set only between a `pair.proof`
+     * sent and the `pair.confirm` that settles it. Pairing v2 (`docs/protocol.md` → *Pairing (version
+     * 2)*): nothing is issued, persisted or replayed while these are set.
+     */
+    private var pairingHello: Envelope? = null
+    private var pairingExchange: PhonePairing.Exchange? = null
+
     private fun onHello(envelope: Envelope) {
+        if (isHandshakeComplete || pairingExchange != null) throw ProtocolException("a second hello on one connection")
         val payload = envelope.payload
         peerName = payload["deviceName"]?.jsonPrimitive?.content ?: "Mac"
 
-        // A QR scan arms a one-time token; the first Mac to connect after it must present it.
-        // Fingerprint pinning already proved the certificate, so this only closes the window
-        // where a QR photographed off someone's screen could be replayed by a third machine.
-        val pairToken = payload["pairToken"]?.jsonPrimitive?.content
-        when (val verdict = server.acceptPairToken(peerFingerprint, pairToken)) {
-            is PairTokenVerdict.Accepted -> Unit
-            is PairTokenVerdict.Rejected -> {
-                // F7. The `error` goes first so an older Mac, which knows nothing of
-                // `pair.rejected`, still sees exactly what it saw before — the new message is
-                // additive and a Mac that ignores it is no worse off than yesterday.
-                sendError(envelope.id, ErrorCode.UNAUTHORIZED, verdict.reason.message)
+        // A `pair` that is not an object is a malformed pairing request, not an absent one.
+        val pairElement = payload["pair"]
+        val pair = pairElement as? JsonObject ?: if (pairElement != null) JsonObject(emptyMap()) else null
+        val hasLegacyToken = payload["pairToken"] != null
+        when (val decision = server.pairing.onHello(peerFingerprint, server.identity.fingerprint, pair, hasLegacyToken)) {
+            is PhonePairing.HelloDecision.NotPairing -> completeHandshake(envelope)
+            is PhonePairing.HelloDecision.Reject -> refusePairing(envelope.id, decision.reason)
+            is PhonePairing.HelloDecision.SendProof -> {
+                pairingHello = envelope
+                pairingExchange = decision.exchange
                 send(
-                    Envelope.of(MessageType.PAIR_REJECTED, envelope.id) {
-                        put("reason", verdict.reason.name)
-                        put("fingerprint", peerFingerprint)
-                        put("message", verdict.reason.message)
+                    Envelope.of(MessageType.PAIR_PROOF, envelope.id) {
+                        put("v", PairingV2.VERSION)
+                        put("nonce", decision.exchange.phoneNonce)
+                        put("proof", decision.proof)
                     },
                 )
-                LinkLog.w(
-                    "control",
-                    "Pairing refused for ${peerFingerprint.take(23)}…: ${verdict.reason} — " +
-                        "${server.countPairRejected()} refused / ${server.pairAcceptedCount()} " +
-                        "paired since start",
-                )
-                throw ProtocolException("bad pair token: ${verdict.reason}")
+                LinkLog.i("control", "Pairing v2 with ${peerFingerprint.take(16)}…: proof sent, waiting for the Mac's")
             }
         }
+    }
 
+    private fun onPairConfirm(envelope: Envelope) {
+        val hello = pairingHello
+        val exchange = pairingExchange
+        if (hello == null || exchange == null || envelope.id != hello.id) {
+            sendError(envelope.id, ErrorCode.UNAUTHORIZED, "pair.confirm with no pairing in progress")
+            throw ProtocolException("pair.confirm with no pairing in progress")
+        }
+        pairingHello = null
+        pairingExchange = null
+        val version = runCatching { envelope.payload["v"]?.jsonPrimitive?.intOrNull }.getOrNull()
+        val candidate = runCatching { envelope.payload["proof"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+        val decision = if (version == PairingV2.VERSION) {
+            server.pairing.onConfirm(exchange, candidate)
+        } else {
+            server.pairing.onConfirm(exchange, null)
+        }
+        when (decision) {
+            is PhonePairing.ConfirmDecision.Reject -> refusePairing(hello.id, decision.reason)
+            is PhonePairing.ConfirmDecision.Accepted -> {
+                // Trust is persisted before anything is served: hello.ack, the session token and every
+                // replay come after this line or not at all.
+                runBlocking { server.persistPairing(decision.paired) }
+                completeHandshake(hello)
+            }
+        }
+    }
+
+    /** `error` first (what an older Mac understands), then `pair.rejected`, then close. */
+    private fun refusePairing(id: String, reason: PairRejectReason): Nothing {
+        server.publishPairRejected(reason)
+        sendError(id, ErrorCode.UNAUTHORIZED, reason.message)
+        send(
+            Envelope.of(MessageType.PAIR_REJECTED, id) {
+                put("reason", reason.name)
+                put("fingerprint", peerFingerprint)
+                put("message", reason.message)
+            },
+        )
+        LinkLog.w(
+            "control",
+            "Pairing refused for ${peerFingerprint.take(23)}…: $reason — " +
+                "${server.countPairRejected()} refused / ${server.pairAcceptedCount()} paired since start",
+        )
+        throw ProtocolException("pairing refused: $reason")
+    }
+
+    private fun completeHandshake(envelope: Envelope) {
+        val payload = envelope.payload
         val sessionToken = server.sessions.issue(this)
         token = sessionToken
         // Rules 1-4, after the version and pairing checks above (rule 6). An absent `ext` is `{}`.
@@ -331,6 +387,13 @@ class ControlSession(
         )
         server.onSessionReady(this)
         LinkLog.i("control", "Handshake complete with $peerName at $remoteAddress")
+        // Legacy trust is identified, never upgraded: docs/protocol.md → Existing pairings.
+        LinkLog.i(
+            "trust",
+            "pairing for ${peerFingerprint.take(16)}…: " +
+                if (server.isPairedV2(peerFingerprint)) "v2 (both sides proved the code)" else
+                    "legacy (v1, not authenticated) — forget and pair again to verify",
+        )
     }
 
     /** Pushed whenever a permission flips, so the Mac's greyed-out panes update live. */

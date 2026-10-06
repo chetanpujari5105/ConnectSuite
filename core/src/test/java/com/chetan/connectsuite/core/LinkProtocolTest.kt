@@ -76,9 +76,14 @@ class LinkProtocolTest {
     @Test
     fun `a valid pairing QR parses and normalises its fingerprint`() {
         val fingerprint = (1..32).joinToString(":") { "%02X".format(it) }
+        // Pairing v2 (docs/protocol.md → Pairing (version 2)): `v` and a 32-byte `secret`.
         val payload = PairingQrPayload.parse(
-            """{"host":"192.168.1.5","fp":"$fingerprint","token":"abc123","name":"Chetan's MacBook"}""",
+            """{"v":2,"host":"192.168.1.5","fp":"$fingerprint","secret":"${"ab".repeat(32)}","name":"Chetan's MacBook"}""",
         )!!
+        // The v1 shape of the same code is refused — no fallback to the unauthenticated flow.
+        assertNull(
+            PairingQrPayload.parse("""{"host":"192.168.1.5","fp":"$fingerprint","token":"abc123","name":"Chetan's MacBook"}"""),
+        )
 
         assertEquals("192.168.1.5", payload.host)
         assertEquals(64, payload.peerId.length)

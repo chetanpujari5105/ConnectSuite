@@ -15,7 +15,7 @@ const rejection = (over: Partial<PairRejected> = {}): PairRejected => ({
 
 test('each known reason has its own headline, and none is the phone’s raw sentence', () => {
   const seen = new Set<string>();
-  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING'] as const) {
+  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING', 'UPGRADE_REQUIRED', 'PROOF_INVALID', 'NOT_ARMED', 'TOO_MANY_ATTEMPTS'] as const) {
     const copy = pairRejectionCopy(rejection({ reason }), SELF);
     assert.ok(copy, `${reason} must produce copy`);
     assert.ok(copy.headline.length > 0 && copy.body.length > 0);
@@ -26,7 +26,7 @@ test('each known reason has its own headline, and none is the phone’s raw sent
 });
 
 test('every rejection asks for a fresh code — a dead end is the silent no-op', () => {
-  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING'] as const) {
+  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING', 'UPGRADE_REQUIRED', 'PROOF_INVALID', 'NOT_ARMED', 'TOO_MANY_ATTEMPTS'] as const) {
     assert.equal(pairRejectionCopy(rejection({ reason }), SELF)?.refreshCode, true);
   }
 });
@@ -83,10 +83,10 @@ test('an unknown reason with a blank sentence does not render an empty body', ()
 // --- no raw material reaches a person -------------------------------------------------------------
 
 test('no copy contains a fingerprint, a code or a wire constant', () => {
-  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING'] as const) {
+  for (const reason of ['TOKEN_EXPIRED', 'TOKEN_MISMATCH', 'TOKEN_MISSING', 'UPGRADE_REQUIRED', 'PROOF_INVALID', 'NOT_ARMED', 'TOO_MANY_ATTEMPTS'] as const) {
     const copy = pairRejectionCopy(rejection({ reason }), SELF);
     const text = `${copy?.headline} ${copy?.body}`;
-    assert.ok(!/TOKEN_/.test(text), `${reason} leaks a wire constant into the UI`);
+    assert.ok(!/\b[A-Z]{3,}_[A-Z_]{3,}\b/.test(text), `${reason} leaks a wire constant into the UI`);
     assert.ok(!/[0-9A-F]{2}:[0-9A-F]{2}/i.test(text), `${reason} leaks a fingerprint`);
   }
 });
