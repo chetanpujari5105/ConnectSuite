@@ -1,0 +1,40 @@
+source revision: 286e2b0ecf8f402c07926bf7841646080bddecab
+file: app/build/outputs/apk/debug/app-debug.apk (94856261 bytes, built 2026-10-06 17:09:01 by ./gradlew :app:assembleDebug --rerun-tasks, 150/150 tasks executed)
+sha256: 5f014e9e0b0172ae8ff8cadf3551f5847f9682699535323947607bfd642530ad
+package: name='com.chetan.connectsuite.debug' versionCode='1' versionName='2.0.0' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+targetSdkVersion:'36'
+application-debuggable
+V2 Signer: certificate DN: CN=Android Debug, O=Android, C=US
+V2 Signer: certificate SHA-256 digest: d3a505d22aeef38861db11683afc6b39ef37b8290c1cc188c8dc3fe5cc107d26
+permissions:
+'android.permission.INTERNET'
+'android.permission.ACCESS_NETWORK_STATE'
+'android.permission.ACCESS_WIFI_STATE'
+'android.permission.CHANGE_WIFI_STATE'
+'android.permission.CHANGE_WIFI_MULTICAST_STATE'
+'android.permission.CHANGE_NETWORK_STATE'
+'android.permission.ACCESS_FINE_LOCATION'
+'android.permission.ACCESS_COARSE_LOCATION'
+'android.permission.NEARBY_WIFI_DEVICES'
+'android.permission.FOREGROUND_SERVICE'
+'android.permission.FOREGROUND_SERVICE_DATA_SYNC'
+'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'
+'android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'
+'android.permission.POST_NOTIFICATIONS'
+'android.permission.WAKE_LOCK'
+'android.permission.RECEIVE_BOOT_COMPLETED'
+'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+'android.permission.CAMERA'
+'android.permission.READ_SMS'
+'android.permission.RECEIVE_SMS'
+'android.permission.READ_CALL_LOG'
+'android.permission.READ_CONTACTS'
+'android.permission.READ_PHONE_STATE'
+'android.permission.SEND_SMS'
+'android.permission.CALL_PHONE'
+'android.permission.ANSWER_PHONE_CALLS'
+'android.permission.READ_EXTERNAL_STORAGE'
+'android.permission.READ_MEDIA_IMAGES'
+'android.permission.READ_MEDIA_VIDEO'
+'android.permission.READ_MEDIA_VISUAL_USER_SELECTED'
+'com.chetan.connectsuite.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
