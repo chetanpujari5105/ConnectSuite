@@ -1,3 +1,37 @@
+# PAIRING V2 + S2b — 2026-10-06: both built, tested and committed; NOTHING installed, re-paired or run on hardware
+
+**Read this first.** Contract: `docs/protocol.md` → *Pairing (version 2)* and *Session tokens*. Evidence:
+`docs/evidence/pairing-v2-2026-10-06/`. Tracker: `docs/release-tracker.md`. **Every existing pairing,
+including yours, is legacy** — it still works, it is labelled, it is never upgraded by an update.
+
+1. **Built and proven (code, loopback TLS, JVM — no hardware):**
+   - **The defect, red first on HEAD's own code:** an impostor answering on loopback was pinned as the
+     phone and received the pairing token (`pinned=IMPOSTOR tokenSentToImpostor=true`).
+   - **S1 (defect 182):** the QR carries a 32-byte secret that never crosses the wire; the phone proves
+     it first (`pair.proof`), the Mac verifies and proves back (`pair.confirm`), the phone verifies and
+     persists before `hello.ack`. HMAC-SHA256 over a label, the role, both certificate fingerprints and
+     both fresh nonces; constant-time compares. Proofs match vectors from an independent Python
+     implementation on both sides. Nothing is stored, served or replayed before both proofs verify; the
+     Mac drops every non-handshake message until then. v1 refused both ways, no fallback.
+   - **S2b (defect 189):** a side channel is accepted only from the TLS peer that owns the token's session.
+   - **Tests:** Mac 16 integration tests through the real `LinkClient` + 3 vector tests; phone
+     `PairingV2Test` 16 + `SideChannelAuthTest` 1. Mutations: 9 red, 1 equivalent (explained in
+     `mutations.md`). 6/6 repeat runs and 3/3 under CPU load green.
+   - **Fresh:** Mac **1,831/0** (both typechecks clean); phone **1,387/0** (`--rerun-tasks`, results
+     ≤ 5 min old); Swift **140/0**; every guard rc 0.
+2. **Committed** (local, not pushed): `7815923` (S2b), `b5f8184` (S1), `e79e3a9` (register, tracker,
+   hardware proposal), plus the commit carrying this entry.
+3. **Readable, not built:** `docs/pairing-v2-hardware-test-proposal.md` (H1–H8); H7's impostor stand-in
+   script does not exist yet.
+4. **Needs your decision or hands:** each hardware step separately — H4 **re-pairs your Mac and phone**
+   (forget on both sides); H2 relaunches the Mac and runs the pending Activity rewrite. Still open from
+   before: S4, S5, S7, ML Kit, publisher details, signing.
+5. **Would do next, on approval:** H1–H6 on the SM-S938B, then S4.
+6. **Left changed on your devices:** nothing. No phone or ADB; Sidekick not launched or relaunched;
+   `desktop/dist` not rebuilt; no profile read; your pairing untouched. A test bound `127.0.0.1:42501`
+   for ~0.1 s in an isolated copy and released it (verified 0 listeners after). Your uncommitted edits are
+   untouched.
+
 # RELEASE PHASE 1 — 2026-10-06: S2, S6, S3, U1 fixed in source and committed; S1 drafted; NOTHING installed or relaunched
 
 **Read this first.** The canonical tracker is now `docs/release-tracker.md`; the audit is
