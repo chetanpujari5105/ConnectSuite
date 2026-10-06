@@ -200,7 +200,7 @@ own heading there, and its own row here.
 | **182** | **Pairing does not authenticate the phone to the Mac.** With a pairing armed and nothing stored, the Mac adopts any TLS peer, sends it the pair token, and pins its certificate on the first `hello.ack` (`link.ts:375`, `:595`). Audit S1, High. | **fixed in source 2026-10-06 — not installed, not run on hardware.** Pairing v2 (`docs/protocol.md` → *Pairing (version 2)*): both sides prove the QR secret with HMAC-SHA256 over both certificate fingerprints and both fresh nonces; the secret never crosses the wire; the Mac stores the phone and the phone stores the Mac only after verifying; v1 pairing refused both ways. Red first against HEAD's own `LinkClient`: an impostor on loopback was pinned as the phone and received the token (`docs/evidence/pairing-v2-2026-10-06/`). Mac 15 loopback-TLS integration tests through the real `LinkClient`; phone `PairingV2Test` 17; both against independent vectors. Legacy records kept and labelled, never upgraded. | — | see below |
 | **183** | **Every window shares one 166-method bridge and the main process trusts its caller.** Only the share-window handlers check `event.sender`; most payloads are unvalidated (`fs-drag` drags any existing path). Audit S4, Medium. | **fixed in source 2026-10-06 — not installed, not seen in the real app.** `src/main/ipcAuth.ts` (window registry by object identity + `guardIpc`), `src/main/ipcPolicy.ts` (133 channels: windows, effect, payload rule; events by window), three preloads (main 150, float 25, receive 8 methods). Also closed in the same batch: `sendAll` broadcast clipboard contents, activity and transfers into the float and receive windows' processes; `fs-send` read any local path the renderer named; `pairing-qr-render` rendered any string; `fs-drag`/`reveal-saved` trusted renderer paths or a prefix; a stale receive window could act on offers it was never shown. Tests through the real `main.ts` registrations, the guard, the policy, the receive window, and an isolated Electron run with real preloads and pages; 9 mutations red. `docs/ipc-authorization.md`. | — | see below |
 | **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **open** — batch proposed, §S5; belongs with Developer ID signing | — | see below |
-| **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **open** — batch proposed, §S7 (a product decision: offer vs apply) | — | see below |
+| **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **fixed in source 2026-10-06 — not installed, not seen on hardware.** `clip.push` carries `origin` (`docs/protocol.md` → *Provenance*), stamped by the route (`ClipRoute`), never by the intent. The Mac applies only `origin: "clipboard"`; selection, absent and unknown origins become a bounded offer (5, 10 min, session-bound, single-use Copy); a banner with fixed copy; Restore refuses over newer content. Red first on both sides; Mac 13 + phone 5 mutations red (one phone guard hole found by mutation and closed). | — | see below |
 | **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **open** — proposed, §Integrity | — | see below |
 | **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open** — a release decision; proposed, §Integrity | — | see below |
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
@@ -3687,9 +3687,32 @@ file's age.
 **Fix direction:** §S5 — flip the fuses in `afterPack`, verify each by launch, and drop
 `disable-library-validation` in the change that adds the Developer ID.
 
-### 185 — any phone app can write the Mac's clipboard · **open**
+### 185 — any phone app can write the Mac's clipboard · **fixed in source**
 
-**Fix direction:** §S7 — selection pushes are offered on the Mac rather than applied. **The wrong
+Red first, through the real `ClipboardClient` with an observable pasteboard double: a `clip.push` with
+`origin: "selection"` wrote the clipboard on arrival, and so did every push with no `origin`
+(`docs/evidence/s7-clipboard-origin-2026-10-06/red-before-fix.txt`). On the phone, a source guard showed
+no route stamped any origin.
+
+**Fix.** Contract first: `docs/protocol.md` → `clip.push` → `origin` and *Provenance*. The phone stamps
+`clipboard` from the focus read and `selection` from the exported activity, as a property of
+`ClipboardPayloads.ClipRoute` — the activity reads four extras by name and passes nothing that could
+carry an origin. The Mac applies only the exact string `clipboard`; everything else is a pending offer:
+≤ 5, ≤ 64 KB, 10-minute expiry, bound to the control session, consumed by one Copy, which goes through
+the ordinary arrival path (echo armed, displaced kept). Dismiss, expiry and disconnect never write. A
+native banner with fixed copy (no text, URL or app name) is posted only when the window is not focused,
+and a click opens the Clipboard pane only. Restore is now by id, the displaced text no longer crosses
+IPC, and Restore refuses when anything was copied after the replacement.
+
+**Found by mutation while building it:** the phone's exported-activity guard matched extra names that
+were identifiers, so `getStringExtra("…ORIGIN")` with a literal passed (P4). Widened and re-run red.
+
+**Residual, stated:** an app that writes the phone's clipboard (writes are unrestricted on Android)
+still reaches the Mac as `clipboard` the next time a person brings Sidekick to the front — that is the
+documented sync, unchanged. A new phone with an old Mac is unprotected until the Mac updates.
+
+**Fix direction for what is left:** the hardware run in `docs/s7-hardware-verification-proposal.md`
+(selection → offer, clipboard unchanged until Copy; one ordinary focus sync still applies). **The wrong
 fix** is checking `referrer`: it is the sender's to choose.
 
 ### 186 — received files are not quarantined · **open**

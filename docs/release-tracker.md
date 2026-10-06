@@ -24,7 +24,7 @@
 | U-3 | **Unknown** | Behaviour on any phone but the SM-S938B (and the Moto for some rows) | **unknown** — `docs/single-device-audit.md` | 6 |
 | U-4 | **Unknown** | Whether `share`/`fs.blocks`/camera/webcam code is safe to enable — never reviewed as release code | **unknown** — gates stay off | 3 |
 
-Mediums (S3 and S4 fixed in source; S5, S7 open; U1 fixed in source) and Lows are tracked in the phases
+Mediums (S3, S4 and S7 fixed in source; S5 open; U1 fixed in source) and Lows are tracked in the phases
 below; they are not public-release blockers on their own, but S5 must land before a signed build.
 
 ## Reconciling 14/22 and 16/22
@@ -67,7 +67,7 @@ signed release build — no row has this.
 | 13 | **Files phone → Mac** — browse, pull, drag to Finder | on | yes | yes | 2026-09-01; **defect 137** since 2026-09-23 ⚠ | no | **Defect 137** (granted trees list 0); 186 (quarantine) | **conditional** — `Download/ConnectSuite` only until 137 is understood | F7: provider log read; F11 one pull |
 | 14 | **Block-verified pulls > 64 MiB** (`fs.blocks`) | **off** (`FS_BLOCKS_RELEASE`) | yes | yes | development runs | no | release decision; until then **187**: large pulls unverified | deferred; say "unverified" | Decision recorded; UI states unverified |
 | 15 | **Photos & video browser** | on | yes | yes | 2026-09-23 ⚠ | no | Play photo policy (P5) for Play only; depth unmeasured on hardware | include | F6: 20+ pages timed on the phone |
-| 16 | **Clipboard + history** — Mac → phone automatic; phone → Mac while open; history | on | yes | yes | 2026-09-01/02 | no | **185** (any phone app can write the Mac clipboard); phone → Mac wall | include, wall stated; **S7 before release** | S7 red-first test; release notes state the wall |
+| 16 | **Clipboard + history** — Mac → phone automatic; phone → Mac while open; history | on | yes | yes | 2026-09-01/02 | no | **185 fixed in source 2026-10-06** (selections offered, not applied); phone → Mac wall | include, wall stated | `docs/s7-hardware-verification-proposal.md`; release notes state the wall and that a selection needs Copy on the Mac |
 | 17 | **Mirroring + control**, floating window | on | yes | yes (**pinned socket new**) | 2026-09-10 ⚠ | no | 178 needs F11; defect 100 reconciled (closed, not a code defect); needs background restriction lifted (102/103) | include | F11: 30 s of `Encoded +N frames` after the pin change |
 | 18 | **Apps** — list, "ask to open" | on | yes | yes | 2026-09-03 | no | — | include, never "launch" | — |
 | 19 | **Phone → Mac sharing** | packaged Mac: `share.file 1` only; phone multi-file off | yes | yes | development runs | no | release decision; code never reviewed as release code (U-4) | deferred | — |
@@ -90,7 +90,7 @@ phase silently.
 | U1/U2 — Settings layout, sidebar, notification rows (181) | fixed in source, synthetic | harness with a control-versus-text check: Settings 2→0 / 5→0, nav fits | F10 in the real window |
 | Docs reconciliation | done | D4 closed by evidence (icon hash in the 2026-09-19 package); defect 100 closed with its 2026-09-10 reading; FNV claim corrected | — |
 
-### Phase 2 — pairing and privilege boundaries · **S1, S2b and S4 done in source 2026-10-06; S7 proposed**
+### Phase 2 — pairing and privilege boundaries · **S1, S2b, S4 and S7 done in source 2026-10-06**
 
 S1 + S2b: built to `docs/protocol.md` → *Pairing (version 2)*. Red first against HEAD's own
 `LinkClient` (an impostor was pinned and received the token — `docs/evidence/pairing-v2-2026-10-06/`);
@@ -103,8 +103,12 @@ preloads and pages; 9 mutations red. **Follow-up (defect 190, 2026-10-06):** the
 measured, a forged grant let `fs-send` read a synthetic file in full. Now a native sheet confirms every
 drop; grants are bound to window, file identity and one hour (`docs/evidence/s4-file-grant-2026-10-06/`). Phone pairing wording: *Code scanned. Verifying your Mac…* until the
 phone verified the Mac, *Paired* only then (`ConnectStage.pairingOutcome`); 2 mutations red.
-Still to come: S7 (`docs/phase-2-hardening-proposals.md` §S7, the next proposal); the dependency audit.
-**Acceptance for S7:** a selection push leaves the Mac clipboard untouched until a person presses Copy.
+S7 (defect 185): `clip.push` carries `origin`, stamped by the phone's route; the Mac applies only
+`clipboard` and offers everything else (selection, absent, unknown) until Copy — bounded, session-bound,
+single-use; banner with fixed copy; Restore refuses over newer content. Red first on both sides; Mac 13 +
+phone 5 mutations red (`docs/evidence/s7-clipboard-origin-2026-10-06/`). Still to come: the dependency
+audit. **Acceptance for S7 (unchanged):** a selection push leaves the Mac clipboard untouched until a
+person presses Copy — proven in source; on hardware it is `docs/s7-hardware-verification-proposal.md`.
 
 ### Phase 3 — functional completion
 
@@ -153,6 +157,6 @@ tool to install, which this phase is not allowed to do; it needs your approval.
 3. **Distribution:** direct for v1 (recommended in the audit), Play later or never.
 4. **Pairing v2 hardware run:** `docs/pairing-v2-hardware-test-proposal.md`, step by step — it re-pairs your
    devices (H4).
-5. **S7:** the three decisions at the end of `docs/phase-2-hardening-proposals.md` §S7.
+5. ~~**S7:** the three decisions~~ — **decided 2026-10-06 and built in source**: offer by default, no auto-apply setting, a banner when unfocused, Restore kept. The hardware run is a separate approval (`docs/s7-hardware-verification-proposal.md`).
 6. **The dependency audit:** which option, if any.
 7. **Plan F**, step by step — F2 runs the irreversible Activity rewrite.

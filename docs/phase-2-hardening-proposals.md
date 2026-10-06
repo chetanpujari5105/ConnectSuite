@@ -9,7 +9,7 @@
 
 1. ~~**S1 + S2b**~~ — **done in source 2026-10-06** (`docs/protocol.md` → Pairing (version 2); defects 182, 189).
 2. ~~**S4**~~ — **done in source 2026-10-06** (defect 183; `docs/ipc-authorization.md`).
-3. **S7** — a product decision with a small code change.
+3. ~~**S7**~~ — **done in source 2026-10-06** (defect 185; `docs/protocol.md` → *Provenance*).
 4. **S5** — belongs with Developer ID signing (release phase 4), proposed now so it is not designed in a
    hurry.
 5. **Integrity inventory** — S8 and S9, small, independent.
@@ -52,7 +52,14 @@ are honoured by a packaged build, and ASAR integrity is off. `build/entitlements
 
 ---
 
-## S7 — any phone app can write the Mac's clipboard (defect 185, Medium) · **the next proposal**
+## S7 — any phone app can write the Mac's clipboard (defect 185, Medium) · **done in source 2026-10-06**
+
+> **Built, with these decisions from the owner (2026-10-06):** offer by default; **no** auto-apply setting
+> in this batch (item 3 below was not built); a native notification may announce an offer and carries no
+> clipboard content; Restore stays. Two things the build added beyond this proposal: offers are bound to
+> the control session and single-use, and Restore now refuses when something newer is on the clipboard.
+> The contract is `docs/protocol.md` → *Provenance*, which wins where this text differs (e.g. the
+> notification has **no** Copy action — a click only opens the pane). Kept below as the argument.
 
 **Today, measured from the code.** `SendSelectionActivity` is exported for `PROCESS_TEXT` and
 `SEND text/*` — it must be, to appear in other apps' selection toolbars and share sheets. Any app in the

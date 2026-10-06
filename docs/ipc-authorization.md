@@ -27,7 +27,7 @@ The preloads are narrowed too (`src/preload.ts` 150 methods, `src/preloadFloat.t
 but **the preload is not the boundary**: a compromised page in the float window that bypassed its preload
 was still refused by the main process (`docs/evidence/s4-ipc-2026-10-06/results.json`).
 
-## Channels (134)
+## Channels (136)
 
 | Channel | Preload method | Windows | Effect | Payload rule | Binding / ownership |
 |---|---|---|---|---|---|
@@ -50,9 +50,12 @@ was still refused by the main process (`docs/evidence/s4-ipc-2026-10-06/results.
 | `camera-switch` | main:cameraSwitch | main | action | `[facing]` | — |
 | `clip-clear` | main:clipClear | main | action | none | — |
 | `clip-history` | main:clipHistory | main | reads personal data | none | — |
+| `clip-offer-copy` | main:clipOfferCopy | main | action | `[obj({ offerId: id })]` | **S7:** the text is looked up in main, never sent by the page; the offer must be pending, unexpired, on the **current control session**, and is consumed by the call — a second Copy writes nothing |
+| `clip-offer-dismiss` | main:clipOfferDismiss | main | action | `[obj({ offerId: id })]` | **S7:** removes the offer; never touches the clipboard |
 | `clip-open` | main:clipOpen | main | action | `[messageText]` | http/https only, re-decided in main (`openableUrl`) |
 | `clip-phone-history` | main:clipPhoneHistory | main | reads personal data | `[opt(num({ min: 1, max: 100, int: true }))]` | — |
 | `clip-request` | main:clipRequest | main | action | none | — |
+| `clip-restore` | main:clipRestore | main | action | `[obj({ id })]` | a `displaced` entry by id; refused unless this Mac's clipboard still holds exactly the entry that displaced it. The displaced text no longer crosses IPC |
 | `clip-send` | main:clipSend | main | action | none | — |
 | `clip-set-watching` | main:clipSetWatching | main | action | `[bool]` | — |
 | `clip-use` | main:clipUse | main | action | `[messageText]` | — |

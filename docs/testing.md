@@ -28237,3 +28237,39 @@ after the choice must be re-chosen; a drop from more than 12 folders must use **
 **Not reached:** a real OS drag and the sheet on the real window — H10, rewritten for this.
 
 **Fresh:** Mac **1,872 / 0**; typecheck clean.
+
+## Release Phase 2 — S7: clipboard provenance (defect 185), 2026-10-06
+
+**Code and isolated tests only. No app launched, no phone, no real clipboard change.**
+
+**Contract first:** `docs/protocol.md` → `clip.push` → `origin` and *Provenance* — two values
+(`clipboard`, `selection`), set by the phone's route; the Mac applies only the exact string `clipboard`
+and offers everything else, absent included; mixed versions stated.
+
+**Red first.** Mac, through the real `ClipboardClient` with a recording pasteboard double: a selection
+push and every push with no or an unknown `origin` wrote the clipboard on arrival (control
+`origin:"clipboard"` green). Phone: a source guard showed no route stamped any origin.
+`docs/evidence/s7-clipboard-origin-2026-10-06/`.
+
+**Built.** Phone: `ClipboardPayloads.ClipRoute` (`FOCUS` → `clipboard`, `SELECTION` → `selection`);
+`deliver()` stamps the route's origin; the exported activity reads four extras by name and passes
+nothing that could carry an origin; toast *"Sent to your Mac — choose Copy there"*. Mac: offers
+(`clipOffers.ts`) — ≤ 5, ≤ 64 KB, 10 min, bound to the control session token, consumed by one Copy
+that runs the ordinary arrival path; `clip-offer-copy` / `clip-offer-dismiss` by id; a banner with fixed
+copy only when unfocused, click opens the pane (`clipOfferNotifier.ts`, factory in `nativeNotifier.ts`
+so `main.ts` still imports no `Notification` — `shareDecision.test.ts` guards that); Restore by id
+(`clip-restore`), refused over newer clipboard content, displaced text no longer sent to the page.
+
+**Controls and mutations.** Every negative case has a positive twin (the table is in the evidence
+README). Mac: 13 mutations red with the catching test named. Phone: 5 red, each with its results
+file's age and Gradle's exit code. **One guard hole, found by mutation:** P4 (`getStringExtra("…ORIGIN")`
+in the exported activity) was first **green** — the extras matcher read identifier arguments only.
+Widened and re-run red; both runs kept. One test was also tightened before it counted: "Copy arms the
+echo" asserted `ok:false` from a send that fails anyway with no link, so it now asserts the echo
+sentence.
+
+**Not reached:** the running activity, the real pasteboard, the real banner, old-phone/new-Mac on
+hardware — `docs/s7-hardware-verification-proposal.md` V0–V11, for separate approval.
+
+**Fresh:** Mac **1,893 / 0**, both typechecks clean; phone **1,405 / 0** (`--rerun-tasks`, all six
+modules, every results file from this run); every guard exit 0.

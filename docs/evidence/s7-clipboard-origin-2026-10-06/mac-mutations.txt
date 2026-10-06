@@ -1,0 +1,49 @@
+Control (unmutated):
+GREEN (exit 0)
+S1 every arrival applied (the pre-S7 behaviour)
+RED (exit 1)
+  ✖ S7, red first: a selection push leaves the Mac clipboard untouched
+  ✖ S7: Copy applies exactly the approved offer’s text, once
+  ✖ S7: Copy is bound to the session the offer arrived on
+  ✖ S7: Dismiss, expiry and disconnect leave the clipboard unchanged, and Copy afterwards is refused
+  ✖ S7: a legacy push with no origin, and every unknown origin, is never applied
+  ✖ S7: an offer is held, not applied, and announced once
+  ✖ S7: no log line carries clipboard text, an app name or a package
+  ✖ S7: pending offers are bounded — five at most, the oldest withdrawn — and an over-cap text is not kept
+S2 origin compared case-insensitively
+RED (exit 1)
+  ✖ S7: a legacy push with no origin, and every unknown origin, is never applied
+S3 an offer is not consumed by Copy
+RED (exit 1)
+  ✖ S7: Copy applies exactly the approved offer’s text, once
+S4 session binding removed
+RED (exit 1)
+  ✖ S7: Copy is bound to the session the offer arrived on
+S5 expiry not checked on Copy
+RED (exit 1)
+  ✖ S7: Dismiss, expiry and disconnect leave the clipboard unchanged, and Copy afterwards is refused
+S6 disconnect keeps offers
+RED (exit 1)
+  ✖ S7: Dismiss, expiry and disconnect leave the clipboard unchanged, and Copy afterwards is refused
+S7 Restore guard removed
+RED (exit 1)
+  ✖ Restore never overwrites something copied after the replacement
+S8 offer text written to the log
+RED (exit 1)
+  ✖ S7: no log line carries clipboard text, an app name or a package
+S9 Copy writes the clipboard directly, skipping the arrival path
+RED (exit 1)
+  ✖ S7: Copy goes through the arrival path — echo armed, displaced kept, Restore works
+S10 the pane's offer Copy sends its own text through clip-use
+RED (exit 1)
+  ✖ S7: Copy names the offer by id and never sends the text; Dismiss names it too
+  ✖ S7: a refused Copy (stale, expired, other session) is said as a problem, not as success
+S11 an offered link gets Open
+RED (exit 1)
+  ✖ S7: an arriving offer is selected, says it is NOT on the clipboard, and offers Copy and Dismiss — never Open
+S12 the banner is posted while the window is focused
+RED (exit 1)
+  ✖ no banner while the window is focused — the pane already says it
+S13 a banner click also copies (a copy method on the notifier)
+RED (exit 1)
+  ✖ a click only opens the Clipboard pane and takes the banner down — it never copies

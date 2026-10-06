@@ -1,0 +1,13 @@
+
+3 tests completed, 2 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':sync-module:testDebugUnitTest'.
+> There were failing tests. See the report at: file:///Users/chetan/Desktop/ConnectSuite/sync-module/build/reports/tests/testDebugUnitTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 2s

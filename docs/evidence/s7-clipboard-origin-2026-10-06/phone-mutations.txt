@@ -1,0 +1,24 @@
+P1 deliver() drops the route's origin
+RED (gradle exit 1)
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginPayloadTest.xml: written 0.2s ago (this run); failing: none
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginSourceTest.xml: written 0.2s ago (this run); failing: ["the push payload carries the route's origin"]
+P2 the selection route sent as FOCUS
+RED (gradle exit 1)
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginPayloadTest.xml: written 0.1s ago (this run); failing: none
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginSourceTest.xml: written 0.1s ago (this run); failing: ['the selection route is SELECTION and the focus route is FOCUS, each exactly once']
+P3 SELECTION stamps clipboard
+RED (gradle exit 1)
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginPayloadTest.xml: written 0.1s ago (this run); failing: ['the focus route stamps clipboard and the selection route stamps selection', 'a push built for the selection route says selection on the wire']
+  TEST-com.chetan.connectsuite.sync.v2.ClipOriginSourceTest.xml: written 0.1s ago (this run); failing: none
+P4 the exported activity reads a caller-supplied origin extra
+GREEN (gradle exit 0)
+  TEST-com.chetan.connectsuite.SendSelectionProvenanceTest.xml: written 0.1s ago (this run); failing: none
+P4 — FIRST RUN ABOVE WAS GREEN: the extras matcher saw identifiers only, so a string-literal extra was invisible. Matcher widened; rerun:
+RED (gradle exit 1)
+  TEST-com.chetan.connectsuite.SendSelectionProvenanceTest.xml: written 0.2s ago (this run); failing: ['SendSelectionActivity reads only the text, the stream and the read-only flag from its intent']
+P5 the activity passes an extra into sendSelectedText
+RED (gradle exit 1)
+  TEST-com.chetan.connectsuite.SendSelectionProvenanceTest.xml: written 0.1s ago (this run); failing: ['the selection is handed to sendSelectedText with the text and the platform referrer, nothing else', 'SendSelectionActivity reads only the text, the stream and the read-only flag from its intent']
+Control (unmutated, same harness)
+GREEN (gradle exit 0)
+  TEST-com.chetan.connectsuite.SendSelectionProvenanceTest.xml: written 0.2s ago (this run); failing: none

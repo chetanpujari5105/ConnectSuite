@@ -1,3 +1,43 @@
+# S4 FILE-GRANT FOLLOW-UP + S7 CLIPBOARD PROVENANCE — 2026-10-06: built, tested, committed; NOTHING installed or relaunched
+
+**Read this first.** Defects **190** (new) and **185** in `docs/defects.md`. Evidence:
+`docs/evidence/s4-file-grant-2026-10-06/`, `docs/evidence/s7-clipboard-origin-2026-10-06/`. Contract:
+`docs/protocol.md` → `clip.push` → *Provenance*. Hardware plan: `docs/s7-hardware-verification-proposal.md`.
+
+1. **Built and proven (code, isolated tests — no hardware):**
+   - **A / defect 190.** Original result: through the production `main.ts` handlers, a compromised main
+     renderer sent an arbitrary synthetic path to `fs-grant-source`, and `fs-send` then **opened and hashed
+     all 34 bytes** of it; only the harness's missing phone stopped the upload. Fixed: the channel is gone; a
+     drop is confirmed in a **native sheet** (`fs-confirm-drop`) naming every file or source folder, Cancel
+     the default, one at a time; every grant is bound to window, `dev`/`ino` and one hour
+     (`desktop/src/main/sourceGrants.ts`). Valid pick, confirmed drop → read; forged, expired, swapped,
+     replaced-window, float/receive → **0 opens**. 9 mutations red.
+   - **B / S7 / defect 185.** `clip.push` carries `origin`, stamped by the phone's route (`ClipRoute`); the
+     Mac applies only the exact string `clipboard`. Selection, absent and unknown origins become offers: ≤ 5,
+     ≤ 64 KB, 10 min, bound to the control session, single-use Copy through the normal arrival path; Dismiss,
+     expiry, disconnect never write; banner with fixed copy only when unfocused, click opens the pane; Restore
+     by id and refused over newer content. Red first on both sides; Mac 13 + phone 5 mutations red.
+   - **Fresh:** Mac **1,893 / 0**, both typechecks; phone **1,405 / 0** (`--rerun-tasks`, six modules, every
+     results file from the run); every guard exit 0.
+   - **Instrument faults caught in the run, all recorded in the evidence:** a mutation pass that ran no tests
+     (zsh did not split `$T`; eight false "reds"); a mutation malformed by precedence; one that hung; and a
+     phone guard blind to string-literal extras (P4 green first, fixed).
+2. **Committed** (local, not pushed): `02c570e` (A), `afa88be` (contract), `001f452` (phone), `b674ccf`
+   (Mac), plus the commit carrying this entry.
+3. **Readable, not built:** `docs/s7-hardware-verification-proposal.md` V0–V11 (includes the real drop for 190).
+4. **Needs your decision or hands:** approval of that hardware run, step by step (V1 relaunch runs the
+   Activity rewrite; V5–V6 write the Mac clipboard with synthetic text, saved and restored).
+5. **Would do next, on approval:** the hardware run; then the dependency audit decision.
+6. **Left changed on your devices:** nothing. No phone or ADB, no launch or relaunch, `desktop/dist` not
+   rebuilt, no real clipboard written. Your uncommitted edits untouched; this entry and the `testing.md`
+   sections were staged without them.
+
+**Product consequences to carry into release notes:** a drop needs one native confirmation, and a drop's
+"N items were left out" line is no longer shown; a batch item starting > 1 h after its choice must be
+re-chosen; a drop from > 12 folders needs **Send to phone…**; text sent with **Send to Mac** from another
+phone app needs **Copy** on the Mac; an old phone's ordinary syncs need Copy too until it updates; a new phone
+with an old Mac is still unprotected.
+
 # S4 MAC IPC BOUNDARY + PHONE PAIRING COPY — 2026-10-06: built, tested, committed; NOTHING installed or relaunched
 
 **Read this first.** Matrix: `docs/ipc-authorization.md` (133 channels). Evidence:

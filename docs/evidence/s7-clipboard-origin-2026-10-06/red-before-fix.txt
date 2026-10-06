@@ -1,0 +1,61 @@
+✖ S7, red first: a selection push leaves the Mac clipboard untouched (1.973458ms)
+✖ S7: a legacy push with no origin, and every unknown origin, is never applied (0.199625ms)
+✔ S7, control: origin "clipboard" — the genuine focus sync — is still applied on arrival (0.198125ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 162.921584
+
+✖ failing tests:
+
+test at src/main/clipboardOrigin.test.ts:51:1
+✖ S7, red first: a selection push leaves the Mac clipboard untouched (1.973458ms)
+  AssertionError [ERR_ASSERTION]: a selection was written to the clipboard on arrival
+  + actual - expected
+  
+  + [
+  +   'rm -rf ~ # from another app'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/clipboardOrigin.test.ts:54:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.start (node:internal/test_runner/test:1015:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'rm -rf ~ # from another app' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/clipboardOrigin.test.ts:58:1
+✖ S7: a legacy push with no origin, and every unknown origin, is never applied (0.199625ms)
+  AssertionError [ERR_ASSERTION]: origin undefined was applied
+  + actual - expected
+  
+  + [
+  +   'rm -rf ~ # from another app'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/clipboardOrigin.test.ts:62:12)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'rm -rf ~ # from another app' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
