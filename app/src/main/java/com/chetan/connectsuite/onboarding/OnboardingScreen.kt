@@ -46,6 +46,14 @@ import com.chetan.connectsuite.core.permissions.SpecialAccess
 import com.chetan.connectsuite.core.permissions.rememberPermissionState
 import com.chetan.connectsuite.link.QrScanScreen
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.chetan.connectsuite.core.link.ConnectStage
+import com.chetan.connectsuite.core.link.PairingOutcome
+import com.chetan.connectsuite.core.link.ScannedPairing
+import kotlinx.coroutines.delay
 
 /**
  * How onboarding ended, which decides where the app opens.
@@ -302,9 +310,20 @@ private fun PairPage(onFinished: (OnboardingOutcome) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val server = remember { LinkController.get(context) }
+    val state by server.state.collectAsStateWithLifecycle()
 
     var scanning by remember { mutableStateOf(false) }
-    var pairedWith by remember { mutableStateOf<String?>(null) }
+    // Pairing v2: a scan arms a pairing and trusts nothing. What this page says comes from
+    // `ConnectStage.pairingOutcome`, the same answer the Mac tab draws — "Paired" only once this phone
+    // verified the Mac's proof and saved it.
+    var scanned by remember { mutableStateOf<ScannedPairing?>(null) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(scanned) {
+        while (scanned != null) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
 
     if (scanning) {
         QrScanScreen(
@@ -312,7 +331,7 @@ private fun PairPage(onFinished: (OnboardingOutcome) -> Unit) {
                 scope.launch {
                     server.completePairing(payload)
                     LinkService.start(context)
-                    pairedWith = payload.name
+                    scanned = ScannedPairing(payload.name, System.currentTimeMillis(), macFingerprint = payload.peerId)
                     scanning = false
                 }
             },
@@ -321,33 +340,42 @@ private fun PairPage(onFinished: (OnboardingOutcome) -> Unit) {
         return
     }
 
-    val paired = pairedWith
-    if (paired != null) {
-        PageScaffold(
-            page = copy,
-            title = OnboardingCopy.PAIR_SUCCESS_TITLE.format(paired),
-            subtitle = OnboardingCopy.PAIR_SUCCESS_SUBTITLE,
-            primaryLabel = OnboardingCopy.PAIR_SUCCESS_PRIMARY,
-            onPrimary = { onFinished(OnboardingOutcome.PAIRED) },
-            // No secondary in the success state: there is nothing left to defer.
-            onSecondary = null,
-        ) {
-            item {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    ),
-                ) {
-                    Row(Modifier.padding(16.dp)) {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null)
-                        Spacer(Modifier.size(14.dp))
-                        Text(
-                            OnboardingCopy.PAIR_SUCCESS_BODY,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+    val current = scanned
+    if (current != null) {
+        when (val outcome = ConnectStage.pairingOutcome(state, current, now)) {
+            PairingOutcome.Paired -> PairedState(current.macName, onFinished)
+            PairingOutcome.Verifying -> PageScaffold(
+                page = copy,
+                title = OnboardingCopy.PAIR_VERIFYING_TITLE,
+                subtitle = OnboardingCopy.PAIR_VERIFYING_SUBTITLE,
+                primaryLabel = OnboardingCopy.PAIR_VERIFYING_CANCEL,
+                onPrimary = {
+                    server.cancelPairing()
+                    scanned = current.copy(cancelled = true)
+                },
+                onSecondary = null,
+            ) {
+                item { CircularProgressIndicator() }
+            }
+            else -> {
+                val title = if (outcome == PairingOutcome.Cancelled) OnboardingCopy.PAIR_CANCELLED_TITLE else OnboardingCopy.PAIR_FAILED_TITLE
+                val body = when (outcome) {
+                    PairingOutcome.Cancelled -> OnboardingCopy.PAIR_CANCELLED_BODY
+                    PairingOutcome.Expired -> OnboardingCopy.PAIR_EXPIRED_BODY
+                    is PairingOutcome.Rejected -> outcome.reason.message
+                    else -> OnboardingCopy.PAIR_EXPIRED_BODY
                 }
+                PageScaffold(
+                    page = copy,
+                    title = title,
+                    subtitle = body,
+                    primaryLabel = OnboardingCopy.PAIR_RETRY,
+                    onPrimary = {
+                        scanned = null
+                        scanning = true
+                    },
+                    onSecondary = { onFinished(OnboardingOutcome.NOT_PAIRED) },
+                ) {}
             }
         }
         return
@@ -364,6 +392,38 @@ private fun PairPage(onFinished: (OnboardingOutcome) -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** The success state — reached only through `PairingOutcome.Paired`. */
+@Composable
+private fun PairedState(macName: String, onFinished: (OnboardingOutcome) -> Unit) {
+    PageScaffold(
+        page = OnboardingCopy.pair,
+        title = OnboardingCopy.PAIR_SUCCESS_TITLE.format(macName),
+        subtitle = OnboardingCopy.PAIR_SUCCESS_SUBTITLE,
+        primaryLabel = OnboardingCopy.PAIR_SUCCESS_PRIMARY,
+        onPrimary = { onFinished(OnboardingOutcome.PAIRED) },
+        // No secondary in the success state: there is nothing left to defer.
+        onSecondary = null,
+    ) {
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                Row(Modifier.padding(16.dp)) {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null)
+                    Spacer(Modifier.size(14.dp))
+                    Text(
+                        OnboardingCopy.PAIR_SUCCESS_BODY,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }

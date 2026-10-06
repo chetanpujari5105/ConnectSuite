@@ -79,6 +79,12 @@ data class LinkState(
      * which of three things had gone wrong and already had the sentence written.
      */
     val lastPairReject: PairRejection? = null,
+    /**
+     * The last pairing this phone **verified and persisted** (pairing v2), for the phone's own screen.
+     * The only thing that may make it say *Paired* — not a connected session, which a different, already
+     * trusted Mac can also produce.
+     */
+    val lastPairSuccess: PairSuccess? = null,
 ) {
     val isConnected: Boolean get() = clients.isNotEmpty()
 
@@ -94,6 +100,10 @@ data class LinkState(
      */
     fun afterPairRejected(reason: PairRejectReason, nowMillis: Long): LinkState =
         copy(lastPairReject = PairRejection(reason, nowMillis))
+
+    /** The state after a v2 pairing verified the Mac's proof and persisted its trust. */
+    fun afterPairSucceeded(macFingerprint: String, macName: String, nowMillis: Long): LinkState =
+        copy(lastPairSuccess = PairSuccess(PairingQrPayload.normalizeFingerprint(macFingerprint), macName, nowMillis))
 
     /**
      * The state after the accept loops come up.
@@ -381,6 +391,8 @@ class LinkServer(
      */
     suspend fun persistPairing(paired: PhonePairing.Paired) {
         trustStore.trustAuthenticated(paired)
+        // Only now may the phone's screen say *Paired* (ConnectStage.pairingOutcome).
+        _state.update { it.afterPairSucceeded(paired.macFingerprint, paired.name, System.currentTimeMillis()) }
         clearPairIntent()
         pairAccepted.incrementAndGet()
     }

@@ -75,9 +75,9 @@ import com.chetan.connectsuite.core.ui.components.StatusPill
  * | 02 Entry | [EntryStage] | as drawn, with one honest substitution (see below) |
  * | 03 QR scan | `QrScanScreen` | real camera, ML Kit, unchanged behaviour |
  * | 04 Searching | **no** | the phone does not search. Locked decision #2: it binds and waits |
- * | *Verifying* | **no** | not observable — TLS and the token check both happen inside `accept()` |
- * | 05 Connecting | [WaitingStage] | one honest state, with the token's real deadline |
- * | 06 Success | [ConnectedStage] | as drawn |
+ * | 05 Connecting | [WaitingStage] | "Code scanned. Verifying your Mac…" — pairing v2's verification, with the code's real deadline |
+ * | 06 Success | [ConnectedStage] | "Paired" only after a verified pairing (`ConnectStage.Paired`); "Connected" otherwise |
+ * | — Cancelled | [CancelledStage] | the person cancelled; nothing was saved |
  * | 07 Confirm this Mac | **elsewhere** | that is the v1 Sync dialog; in the QR flow the QR *is* the confirmation |
  * | 08 Declined | [RefusedStage] / [ExpiredStage] | two real failures, both amber |
  * | 09 No network | [NoNetworkStage] | real, read from the interface list |
@@ -121,12 +121,27 @@ fun ConnectMacScreen(
         // thing that is real: whether a Mac is connected.
         SidekickHeader {
             if (stage is ConnectStage.Connected) StatusPill("Connected", StatusKind.Connected)
+            if (stage is ConnectStage.Paired) StatusPill("Paired", StatusKind.Connected)
         }
 
         when (stage) {
             is ConnectStage.Entry -> EntryStage(onScan, onShowAddress, localEndpoint)
             is ConnectStage.Waiting -> WaitingStage(stage, nowMillis, onCancel)
-            is ConnectStage.Connected -> ConnectedStage(stage, onOpenDevices)
+            is ConnectStage.Connected -> ConnectedStage(
+                stage.macName,
+                "Connected",
+                "This phone and ${stage.macName} are linked. Everything you turn on is available now.",
+                onOpenDevices,
+            )
+            // Pairing v2: only after this phone verified the Mac's proof and saved it.
+            is ConnectStage.Paired -> ConnectedStage(
+                stage.macName,
+                "Paired",
+                "This phone and ${stage.macName} proved the pairing code to each other and are now " +
+                    "linked. Everything you turn on is available now.",
+                onOpenDevices,
+            )
+            is ConnectStage.Cancelled -> CancelledStage(stage, onRetry, onCancel)
             is ConnectStage.Expired -> ExpiredStage(stage, onRetry, onCancel)
             is ConnectStage.Rejected -> RejectedStage(stage, onRetry, onCancel)
             is ConnectStage.Refused -> RefusedStage(stage, onRetry, onCancel)
@@ -303,16 +318,17 @@ private fun WaitingStage(stage: ConnectStage.Waiting, nowMillis: Long, onCancel:
             }
 
             Text(
-                "Waiting for ${stage.macName}",
+                "Code scanned. Verifying your Mac\u2026",
                 style = SidekickType.title,
                 color = SidekickColors.textPrimary,
                 textAlign = TextAlign.Center,
             )
-            // The reference says "Looking for your Mac". The phone is not looking: it has written
-            // the trust row, armed the token and is listening. Saying so is also the instruction —
-            // the next move is on the Mac, and the user needs to know that.
+            // Pairing v2: nothing is trusted yet. The phone has armed the code and is listening; the Mac
+            // connects and both prove the code before either saves the other. Saying so is also the
+            // instruction — the next move is on the Mac.
             Text(
-                "This phone is listening. Your Mac connects to it — keep Sidekick open on the Mac.",
+                "${stage.macName} connects to this phone and both prove the code before either trusts " +
+                    "the other. Keep Sidekick open on the Mac.",
                 style = SidekickType.body,
                 color = SidekickColors.textBody,
                 textAlign = TextAlign.Center,
@@ -350,7 +366,7 @@ internal fun formatCountdown(millis: Long): String {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ConnectedStage(stage: ConnectStage.Connected, onOpenDevices: () -> Unit) {
+private fun ConnectedStage(macName: String, title: String, body: String, onOpenDevices: () -> Unit) {
     Spacer(Modifier.height(Space.xl))
     Column(
         Modifier.fillMaxWidth(),
@@ -373,9 +389,9 @@ private fun ConnectedStage(stage: ConnectStage.Connected, onOpenDevices: () -> U
             )
         }
 
-        Text("Connected", style = SidekickType.display, color = SidekickColors.textPrimary)
+        Text(title, style = SidekickType.display, color = SidekickColors.textPrimary)
         Text(
-            "This phone and ${stage.macName} are linked. Everything you turn on is available now.",
+            body,
             style = SidekickType.body,
             color = SidekickColors.textBody,
             textAlign = TextAlign.Center,
@@ -392,7 +408,7 @@ private fun ConnectedStage(stage: ConnectStage.Connected, onOpenDevices: () -> U
             IconBadge(Icons.Outlined.Laptop, size = 48.dp, tint = SidekickColors.accent)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                 Text(
-                    stage.macName,
+                    macName,
                     style = SidekickType.section,
                     color = SidekickColors.textPrimary,
                 )
@@ -417,6 +433,21 @@ private fun ConnectedStage(stage: ConnectStage.Connected, onOpenDevices: () -> U
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // 08 — the two real failures. Amber, never red: nothing is broken in either.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The person pressed Cancel: the code was dropped on this phone and nothing was saved. */
+@Composable
+private fun CancelledStage(stage: ConnectStage.Cancelled, onRetry: () -> Unit, onCancel: () -> Unit) {
+    FailureStage(
+        headline = "Pairing cancelled",
+        body = "Nothing was saved, and this phone is no longer waiting for ${stage.macName}. Scan the " +
+            "code again when you are ready.",
+        hintTitle = "Cancelling dropped the code.",
+        hintBody = "An old code cannot be used after this; the Mac will show a fresh one.",
+        onRetry = onRetry,
+        onCancel = onCancel,
+        retryLabel = "Scan again",
+    )
+}
 
 @Composable
 private fun ExpiredStage(stage: ConnectStage.Expired, onRetry: () -> Unit, onCancel: () -> Unit) {

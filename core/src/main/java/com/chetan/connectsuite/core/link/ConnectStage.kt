@@ -10,8 +10,31 @@ import com.chetan.connectsuite.core.protocol.Link
  * two expressions will eventually have two answers, and a screen counting down five minutes while
  * the server enforced something else is precisely that bug, wearing a progress bar.
  */
-data class ScannedPairing(val macName: String, val scannedAtMillis: Long) {
+/**
+ * A code the person scanned on this screen. [macFingerprint] (normalised) ties the outcome to this Mac;
+ * [cancelled] is the person pressing Cancel, which is its own outcome rather than a return to the start.
+ */
+data class ScannedPairing(
+    val macName: String,
+    val scannedAtMillis: Long,
+    val macFingerprint: String? = null,
+    val cancelled: Boolean = false,
+) {
     val expiresAtMillis: Long get() = scannedAtMillis + Link.PAIR_TOKEN_TTL_MS
+}
+
+/**
+ * What became of a scanned code — the one answer the Connect-a-Mac screen and onboarding both draw, so the
+ * two cannot disagree. **Only [Paired] says paired**, and only after this phone verified the Mac's proof and
+ * persisted it (`LinkState.lastPairSuccess`); a session that happens to be connected is not evidence,
+ * since a different, already trusted Mac produces one too.
+ */
+sealed interface PairingOutcome {
+    data object Verifying : PairingOutcome
+    data object Paired : PairingOutcome
+    data object Cancelled : PairingOutcome
+    data object Expired : PairingOutcome
+    data class Rejected(val reason: PairRejectReason) : PairingOutcome
 }
 
 /**
@@ -86,6 +109,12 @@ sealed interface ConnectStage {
     /** A session exists. */
     data class Connected(val macName: String) : ConnectStage
 
+    /** The scanned Mac proved the code and this phone persisted it. Only this stage says "Paired". */
+    data class Paired(val macName: String) : ConnectStage
+
+    /** The person cancelled this pairing on the phone; nothing was saved. */
+    data class Cancelled(val macName: String) : ConnectStage
+
     /**
      * A Mac reached the phone and was turned away at the TLS handshake.
      *
@@ -106,6 +135,22 @@ sealed interface ConnectStage {
          *
          * @param localAddress `PhoneAddress.localIpv4()`, passed in so this stays a pure function.
          */
+        /** The outcome of [scanned] given [state] — see [PairingOutcome]. */
+        fun pairingOutcome(state: LinkState, scanned: ScannedPairing, nowMillis: Long): PairingOutcome {
+            if (scanned.cancelled) return PairingOutcome.Cancelled
+            val success = state.lastPairSuccess
+            if (success != null && success.atMillis >= scanned.scannedAtMillis &&
+                (scanned.macFingerprint == null ||
+                    PairingQrPayload.normalizeFingerprint(scanned.macFingerprint) == success.macFingerprint)
+            ) {
+                return PairingOutcome.Paired
+            }
+            val reject = state.lastPairReject
+            if (reject != null && reject.atMillis >= scanned.scannedAtMillis) return PairingOutcome.Rejected(reject.reason)
+            if (nowMillis >= scanned.expiresAtMillis) return PairingOutcome.Expired
+            return PairingOutcome.Verifying
+        }
+
         fun of(
             state: LinkState,
             scanned: ScannedPairing?,
@@ -114,10 +159,21 @@ sealed interface ConnectStage {
         ): ConnectStage {
             val wait = LinkWaitStatus.of(state, nowMillis)
 
-            // A live session outranks everything: if a Mac is connected then there is obviously a
-            // network, and whatever was refused a minute ago is no longer the story.
-            if (wait is LinkWaitStatus.Connected) {
-                return Connected(wait.clients.firstOrNull() ?: scanned?.macName ?: "your Mac")
+            // A scanned code is answered by its own outcome first: *Paired* only on a verified pairing,
+            // never because some session is connected — a different, already trusted Mac can be connected
+            // while this one is still being verified.
+            if (scanned != null) {
+                when (pairingOutcome(state, scanned, nowMillis)) {
+                    PairingOutcome.Paired -> return Paired(scanned.macName)
+                    PairingOutcome.Cancelled -> return Cancelled(scanned.macName)
+                    else -> Unit
+                }
+            }
+
+            // With no scan in progress a live session outranks everything: if a Mac is connected then
+            // there is obviously a network, and whatever was refused a minute ago is no longer the story.
+            if (scanned == null && wait is LinkWaitStatus.Connected) {
+                return Connected(wait.clients.firstOrNull() ?: "your Mac")
             }
 
             if (localAddress == null) return NoNetwork

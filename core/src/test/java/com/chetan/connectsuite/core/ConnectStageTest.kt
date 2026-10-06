@@ -2,6 +2,8 @@ package com.chetan.connectsuite.core
 
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.LinkState
+import com.chetan.connectsuite.core.link.PairRejectReason
+import com.chetan.connectsuite.core.link.PairingOutcome
 import com.chetan.connectsuite.core.link.RefusedConnection
 import com.chetan.connectsuite.core.link.ScannedPairing
 import com.chetan.connectsuite.core.protocol.Link
@@ -114,5 +116,48 @@ class ConnectStageTest {
         // Expired and was wrong about which of two clocks it was reading.
         assertTrue(late < t0 + ttl)
         assertTrue(ConnectStage.of(state, scan, "10.0.0.5", late) is ConnectStage.Waiting)
+    }
+
+    // ---- pairing v2: scan, verification, success, failure, cancellation ------------------------------
+
+    private val macFp = "AB:".repeat(31) + "AB"
+    private val v2scan = ScannedPairing("Chetans-MacBook-Pro", t0, macFingerprint = macFp)
+
+    @Test
+    fun `a scan is verifying, never paired, until this phone verifies the Mac`() {
+        assertEquals(PairingOutcome.Verifying, ConnectStage.pairingOutcome(listening(), v2scan, t0 + 1_000))
+        assertTrue(ConnectStage.of(listening(), v2scan, "10.0.0.5", t0 + 1_000) is ConnectStage.Waiting)
+    }
+
+    /** The defect this wording fix is for: any connected session used to read as success after a scan. */
+    @Test
+    fun `a different Mac connected while this one is verifying is not success`() {
+        val otherMacConnected = listening(clients = listOf("Some-Other-Mac"))
+        val stage = ConnectStage.of(otherMacConnected, v2scan, "10.0.0.5", t0 + 1_000)
+        assertTrue("was $stage", stage is ConnectStage.Waiting)
+    }
+
+    @Test
+    fun `only a verified pairing of THIS Mac, after the scan, is Paired`() {
+        val verified = listening().afterPairSucceeded(macFp.replace(":", "").lowercase(), "Chetans-MacBook-Pro", t0 + 2_000)
+        assertEquals(PairingOutcome.Paired, ConnectStage.pairingOutcome(verified, v2scan, t0 + 3_000))
+        assertEquals(ConnectStage.Paired("Chetans-MacBook-Pro"), ConnectStage.of(verified, v2scan, "10.0.0.5", t0 + 3_000))
+
+        val otherMac = listening().afterPairSucceeded("CD:".repeat(31) + "CD", "Other", t0 + 2_000)
+        assertEquals("another Mac's success is not this one's", PairingOutcome.Verifying, ConnectStage.pairingOutcome(otherMac, v2scan, t0 + 3_000))
+        val stale = listening().afterPairSucceeded(macFp, "Chetans-MacBook-Pro", t0 - 1)
+        assertEquals("a success before this scan is not this scan's", PairingOutcome.Verifying, ConnectStage.pairingOutcome(stale, v2scan, t0 + 3_000))
+    }
+
+    @Test
+    fun `a refusal, an expiry and a cancellation each say so`() {
+        val refused = listening().afterPairRejected(PairRejectReason.PROOF_INVALID, t0 + 1_000)
+        assertEquals(PairingOutcome.Rejected(PairRejectReason.PROOF_INVALID), ConnectStage.pairingOutcome(refused, v2scan, t0 + 2_000))
+        assertEquals(PairingOutcome.Expired, ConnectStage.pairingOutcome(listening(), v2scan, t0 + ttl))
+        val cancelled = v2scan.copy(cancelled = true)
+        assertEquals(PairingOutcome.Cancelled, ConnectStage.pairingOutcome(listening(), cancelled, t0 + 1_000))
+        assertEquals(ConnectStage.Cancelled("Chetans-MacBook-Pro"), ConnectStage.of(listening(), cancelled, "10.0.0.5", t0 + 1_000))
+        val verifiedThenCancelledLater = listening().afterPairSucceeded(macFp, "Chetans-MacBook-Pro", t0 + 2_000)
+        assertEquals("Cancel is the person's last word", PairingOutcome.Cancelled, ConnectStage.pairingOutcome(verifiedThenCancelledLater, cancelled, t0 + 3_000))
     }
 }

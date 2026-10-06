@@ -161,3 +161,6 @@ data class RefusedConnection(
  * copy here would be the second expression of one rule that eventually disagrees with the first.
  */
 data class PairRejection(val reason: PairRejectReason, val atMillis: Long)
+
+/** A pairing this phone verified and persisted: normalised Mac fingerprint, its name, when. */
+data class PairSuccess(val macFingerprint: String, val macName: String, val atMillis: Long)

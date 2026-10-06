@@ -173,7 +173,7 @@ fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
                     // The wait begins now. `completePairing` armed the token with the same TTL, so
                     // the countdown on screen and the deadline the server enforces come from one
                     // constant — see `ScannedPairing`.
-                    scanned = ScannedPairing(payload.name, System.currentTimeMillis())
+                    scanned = ScannedPairing(payload.name, System.currentTimeMillis(), macFingerprint = payload.peerId)
                     scanning = false
                 }
             },
@@ -195,8 +195,17 @@ fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
             localEndpoint = localEndpoint,
             onScan = { scanning = true },
             onShowAddress = { showAddress = true },
-            // Cancel drops the pairing secret and the TLS admission, not only the screen state.
-            onCancel = { server.cancelPairing(); scanned = null },
+            // Cancel drops the pairing secret and the TLS admission, and says so (CancelledStage); a second
+            // press — "Cancel" on that stage — leaves the flow.
+            onCancel = {
+                val current = scanned
+                if (current == null || current.cancelled) {
+                    scanned = null
+                } else {
+                    server.cancelPairing()
+                    scanned = current.copy(cancelled = true)
+                }
+            },
             onRetry = { scanned = null; scanning = true },
             onOpenWifiSettings = {
                 context.startActivity(
@@ -604,11 +613,20 @@ fun refreshLinkCapabilities(context: Context) = LinkService.refreshCapabilities(
  * saving is a UI concern and `core` should not gain a Compose dependency for it.
  */
 private val ScannedPairingSaver: Saver<ScannedPairing?, Any> = Saver(
-    save = { it?.let { p -> listOf(p.macName, p.scannedAtMillis) } ?: emptyList<Any>() },
+    save = { it?.let { p -> listOf(p.macName, p.scannedAtMillis, p.macFingerprint ?: "", p.cancelled) } ?: emptyList<Any>() },
     restore = {
         @Suppress("UNCHECKED_CAST")
         val list = it as List<Any>
-        if (list.isEmpty()) null else ScannedPairing(list[0] as String, list[1] as Long)
+        if (list.isEmpty()) {
+            null
+        } else {
+            ScannedPairing(
+                list[0] as String,
+                list[1] as Long,
+                macFingerprint = (list.getOrNull(2) as? String)?.ifEmpty { null },
+                cancelled = list.getOrNull(3) as? Boolean ?: false,
+            )
+        }
     },
 )
 

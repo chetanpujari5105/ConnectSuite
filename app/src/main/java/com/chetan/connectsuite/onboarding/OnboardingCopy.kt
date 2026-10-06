@@ -223,7 +223,24 @@ object OnboardingCopy {
         ),
     )
 
-    /** The success state page five becomes after a scan. `%s` is the Mac's name. */
+    /**
+     * Page five after a scan, before anything is trusted (pairing v2): the Mac connects and both sides
+     * prove the code. Shown until `ConnectStage.pairingOutcome` says otherwise — never "Paired" here.
+     */
+    const val PAIR_VERIFYING_TITLE = "Code scanned. Verifying your Mac\u2026"
+    const val PAIR_VERIFYING_SUBTITLE =
+        "Your Mac connects to this phone and both prove the code before either trusts the other. " +
+            "Keep Sidekick open on the Mac."
+    const val PAIR_VERIFYING_CANCEL = "Cancel"
+
+    /** The outcome is not a pairing: a refusal, an expiry, or the person cancelling. */
+    const val PAIR_FAILED_TITLE = "Pairing did not finish"
+    const val PAIR_EXPIRED_BODY = "The code expired before your Mac connected. Show a fresh code on the Mac and scan it again."
+    const val PAIR_CANCELLED_TITLE = "Pairing cancelled"
+    const val PAIR_CANCELLED_BODY = "Nothing was saved. Scan the code again when you are ready."
+    const val PAIR_RETRY = "Scan again"
+
+    /** The success state — only after this phone verified the Mac's proof and saved it. `%s` is the Mac's name. */
     const val PAIR_SUCCESS_TITLE = "Paired with %s"
     const val PAIR_SUCCESS_SUBTITLE =
         "That is the whole setup. This phone will now connect to that Mac by itself whenever " +
@@ -240,6 +257,14 @@ object OnboardingCopy {
         get() = pages.flatMap { it.allText } + listOf(
             PERMISSIONS_PRIMARY_GRANTED,
             ALLOW,
+            PAIR_VERIFYING_TITLE,
+            PAIR_VERIFYING_SUBTITLE,
+            PAIR_VERIFYING_CANCEL,
+            PAIR_FAILED_TITLE,
+            PAIR_EXPIRED_BODY,
+            PAIR_CANCELLED_TITLE,
+            PAIR_CANCELLED_BODY,
+            PAIR_RETRY,
             PAIR_SUCCESS_TITLE,
             PAIR_SUCCESS_SUBTITLE,
             PAIR_SUCCESS_PRIMARY,

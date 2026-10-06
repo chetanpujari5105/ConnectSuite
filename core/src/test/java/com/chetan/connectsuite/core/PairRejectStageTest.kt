@@ -100,13 +100,32 @@ class PairRejectStageTest {
         assertEquals(ConnectStage.Entry, ConnectStage.of(state, null, "10.0.0.5", t0 + 1_000))
     }
 
-    /** A live session outranks a stale rejection, as it outranks everything else. */
+    /**
+     * **Changed 2026-10-06 with pairing v2's wording fix.** This test used to assert that a live session
+     * outranks a rejection after a scan. It no longer may: a connected session is not evidence that THIS
+     * scan paired — it can be a different trusted Mac, or this Mac reconnecting on a legacy pin — so the
+     * scan's own outcome is shown. Only a verified pairing (`afterPairSucceeded`) outranks a rejection.
+     */
     @Test
-    fun `a connected session outranks a rejection`() {
+    fun `after a scan, a connected session does not hide the scan's rejection`() {
         val state = listening(PairRejection(PairRejectReason.TOKEN_EXPIRED, t0 + 1_000))
             .copy(clients = listOf("Chetans-MacBook-Pro"))
         val stage = ConnectStage.of(state, scan, "10.0.0.5", t0 + 2_000)
-        assertEquals(ConnectStage.Connected("Chetans-MacBook-Pro"), stage)
+        assertEquals(ConnectStage.Rejected(PairRejectReason.TOKEN_EXPIRED, "Chetans-MacBook-Pro"), stage)
+    }
+
+    @Test
+    fun `a verified pairing after an earlier rejection is Paired`() {
+        val state = listening(PairRejection(PairRejectReason.PROOF_INVALID, t0 + 1_000))
+            .afterPairSucceeded("AB".repeat(32), "Chetans-MacBook-Pro", t0 + 3_000)
+        assertEquals(ConnectStage.Paired("Chetans-MacBook-Pro"), ConnectStage.of(state, scan, "10.0.0.5", t0 + 4_000))
+    }
+
+    @Test
+    fun `with nothing scanned, a live session still outranks a rejection`() {
+        val state = listening(PairRejection(PairRejectReason.TOKEN_EXPIRED, t0 + 1_000))
+            .copy(clients = listOf("Chetans-MacBook-Pro"))
+        assertEquals(ConnectStage.Connected("Chetans-MacBook-Pro"), ConnectStage.of(state, null, "10.0.0.5", t0 + 2_000))
     }
 
     /**
