@@ -26,6 +26,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { applyFuses, RELEASE_FUSES } from './fuses.mjs';
 
 const IDENTITY = '-';                       // ad-hoc. Not a placeholder for a real identity.
 
@@ -60,6 +61,12 @@ export default async function afterPack(context) {
     }
   };
   walk(fw);
+
+  // S5 (defect 184): the fuses live in the framework binary, so they are written BEFORE anything is signed —
+  // a byte changed after signing would break the seal. `applyFuses` refuses a wire it does not recognise.
+  const frameworkBinary = path.join(fw, 'Electron Framework.framework', 'Versions', 'A', 'Electron Framework');
+  const fuses = applyFuses(frameworkBinary, RELEASE_FUSES);
+  console.log(`  • fuses       ${fuses.before} → ${fuses.after} (RunAsNode, NODE_OPTIONS, --inspect off; ASAR integrity and ASAR-only on)`);
 
   let ok = 0;
   const failed = [];
