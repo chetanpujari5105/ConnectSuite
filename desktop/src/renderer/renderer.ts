@@ -355,7 +355,7 @@ interface ConnectBridge {
     { ok: true; data: Array<[string, string]> } | { ok: false; reason?: string; fixHint?: string }
   >;
   mediaOriginal(options: { id: string }): Promise<
-    { ok: true; data: { path: string; bytes: number; elapsedMs: number } }
+    { ok: true; data: { path: string; bytes: number; elapsedMs: number; verified?: boolean } }
     | { ok: false; reason?: string; fixHint?: string }
   >;
   mediaPreviewThumb(options: { id: string }): Promise<

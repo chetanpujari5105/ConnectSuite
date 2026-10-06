@@ -490,3 +490,21 @@ test('the two causes measured on hardware: an identical path on another profile,
     assert.ok(labels.every(Boolean));
   }
 });
+
+// ---- S9 (2026-10-07): a saved original says how it was checked --------------------------------------
+
+test('S9: a saved original says checksum matched only when the pull says so; anything else is unchecked', () => {
+  const sentence = (globalThis as Record<string, unknown>).photoCheckSentence as (v: boolean | undefined) => string;
+  assert.match(sentence(true), /checksum matched/);
+  for (const v of [false, undefined]) {
+    assert.match(sentence(v), /nothing compared the bytes/);
+    assert.doesNotMatch(sentence(v), /matched|verified/);
+  }
+});
+
+test('S9: the saved line carries the check sentence from the pull result', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const code = readFileSync(join(__dirname, 'photos.ts'), 'utf8');
+  assert.match(code, /`Saved \$\{fileSize\(this\.lastPull\.bytes\)\} to \$\{this\.lastPull\.path\}\. \$\{photoCheckSentence\(this\.lastPull\.verified\)\}`/);
+});

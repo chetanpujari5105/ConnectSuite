@@ -202,7 +202,7 @@ own heading there, and its own row here.
 | **184** | **Electron fuses are at their defaults, and the entitlements allow DYLD variables and disable library validation.** Audit S5, Medium. | **open** — batch proposed, §S5; belongs with Developer ID signing | — | see below |
 | **185** | **Any foreground app on the phone can write the Mac's clipboard without a prompt** through the exported `SendSelectionActivity`; the Mac applies `clip.push` on arrival. Audit S7, Medium. | **fixed in source 2026-10-06 — not installed, not seen on hardware.** `clip.push` carries `origin` (`docs/protocol.md` → *Provenance*), stamped by the route (`ClipRoute`), never by the intent. The Mac applies only `origin: "clipboard"`; selection, absent and unknown origins become a bounded offer (5, 10 min, session-bound, single-use Copy); a banner with fixed copy; Restore refuses over newer content. Red first on both sides; Mac 13 + phone 5 mutations red (one phone guard hole found by mutation and closed). | — | see below |
 | **186** | **Files received from the phone are not quarantined**, so Gatekeeper never assesses one opened from Sidekick or Finder. Audit S8, Low–Medium. | **fixed in source 2026-10-07 — packaged behaviour NOT verified on hardware.** `LSFileQuarantineEnabled` (Apple's key: macOS quarantines files the app creates) with the app's own profile excluded; every pulled and shared file's attribute is **read** after publish and reported present / absent / unknown with a tally (`quarantine.ts`). Never written by hand. Real synthetic temp files with the attribute set from outside the product; 6 mutations red. Development builds report `absent` by design. | — | see below |
-| **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open** — a release decision; proposed, §Integrity | — | see below |
+| **187** | **Pulls above 64 MiB carry no integrity check in a release build** (no digest agreed above the phone's pre-hash ceiling; `fs.blocks` gated off). Audit S9, Low after 178. | **open — a release decision.** 2026-10-07: every transfer path inventoried (`docs/transfer-integrity-inventory-2026-10-07.md`); the Photos save no longer drops `verified`, so an unchecked large video now **says** it was not checksummed; 9 loopback tests for the pre-hash path. The check itself above 64 MiB still does not exist without `fs.blocks`. | — | see below |
 | **188** | **The phone says "No cloud, no account, nothing leaves your network" while its QR scanner uses ML Kit**, whose terms say the APIs send usage metrics to Google. Unmeasured on this device. Audit P3. | **open** — needs a supervised traffic capture (F9) and an owner decision | — | see below |
 | **189** | **The phone accepts a side-channel token from any trusted Mac, not only the session's own.** `LinkServer.acceptSideChannel` discards the peer fingerprint `LinkTls.handshake` returns. Audit S2b, Low (one Mac at a time, defect 17). | **fixed in source 2026-10-06 — not installed.** `SideChannelAuth.authorize`: the side channel's TLS peer must be the session's own Mac; `SessionRegistry` generic so the JVM test drives the real one. Owner check removed → red. | — | see below |
 | **190** | **S4's drop grant trusted the renderer: a compromised main window could make `fs-send` read any local file.** `fs-grant-source` granted whatever path the preload — or raw IPC — sent; the sender and preload checks were working and are not a statement about who chose the file. Found by the S4 follow-up, Medium (needs a renderer compromise). | **fixed in source 2026-10-06 — not installed, no real drop performed.** Red first through the production handlers: a forged grant, then `fs-send`, opened and hashed all 34 bytes of a synthetic file. `fs-grant-source` removed; a drop is confirmed in a **native sheet** (`fs-confirm-drop`, Cancel default, one at a time, every file or every source folder named); grants bound to window, `dev`/`ino` and one hour (`sourceGrants.ts`). 9 mutations red (one malformed and one hanging first attempt recorded and rerun). | — | see below |
@@ -3752,8 +3752,15 @@ guessed flag value, which would present a guess as the platform's guarantee.
 
 ### 187 — large pulls are unverified in release · **open**
 
-**Fix direction:** §Integrity — say "unverified" wherever such a pull is shown; decide `fs.blocks`
-separately. Not a reason to flip a gate in Phase 1.
+**2026-10-07:** the "say unverified" half is done on both panes that save a pulled file — Files already did
+(`pullCheckSentence`); Photos dropped the flag at `PhotosClient.original` and now carries it to
+`photoCheckSentence`. The pre-hash path has its own loopback tests (`bulkPrehashPull.test.ts`, 9; mutation
+MT2 found the first eight could not see a missing length check, and the ninth can). Inventory and proposals:
+`docs/transfer-integrity-inventory-2026-10-07.md`.
+
+**Fix direction:** decide `fs.blocks` for release (tracker row 14), or adopt the proposed post-stream digest
+in `fs.transfer.done` — a contract change, `docs/protocol.md` first. **The wrong fix** is raising
+`PREHASH_MAX_BYTES`: a 4 GB file read twice before its first byte.
 
 ### 188 — the "nothing leaves your network" copy beside ML Kit · **open**
 

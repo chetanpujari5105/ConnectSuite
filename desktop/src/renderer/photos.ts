@@ -79,7 +79,7 @@ interface PhotosBridge {
     PhotosResult<Array<[string, string]>>
   >;
   mediaOriginal(options: { id: string }): Promise<
-    PhotosResult<{ path: string; bytes: number; elapsedMs: number }>
+    PhotosResult<{ path: string; bytes: number; elapsedMs: number; verified?: boolean }>
   >;
   /** Feature C. Optional so a double without them still constructs, and the stage says so. */
   mediaPreviewThumb?(options: { id: string }): Promise<
@@ -362,6 +362,18 @@ function itemSummary(item: MediaItemRow): string {
   return parts.join(' · ');
 }
 
+/**
+ * S9 (2026-10-07): what a saved original says about how it was checked. `true` only when a digest the phone
+ * agreed before the copy matched what arrived; anything else — no digest (the phone hashes only up to
+ * 64 MiB, so most videos), or an older main process that did not say — is said as unchecked. Never upgraded.
+ */
+function photoCheckSentence(verified: boolean | undefined): string {
+  return verified === true
+    ? 'Its checksum matched the one the phone agreed before the copy.'
+    : 'No checksum was agreed in advance, so nothing compared the bytes.';
+}
+(globalThis as Record<string, unknown>).photoCheckSentence = photoCheckSentence;
+
 function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB'];
@@ -600,7 +612,7 @@ class PhotosView {
   private pulling: string | null = null;
 
   /** Where the last pull landed, for the one line that tells the user their file exists. */
-  private lastPull: { path: string; bytes: number; elapsedMs: number } | null = null;
+  private lastPull: { path: string; bytes: number; elapsedMs: number; verified?: boolean } | null = null;
 
   /** 512 px previews by id. `null` means the phone answered that it has none. */
   private preview512 = new Map<string, string | null>();
@@ -1341,7 +1353,7 @@ class PhotosView {
         actions.appendChild(
           photoLine(
             'photos-detail-saved',
-            `Saved ${fileSize(this.lastPull.bytes)} to ${this.lastPull.path}`,
+            `Saved ${fileSize(this.lastPull.bytes)} to ${this.lastPull.path}. ${photoCheckSentence(this.lastPull.verified)}`,
           ),
         );
         // Only once a file exists to show: the saved copy in the receive folder, never the

@@ -88,3 +88,13 @@ test('a thumbnail asked at another size is fetched at that size, not served from
   assert.equal(b.ok && b.data.get('7')?.includes('edge-512'), true);
   assert.equal(c.ok && c.data.get('7')?.includes('edge-256'), true);
 });
+
+test('S9: the pull’s verified flag reaches the pane — true with an agreed digest, false without', async () => {
+  const withDigest = harness({ transferId: 'tf-v', size: 1000, mime: 'image/jpeg', name: 'IMG.jpg', sha256: 'cd'.repeat(32), chunkMax: 262144 });
+  const a = await withDigest.client.original('44', mkdtempSync(join(tmpdir(), 'sk-photo-')));
+  assert.equal(a.ok && a.data.verified, true);
+  const without = harness({ transferId: 'tf-w', size: 100_000_000, mime: 'video/mp4', name: 'VID.mp4', sha256: null, chunkMax: 262144 });
+  const b = await without.client.original('45', mkdtempSync(join(tmpdir(), 'sk-photo-')));
+  assert.equal(b.ok, true);
+  assert.equal(b.ok && b.data.verified, false, 'a video above the pre-hash ceiling is saved unverified, and says so');
+});

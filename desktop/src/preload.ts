@@ -613,7 +613,7 @@ contextBridge.exposeInMainWorld('connect', {
   /** Pulls one photo at full size over the bulk channel and answers with where it landed. */
   mediaOriginal: (
     options: { id: string },
-  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> =>
+  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number; verified?: boolean }>> =>
     ipcRenderer.invoke('media-original', options),
   /** Feature C: the 512 px preview, from its own cache — never the grid's 256 upscaled. */
   mediaPreviewThumb: (

@@ -218,7 +218,7 @@ export class PhotosClient {
     id: string,
     into?: string,
     onAgreed?: (ticket: { transferId: string; size: number; name: string; mime: string }) => void,
-  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>> {
+  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>> {
     // The destination is settled **before** the phone is asked: a receive folder on an unplugged
     // drive must refuse here, not after the phone has agreed a transfer nobody will claim.
     let folder: string;
@@ -233,7 +233,7 @@ export class PhotosClient {
           type: MessageType.MEDIA_ORIGINAL,
           reason: ready.reason,
           fixHint: ready.fixHint,
-        } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
+        } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>;
       }
       folder = ready.folder;
     }
@@ -261,7 +261,7 @@ export class PhotosClient {
         feature: 'photos',
         type: MessageType.MEDIA_ORIGINAL,
         reason: 'There is no live session with the phone.',
-      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>;
     }
 
     // Room first (L3). The phone has already agreed this transfer, so a refusal here also cancels it
@@ -276,7 +276,7 @@ export class PhotosClient {
         feature: 'photos',
         type: MessageType.MEDIA_ORIGINAL,
         reason: short,
-      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>;
     }
 
     onAgreed?.({
@@ -303,7 +303,7 @@ export class PhotosClient {
         feature: 'photos',
         type: MessageType.MEDIA_ORIGINAL,
         reason: result.reason ?? 'The transfer did not finish.',
-      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>;
     }
     return {
       ok: true,
@@ -313,6 +313,10 @@ export class PhotosClient {
         elapsedMs: result.elapsedMs,
         name: ticket.data.name,
         mime: ticket.data.mime,
+        // S9 (2026-10-07): the pull's own word on whether a digest agreed in advance matched. It was
+        // dropped here, so a saved video over the phone's 64 MiB pre-hash ceiling — compared against
+        // nothing — read exactly like a checked photo.
+        verified: result.verified,
       },
     };
   }
