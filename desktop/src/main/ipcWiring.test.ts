@@ -16,6 +16,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { dropSheetOptions } from './sourceGrants';
 
 const userData = mkdtempSync(join(tmpdir(), 'ipc-wiring-'));
 const storeData = new Map<string, unknown>();
@@ -24,8 +25,9 @@ const effects: string[] = [];
 /** What the native panel and sheet will answer — the person, in these tests. */
 const dialogScript = {
   open: { canceled: true, filePaths: [] as string[] },
-  sheets: [] as Array<{ message: string; detail: string; defaultId: number; cancelId: number }>,
-  sheetResponse: 1,
+  sheets: [] as Array<{ message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number }>,
+  /** Which control the person uses — by its label, never by an index, so a button order change cannot flip it. */
+  sheetAnswer: 'Cancel' as 'Send' | 'Cancel' | 'Escape',
   sheetGate: Promise.resolve(),
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,9 +53,11 @@ const electron = stub({
   dialog: stub({
     showOpenDialog: () => Promise.resolve(dialogScript.open),
     showMessageBox: (...args: unknown[]) => {
-      const options = args[args.length - 1] as { message: string; detail: string; defaultId: number; cancelId: number };
+      const options = args[args.length - 1] as { message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number };
       dialogScript.sheets.push(options);
-      return dialogScript.sheetGate.then(() => ({ response: dialogScript.sheetResponse }));
+      // Escape presses the button Electron bound it to, and the answer is that button's index.
+      const answer = () => (dialogScript.sheetAnswer === 'Escape' ? options.cancelId : options.buttons.indexOf(dialogScript.sheetAnswer));
+      return dialogScript.sheetGate.then(() => ({ response: answer() }));
     },
   }),
   clipboard: stub({ writeText: (t: string) => effects.push(`clipboard ${t}`), readText: () => '', availableFormats: () => [], has: () => false, read: () => '' }),
@@ -249,13 +253,14 @@ test('A: valid selection — a file chosen in the native open panel is read, by 
 test('A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send', async () => {
   const target = synthetic('synthetic-secret.txt');
   dialogScript.sheets.length = 0;
-  dialogScript.sheetResponse = 1; // the person presses Cancel (also the default button)
+  dialogScript.sheetAnswer = 'Escape'; // the person presses Escape
   const r = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [target])) as { ok: boolean; reason?: string };
   assert.deepEqual(r, { ok: false, reason: 'cancelled' });
   assert.equal(dialogScript.sheets.length, 1, 'the request reached a native sheet the renderer cannot press');
   const sheet = dialogScript.sheets[0]!;
-  assert.equal(sheet.defaultId, 1, 'Cancel is the default button, so Return cannot confirm it');
-  assert.equal(sheet.cancelId, 1);
+  const { message, detail, buttons, defaultId, cancelId } = sheet;
+  assert.deepEqual({ type: 'question', message, detail, buttons, defaultId, cancelId }, dropSheetOptions(sheet),
+    'main passes exactly the options whose keys sourceGrants.test.ts checks: no key sends');
   assert.ok(sheet.detail.includes('synthetic-secret.txt'), 'the sheet names the exact file');
   opened.length = 0;
   assert.match(await sendFrom(mainWin, target), /not chosen here/);
@@ -264,7 +269,7 @@ test('A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothi
 
 test('A: a drop confirmed in the native sheet is read; a drop of a non-file grants nothing', async () => {
   const dropped = synthetic('dropped.txt');
-  dialogScript.sheetResponse = 0; // Send
+  dialogScript.sheetAnswer = 'Send';
   const r = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [dropped, '/nonexistent/x'])) as {
     ok: boolean; data: { files: Array<{ source: string }>; skipped: number };
   };
@@ -274,14 +279,14 @@ test('A: a drop confirmed in the native sheet is read; a drop of a non-file gran
   opened.length = 0;
   assert.doesNotMatch(await sendFrom(mainWin, dropped), GATE);
   assert.ok(opened.includes(dropped), 'control: a confirmed drop is read');
-  dialogScript.sheetResponse = 1;
+  dialogScript.sheetAnswer = 'Cancel';
 });
 
 test('A: one sheet at a time — a second request while one is open is refused, not queued', { timeout: 3_000 }, async () => {
   const a = synthetic('a.txt');
   let release!: () => void;
   dialogScript.sheetGate = new Promise((r) => { release = r; });
-  dialogScript.sheetResponse = 0;
+  dialogScript.sheetAnswer = 'Send';
   const first = call('fs-confirm-drop', from(mainWin, PAGE.main), [a]) as Promise<{ ok: boolean }>;
   await settle();
   const second = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [synthetic('b.txt')])) as { ok: boolean; reason?: string };
@@ -289,7 +294,7 @@ test('A: one sheet at a time — a second request while one is open is refused, 
   release();
   assert.equal((await first).ok, true, 'control: the open sheet still answers');
   dialogScript.sheetGate = Promise.resolve();
-  dialogScript.sheetResponse = 1;
+  dialogScript.sheetAnswer = 'Cancel';
 });
 
 test('A: expired grant — a choice older than an hour is refused before any read', async () => {

@@ -140,3 +140,32 @@ export function dropConfirmation(paths: readonly string[], home: string | null):
   const lines = [...folders].map(([folder, count]) => `${count} file${count === 1 ? '' : 's'} from ${shown(folder)}`);
   return { kind: 'ask', message, detail: lines.join('\n') };
 }
+
+/** The options `dialog.showMessageBox` is given for a drop sheet. */
+export interface DropSheetOptions {
+  type: 'question';
+  message: string;
+  detail: string;
+  buttons: string[];
+  defaultId: number;
+  cancelId: number;
+}
+
+const DROP_SHEET_BUTTONS = ['Cancel', 'Send'];
+
+/**
+ * **No key sends, Escape cancels, and no button is drawn as the default.** On macOS one button cannot
+ * answer both Return and Escape: Electron puts Return on `defaultId`, then Escape on `cancelId`,
+ * overwriting Return when they are the same button — and highlights it, so the 2026-10-07 sheet showed
+ * Cancel as the default while Return pressed nothing. NSAlert itself gives Return to the first button,
+ * so Cancel goes first and `defaultId` is left out: Return is then Cancel's only until Electron moves
+ * Escape onto it. **Send must never be first with `defaultId` left out** — it would take Return.
+ */
+export function dropSheetOptions(sheet: { message: string; detail: string }): DropSheetOptions {
+  return { type: 'question', message: sheet.message, detail: sheet.detail, buttons: [...DROP_SHEET_BUTTONS], defaultId: -1, cancelId: 0 };
+}
+
+/** Whether the sheet's answer is the person pressing **Send** — the only answer that grants anything. */
+export function dropSheetConfirmed(response: number): boolean {
+  return response === DROP_SHEET_BUTTONS.indexOf('Send');
+}

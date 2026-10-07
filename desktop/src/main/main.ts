@@ -145,7 +145,7 @@ import {
   mergeLegacyActivity,
   pairingRenameNotice,
 } from './legacyData';
-import { SourceGrants, dropConfirmation, grantRefusalText, type FileIdentity } from './sourceGrants';
+import { SourceGrants, dropConfirmation, dropSheetConfirmed, dropSheetOptions, grantRefusalText, type FileIdentity } from './sourceGrants';
 import { VideoClient, type VideoFrame } from './video';
 import { CameraController, openCameraSocket } from './camera';
 import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
@@ -2676,9 +2676,10 @@ ipc.handle('activity-csv', async () => {
  *
  * The renderer reports the paths it says were dropped; nothing in the main process can observe a drop,
  * so those paths are only a request. The sheet below is drawn by this process and names every file (or
- * every source folder, with counts), and only the person's **Send** grants them. **Cancel is the default
- * button**, so a sheet that appears while someone is typing cannot be confirmed by Return. One sheet at
- * a time: a second request while one is open is refused, not queued.
+ * every source folder, with counts), and only the person's **Send** grants them. **No key sends**:
+ * Escape cancels and Return presses nothing (`dropSheetOptions` says why it cannot also cancel), so a
+ * sheet that appears while someone is typing cannot be confirmed by Return. One sheet at a time: a
+ * second request while one is open is refused, not queued.
  */
 let dropSheetOpen = false;
 ipc.handle('fs-confirm-drop', async (event, paths: string[]) => {
@@ -2699,12 +2700,12 @@ ipc.handle('fs-confirm-drop', async (event, paths: string[]) => {
   dropSheetOpen = true;
   let answer: { response: number };
   try {
-    const options = { type: 'question' as const, message: sheet.message, detail: sheet.detail, buttons: ['Send', 'Cancel'], defaultId: 1, cancelId: 1 };
+    const options = dropSheetOptions(sheet);
     answer = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
   } finally {
     dropSheetOpen = false;
   }
-  if (answer.response !== 0) {
+  if (!dropSheetConfirmed(answer.response)) {
     log.info('files', `drop of ${regular.length} file(s) not confirmed — nothing granted`);
     return { ok: false, reason: 'cancelled' };
   }
