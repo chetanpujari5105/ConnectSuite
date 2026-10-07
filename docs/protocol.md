@@ -2754,7 +2754,10 @@ asked for it — the Mac-side action this rule exists to require.
 
 **Restore is guarded.** It puts a displaced entry back **only while this Mac's clipboard still holds the
 entry that displaced it**. If something newer has been copied since, Restore refuses with a sentence
-rather than overwrite it.
+rather than overwrite it. **Accepted residual** (PC-only audit F3, 2026-10-07): the check and the write are two
+calls in one tick, so another process writing the pasteboard between them is not excluded, and the check compares
+**plain text** — rich content whose plain text equals the replaced entry is overwritten. Electron exposes no
+`changeCount`; a compare-and-swap would need a native `NSPasteboard` helper, judged not proportionate.
 
 **From the phone this is only ever sent while the app is focused**, which in practice means the
 moment a person brings ConnectSuite to the front after copying something. That is not a limitation of

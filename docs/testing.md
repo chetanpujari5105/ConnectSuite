@@ -28483,3 +28483,97 @@ there is no foreground reading.
   `MainActivity` **not running** — the only matches in `dumpsys activity activities` were refresh-rate history from 2026-10-06
   23:57, not a live record; the top resumed activity was another app in profile 95. So an open would have been a real cold start
   of the Activity, not a no-op. Phone `link.log` 1,295 lines; Mac log 4,574 lines.
+
+## Release-verification run, Phase 1 — 2026-10-08 00:08–01:3x IST (soak running; code, tests and isolated builds only)
+
+The defect 199 soak (T0 2026-10-07 23:54:41) ran throughout. **Nothing was installed, launched, relaunched, quit,
+re-paired or changed on either device**; no `am start`, no transfer, no mirror, no clipboard, no network change. The
+only device reads were the soak monitor's own (a script from the previous session, left running). Deployed builds are
+unchanged: Mac dev `dist` `0c074f7d…` (= `bf096e1`, PID 88287), phone `0d42e27d…` (= `c05efcc`).
+
+**Fresh, on the final tree of this phase:** Mac **1,975 / 0** (`npm test`, `.test-run.json` green); both Mac typechecks
+clean; phone JVM **1,455 / 0** (`--offline --rerun-tasks --no-build-cache`, 153 result files, **0 older than the run**;
+core 276, app 206, sync-module 669, camera-module 187, mirror-module 65, input-module 52); Swift **140 / 0**
+(`node run-tests.mjs`); scripts **287 / 0** (19 files); 14 `check-*.mjs` guards and `check-defects.sh` exit 0; both
+hook fixture suites pass. Every new test below was run red before its fix, and every mutation listed was executed,
+seen red on the named test, and restored with a byte comparison.
+
+### Defect 201 — the drop sheet's keys (code; `a178bfa`)
+
+Electron 43.4.1's `CreateNSAlert` read from source (tag `v43.4.1`): Return → `defaultId`, then Escape → `cancelId`,
+overwriting Return when equal and highlighting that button. The shipped `1 / 1` therefore gave Cancel Escape and a
+default-looking highlight, Return nothing — exactly the 22:16 / 22:20 reading. New options: `['Cancel','Send']`,
+`defaultId -1`, `cancelId 0` → **no key sends, Escape cancels, no highlight, Return presses nothing**. Red first: the
+highlight assertion against the shipped options. Mutations red: confirmed index flipped; Send first with `defaultId`
+omitted (Return would **send**); `1 / 1` restored; Escape onto Send; `main.ts`'s literal restored (3 wiring tests red).
+**Instrument note:** the model of `CreateNSAlert` is a second expression of Electron's rule, so it carries a control
+that reproduces the hardware reading; the real sheet is still owed (stage 7).
+
+### Defect 202 — root names (code; `79b8c5b`)
+
+Red first: an old phone's app root labelled `ConnectSuite` reached the rail (Mac), and `APP_ROOT_LABEL` contained the
+received folder's on-disk name (phone, derived from `DownloadsStore.RELATIVE_PATH`, control `== "ConnectSuite"`).
+Mutations red: rail back to `root.label`; crumbs/drop back to `root.label`. The staged commit's tree was checked alone
+(typecheck, the three Files test files, the spec guard) because three files carried both 202 and 203/204.
+
+### Defect 203 — space and resume (code; `acc119d`)
+
+Red first through `FilesClient.pull` with a test-only `statfs`: after a paused pull with verified blocks, free space
+of *room for the rest − 1 B* was refused **with "needs 336 MB … Nothing was copied"** (the whole file's room, and a
+false sentence); with the fix it is refused saying *the rest … What had arrived is kept*, the record kept and the phone
+not asked, and *exactly room for the rest* resumes at the prefix. **Instrument fault caught:** the first red was in the
+test's own control (the first pull completed before it could be paused — no `stallAfter`), so it was not counted.
+**Second instrument fault caught:** the first "sentence" mutation broke the file's syntax and reported a file-level
+failure; it was redone as a compiling mutant before being counted. Mutations red: the room check on the whole size;
+the old single sentence.
+
+### Defect 204 — pull progress (code; `acc119d`)
+
+Red first: no `#files-pull-progress` for a non-block pull. Fixed for block and non-block pulls; a foreign transfer's
+progress is ignored; the verifying phase is worded; the bar goes at the end. Mutations red: non-block pulls ignored;
+pull progress dropped while no send batch exists. **Not seen on hardware.**
+
+### PC-only audit F2 and F1 (code; `219cb76`, `81ff971`)
+
+- **F2:** `clip-open` wrote the link's host into `activity.jsonl`. Test through the real registration with two
+  controls (the link opened; the open is recorded in the file read). **Instrument fault caught:** the first run's control
+  failed — the harness never reaches `whenReady`, so the store had no path; it is opened with `initAt` in the test.
+  History already on disk is not rewritten.
+- **F1:** the clipboard, photos and apps clears logged zeros on every non-connected tick (148 × in one outage). Now
+  silent when nothing was removed; the clears themselves still run every tick. Red first on the logged zeros, with a
+  held-something control in each.
+
+### S5 / S8 — static re-check on an isolated packaged build of HEAD (`81ff971`)
+
+`git archive` into the scratchpad, `node_modules` APFS-cloned, `electron-builder --mac dir --arm64 --publish never`,
+identity discovery off. `desktop/dist`, `desktop/release` and the live app untouched; **the packaged Sidekick was not
+launched** (it would mint its own identity and start discovery toward the phone). Readings: fuse wire `101100011 →
+000011011` (RunAsNode, NODE_OPTIONS, `--inspect` off; ASAR integrity and app-from-ASAR-only on); `ElectronAsarIntegrity`
+present; `LSFileQuarantineEnabled` true; `codesign --verify --deep --strict` OK, `Signature=adhoc`, hardened runtime;
+`app.asar` (909 files) carries 201–204 and the quit coordinator; `FS_BLOCKS_RELEASE` and `WEBCAM_RELEASE` false; 0
+test, testkit or map files; `entry.js` runs `releaseGuards.refusedSwitch` before `main.js`. **Disclosure:** reading the
+fuses with `npx @electron/fuses` downloaded that one public package from the npm registry (not installed in the
+project); nothing about the project was sent.
+
+### ML Kit (verified on today's tree, structural)
+
+`:app:dependencies --configuration releaseRuntimeClasspath --offline`: `com.google.mlkit` (5), `play-services` (4),
+`firebase-components/encoders` and `com.google.android.datatransport` including **`transport-backend-cct`**. The phone
+still says *"No cloud, no account, nothing leaves your network"* (`ConnectMacScreen.kt`). Not a traffic reading.
+Per-artifact licences: still not readable offline (no POMs in the Gradle cache); ZXing is not cached, so a local
+decoder cannot be prototyped without a new dependency.
+
+### Defect 137 (code reading; no device)
+
+The children query is `resolver.query(buildChildDocumentsUriUsingTree(…), projection, null, null, null)` — no
+selection, sort or arguments — unchanged since the 2026-09-23 probe that read `count 0` from the provider's own cursor.
+No Sidekick-side defect demonstrable from code. The experiment that would separate a uid-level refusal from stale
+grants (a **fresh** grant on a synthetic folder, the control the 09-23 probe lacked) is in
+`docs/release-verification-2026-10-08.md` → stage 11.
+
+### The Activity rewrite — reconciled
+
+The run brief listed *"the irreversible Activity-history rewrite (455 call rows)"* as pending. It **ran** at A3,
+2026-10-06 23:13 (`docs/supervised-verification-plan-2026-10-06.md` §9.5: 294 call rows brought under the rule, 4,915
+lines kept, backup `3bf3ce35…` kept); 455 was the **synthetic** dry run's count; later launches log `Rewrote 0`.
+Nothing is pending.

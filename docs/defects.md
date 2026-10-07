@@ -216,6 +216,10 @@ own heading there, and its own row here.
 | **198** | **A failed pairing code left the pairing screen unexplained**: `pairing-qr` rejects (`Link not ready`, or the code cannot be armed or drawn) and `showQr` let the rejection go unhandled — the card kept its last code, or none, and said nothing. Found by the harness's `failing` mode (8 of 8 jobs). | **fixed in source 2026-10-07 — not installed.** A third pairing-card shape, *No pairing code yet* / *This Mac could not make a pairing code*, with *Try again*; not a network claim. 3 tests; 1 mutation red. | — | see below |
 | **199** | **`LinkService` was killed by Android's `dataSync` time limit** — release-blocking reliability. 2026-10-07 07:14:00, installed `286e2b0`: `ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: …/LinkService`, exit record `APP CRASH(EXCEPTION)`. A `USER` start claimed `connectedDevice|dataSync` (`0x11`) for an all-day link; Android 15+ gives `dataSync` six hours per rolling 24, and nothing implemented `onTimeout`. `START_STICKY` restarted it 1.5 s later and the Mac reconnected on v2 in 5 s — **recovery, not a fix**. | **fixed in source 2026-10-07 — installed on the SM-S938B 2026-10-07 13:56 (install B, `0d42e27d…0af6`), not hardware-verified: the six-hour background run is pending.** Every start route claims `connectedDevice` only; `dataSync` removed from the manifest (type and permission); `onTimeout(startId, fgsType)` stops first, then closes sessions with a stated reason, releases locks and posts a notification; automatic routes held after a timeout until the app is visible. 20 new tests; 9 mutations red (executed, cache off). | — | see below |
 | **200** | **The first named *Quit Sidekick* left a windowless main process alive** — lifecycle. 2026-10-07 10:30:52, live development `dist` `bb594168…` (`4661015`), PID 67469: `Disconnected: app quit` was logged and the windows and renderer went, but the main process stayed idle in its run loop (`sample`: `CFRunLoopRun` / `mach_msg`) holding 9222 with 0 targets for more than 3 minutes. A second click of the same named item at 10:38:33 exited at once (no process, no helpers, 9222 free). One occurrence; not reproduced | **fixed in source 2026-10-07 — not deployed, and the cause is still not established.** One quit coordinator (`desktop/src/main/quitCoordinator.ts`) replaces both `before-quit` listeners: an idle quit is not held; with work it holds once, cleans up once, waits at most 10 s, then tears the link down once and re-issues quit once; every stage logs under `[quit]`, including `will-quit reached`. 9 new tests, 10 mutations red. Not reached: whether Electron's process exits | — | see below |
+| **201** | **Return answered no button on the drop sheet, and Cancel was drawn as the default.** 2026-10-07 22:16:41, a genuine Finder drop with Sidekick frontmost: Return once, the sheet stayed open, no log line; Escape at 22:20:05 cancelled (*"not confirmed — nothing granted"*). Electron 43.4.1's `message_box_mac.mm` gives Return to `defaultId`, then Escape to `cancelId` — overwriting Return when they are the same button — and highlights that button; `main.ts` passed `defaultId: 1, cancelId: 1`. Fails safe (Return could not send), but the code comment and the audit both said Return cancels | **fixed in source 2026-10-08 (`a178bfa`); not deployed; not re-tested on a real sheet.** Cancel first, `defaultId` omitted, `cancelId: 0`: no key sends, Escape cancels, no button drawn as the default, **Return presses nothing** — one button cannot carry both keys through this API, and Escape is the one kept. The options and the confirmed index have one home (`dropSheetOptions` / `dropSheetConfirmed` in `sourceGrants.ts`) | `sourceGrants.test.ts` +3 (a cited model of `CreateNSAlert`, anchored by a control that reproduces the 22:16 / 22:20 reading; red first on the highlight); `ipcWiring.test.ts` drop tests answer by button label; 5 mutations red | `docs/testing.md` → Defect 201 |
+| **202** | **The Files pane named the app-private root after the other root's folder.** The phone labels `Download/ConnectSuite` *Received files* and the app-private `app:files` **`ConnectSuite`** — the on-disk name of the first. 2026-10-07 22:2x: a root chosen by that name was app-private, the drop tile said *"…send them to ConnectSuite"*, and the file landed in `files/shared/` where My Files cannot see it | **fixed in source 2026-10-08 (`79b8c5b`); not deployed.** The Mac names both fixed roots by `kind` (`rootName`): *Received files* — *Download/ConnectSuite on the phone*; *Sidekick private storage* — *Private to Sidekick — not shown in My Files*; works with phones that still send `ConnectSuite`. The phone's label is now *Sidekick private storage*. Contract updated | `filesView.test.ts` +1 and `DownloadsRootTest` +1, both red first; 2 mutations red | `docs/testing.md` → Defect 202 |
+| **203** | **A pull paused for low space could not be resumed by freeing room for the rest, and its sentences said nothing was copied.** Found by code reading. The up-front room check ran **before** resume preparation, on the **whole** size, so after *"free some space, then choose Resume"* a Resume still demanded room for the entire file although most of it was on disk; and the mid-pull pause and a refused Resume reused the sentence ending *"Nothing was copied."* beside *"What had arrived is kept"*. The contract's in-flight margin (*"+ 1 GiB"*) was never implemented | **fixed in source 2026-10-08 (`acc119d`); not deployed; no hardware reading** (a genuinely full volume is not simulated). The check runs after preparation on the bytes still to come; a refusal keeps the record and partial and asks the phone nothing; `pullSpaceRefusal` words *whole* / *rest* / *during* truthfully. Contract now states the shipped rule (`room(n) = n + max(256 MiB, ⌈n/10⌉)` on bytes still to come) and why | `filesResume.test.ts` +1 (room for the rest − 1 B refused, exactly room for the rest resumes at the prefix), `photosPull.test.ts` +1, `filesView.test.ts` fixture now the production clause; 2 mutations red | `docs/testing.md` → Defect 203 |
+| **204** | **A pull in flight showed no progress.** The detail drew a disabled *Copying…* and, for block pulls, Pause/Cancel — no bytes, no fraction — on a pull that can take minutes, while the phone's `fs.transfer.progress` for that transfer reached the pane and was dropped (the handler served only send batches). A release build (where `fs.blocks` is off) had no transfer id for a pull at all | **fixed in source 2026-10-08 (`acc119d`); not deployed; not seen on hardware.** Every pull's id is kept; a determinate bar and *"The phone has sent X of Y (Z%)"*, or *"The phone is re-checking what already arrived: X so far"* during a resumed prefix. Labelled as the phone's count; the outcome line remains the Mac's check | `filesView.test.ts` +1 (block and non-block, a foreign transfer ignored, the verifying phase, the bar gone at the end); 2 mutations red | `docs/testing.md` → Defect 204 |
 
 ---
 
@@ -4069,3 +4073,42 @@ the lines are what make a recurrence diagnosable.
 quit path is bypassed); removing the webcam wait altogether (a live bridge child could outlive the app — the reason the gate
 exists); a timer that force-exits the process whatever the stage (hides which stage stalls); judging a fix by a single clean quit
 (the defect has one sighting in many quits, so one clean quit cannot tell fixed from lucky).
+
+### 201 — Return answered no button on the drop sheet · **fixed in source 2026-10-08, not deployed**
+
+**What was measured.** 2026-10-07, a genuine Finder drop (`docs/testing.md` → *Hardware verification resumed*, Stage E):
+Return at 22:16:41 — sheet stayed open, no log line; Escape at 22:20:05 — *"drop of 1 file(s) not confirmed — nothing
+granted"*. **Why:** Electron 43.4.1 `shell/browser/ui/message_box_mac.mm` → `CreateNSAlert` (read 2026-10-08): NSAlert
+gives Return to the first button; a valid `defaultId` moves it there; a valid `cancelId` then sets Escape on its button,
+**overwriting** Return when the ids are equal, and highlights that button (*"This behavior violates HIG"*, in Electron's
+own TODO). `lib/browser/api/dialog.ts` defaults `defaultId` to −1.
+
+**The trap in the recorded fix direction.** *"Do not make one button both default and cancel"* applied naively — drop
+`defaultId` and keep Send first — gives NSAlert's own Return to **Send**. That configuration is a test now.
+
+**Fix (`a178bfa`).** `['Cancel', 'Send']`, `defaultId: -1`, `cancelId: 0`. Return presses nothing, Escape cancels, nothing
+is highlighted, Send has no key. `dropSheetConfirmed` derives Send's index from the same list.
+
+**Fix direction for the hardware re-test:** on a real drop sheet — Return (expect: nothing, sheet stays), Escape (expect:
+*not confirmed*), Send by click (one dispatch). Read AX `AXDefaultButton` (expect none) and `AXCancelButton` (Cancel).
+**Wrong fixes:** making Send the default; `defaultId` omitted with Send first; `defaultId === cancelId` (the shipped bug).
+
+### 202 — the app-private root wore the received folder's name · **fixed in source 2026-10-08, not deployed**
+
+Fix and evidence in the row. **Fix direction for the hardware re-test:** with the deployed builds, the Files rail reads
+*Received files* / *Sidekick private storage* with where each is; a drop with *Received files* selected lands in
+`Download/ConnectSuite` (phone digest equal). **Wrong fix:** relabelling on the phone only — every phone already installed
+sends `ConnectSuite`, and the Mac is what a person reads.
+
+### 203 — a space pause could not be resumed by freeing room for the rest · **fixed in source 2026-10-08, not deployed**
+
+Fix and evidence in the row. **Not reached:** a real volume filling during a pull (the 1 GiB in-flight check is exercised
+only at the `BulkClient` level in `bulkBlockPull.test.ts`). **Fix direction for verification:** a disk image of a known
+size as the receive folder would make it reachable without touching the owner's volume — needs its own approval.
+**Wrong fix:** a fixed 1 GiB in-flight margin (the contract's old line) — it pauses pulls the up-front check admitted.
+
+### 204 — a pull in flight showed no progress · **fixed in source 2026-10-08, not deployed**
+
+Fix and evidence in the row. **Fix direction for the hardware re-test:** one ≥ 64 MiB pull (the 200 MiB synthetic source)
+shows the bar advancing with the phone's `sending` reports; a resume shows *re-checking* first. **Wrong fix:** a bar from
+the Mac's own write count labelled as delivery, or an indeterminate bar (a small file emits no progress at all).
