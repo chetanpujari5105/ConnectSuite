@@ -2118,7 +2118,7 @@ ack
 {"roots":[
   {"rootId":"downloads:connectsuite","label":"Received files","kind":"downloads","writable":true,
    "freeBytes":27233689600},
-  {"rootId":"app:files","label":"ConnectSuite","kind":"app","writable":true,
+  {"rootId":"app:files","label":"Sidekick private storage","kind":"app","writable":true,
    "freeBytes":27233689600},
   {"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree","writable":true,
    "freeBytes":27233681408}],
@@ -2146,6 +2146,13 @@ root with its label and no special treatment, never by discarding it.**
 |---|---|---|
 | `downloads` | `Download/ConnectSuite`, through `MediaStore` | **Needs no permission of any kind.** It is where a push with no folder shared lands, so a fresh install can receive a file before the user has picked anything |
 | `app` | the app's own private folder | The one root that cannot fail — no grant, no provider, no user |
+
+**A Mac names these two by `kind`, not by `label`** — *Received files* (`Download/ConnectSuite` on the
+phone) and *Sidekick private storage* (private to Sidekick, not shown in My Files) — and says where each
+one is. Phones up to 2026-10-08 send `label: "ConnectSuite"` for `app`, which is the on-disk name of the
+`downloads` root's folder; on 2026-10-07 a root chosen by that name was the app-private one and a file
+sent there could not be found in My Files. `label` stays the user-facing name for `tree` and for any
+`kind` a Mac does not recognise, and it is what the phone's own refusals quote.
 
 An empty roots array would be indistinguishable from a phone with nothing on it. These two plus a
 `grantHint` say both things at once: the feature works, and there is more that has not been shared.

@@ -121,6 +121,28 @@ const RECEIVED_FILES_ALWAYS_WORKS =
   'is the Download › ConnectSuite folder on the phone.';
 
 /**
+ * What the rail, the breadcrumb, the drop tile and the send card call a root — **one home**.
+ *
+ * The two roots on every phone are named by `kind`, in this app's own words, rather than by the
+ * phone's `label`. Phones up to 2026-10-08 label the app-private root `ConnectSuite`, which is the
+ * on-disk name of the **other** root's folder (`Download/ConnectSuite`, *Received files*); on
+ * 2026-10-07 a root chosen by that name was app-private, the drop tile promised *"…send them to
+ * ConnectSuite"*, and the file landed where My Files cannot see it. `where` says what each one is on
+ * the phone, so neither can be taken for the other. A granted tree, and any `kind` this Mac does not
+ * know, keep the phone's label and no `where` — shown plainly, never discarded.
+ */
+function rootName(root: { kind: string; label: string }): { name: string; where: string | null } {
+  switch (root.kind) {
+    case 'downloads':
+      return { name: 'Received files', where: 'Download/ConnectSuite on the phone' };
+    case 'app':
+      return { name: 'Sidekick private storage', where: 'Private to Sidekick — not shown in My Files' };
+    default:
+      return { name: root.label, where: null };
+  }
+}
+
+/**
  * There is no `fs.grant`, and there is not going to be one.
  *
  * The inventory is fixed at twelve types. A thirteenth that made the phone open a picker would be
@@ -236,8 +258,8 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
         body: any
           ? [ADDED_ON_THE_PHONE, DOWNLOAD_WALL]
           : [
-              'Received files and ConnectSuite’s own folder are always here. To browse more of the ' +
-                'phone, open ConnectSuite on the phone and go to Sync › Folders.',
+              'Received files and Sidekick private storage are always here. To browse more of the ' +
+                'phone, open Sidekick on the phone and go to Sync › Folders.',
               RECEIVED_FILES_ALWAYS_WORKS,
               ADDED_ON_THE_PHONE,
               DOWNLOAD_WALL,
@@ -445,6 +467,7 @@ function wallHomeVisibility(home: WallHome): { stateCard: boolean; railLine: boo
   g.DOWNLOAD_WALL = DOWNLOAD_WALL;
   g.ADDED_ON_THE_PHONE = ADDED_ON_THE_PHONE;
   g.RECEIVED_FILES_ALWAYS_WORKS = RECEIVED_FILES_ALWAYS_WORKS;
+  g.rootName = rootName;
 }
 
 if (typeof module !== 'undefined') {
@@ -462,5 +485,6 @@ if (typeof module !== 'undefined') {
     DOWNLOAD_WALL,
     ADDED_ON_THE_PHONE,
     RECEIVED_FILES_ALWAYS_WORKS,
+    rootName,
   };
 }

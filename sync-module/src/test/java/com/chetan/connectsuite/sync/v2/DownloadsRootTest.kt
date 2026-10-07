@@ -2,6 +2,7 @@ package com.chetan.connectsuite.sync.v2
 
 import com.chetan.connectsuite.sync.SourceTree
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,6 +63,17 @@ class DownloadsRootTest {
         assertEquals("Received files", FsPaths.DOWNLOADS_ROOT_LABEL)
         assertTrue(!FsPaths.DOWNLOADS_ROOT_LABEL.contains("/"))
         assertTrue(!FsPaths.DOWNLOADS_ROOT_LABEL.contains("Download"))
+    }
+
+    @Test
+    fun `the app-private root is not named after the received-files folder`() {
+        // 2026-10-07: the Mac listed `Download/ConnectSuite` as "Received files" and the app-private
+        // root as "ConnectSuite" — the on-disk name of the OTHER root's folder. A file sent to the
+        // root chosen by that name landed in app-private storage, where My Files cannot see it.
+        val receivedFolderName = DownloadsStore.RELATIVE_PATH.trimEnd('/').substringAfterLast('/')
+        assertEquals("control: the received folder's on-disk name", "ConnectSuite", receivedFolderName)
+        assertFalse(FsPaths.APP_ROOT_LABEL.contains(receivedFolderName, ignoreCase = true))
+        assertNotEquals(FsPaths.DOWNLOADS_ROOT_LABEL, FsPaths.APP_ROOT_LABEL)
     }
 
     /**

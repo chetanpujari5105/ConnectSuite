@@ -26,7 +26,13 @@ object FsPaths {
     /** The app-private root, always present, listed even when the user has granted nothing. */
     const val APP_ROOT_ID = "app:files"
 
-    const val APP_ROOT_LABEL = "ConnectSuite"
+    /**
+     * Never the received folder's name. Until 2026-10-08 this was `ConnectSuite` — the on-disk name of
+     * `Download/ConnectSuite`, the *other* root — and a file sent to the root chosen by that name
+     * landed here, where My Files cannot see it. The Mac now names both fixed roots by `kind`; this is
+     * what the phone's own refusals say, and what an older Mac shows.
+     */
+    const val APP_ROOT_LABEL = "Sidekick private storage"
 
     const val SAF_PREFIX = "saf:"
 

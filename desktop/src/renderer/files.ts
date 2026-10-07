@@ -1181,11 +1181,13 @@ class FilesView {
       if (root.rootId === this.selectedRoot) row.classList.add('is-selected');
       const name = document.createElement('span');
       name.className = 'files-root-name';
-      // The breadcrumb the phone sent. The rootId is the machine handle and never appears.
-      name.textContent = root.label;
+      // `rootName`: the two fixed roots by kind, a granted tree by the phone's breadcrumb. The rootId
+      // is the machine handle and never appears.
+      const named = rootName(root);
+      name.textContent = named.name;
       const meta = document.createElement('span');
       meta.className = 'files-root-meta';
-      meta.textContent = [root.writable ? 'read and write' : 'read only', freeSpace(root.freeBytes)]
+      meta.textContent = [named.where, root.writable ? 'read and write' : 'read only', freeSpace(root.freeBytes)]
         .filter(Boolean)
         .join(' · ');
       row.append(name, meta);
@@ -1244,7 +1246,7 @@ class FilesView {
   private crumbLabel(): string {
     const root = this.roots.find((r) => r.rootId === this.selectedRoot);
     if (!root) return 'this phone';
-    return [root.label, ...this.path.split('/').filter(Boolean)].join(' › ');
+    return [rootName(root).name, ...this.path.split('/').filter(Boolean)].join(' › ');
   }
 
   private renderCrumbs(): void {
@@ -1254,7 +1256,7 @@ class FilesView {
     if (!root) return;
     // F6: the canvas's first crumb is "Internal storage", which is a fiction under SAF. The root's
     // own label is the real first segment.
-    const segments = [root.label, ...this.path.split('/').filter(Boolean)];
+    const segments = [rootName(root).name, ...this.path.split('/').filter(Boolean)];
     segments.forEach((segment, index) => {
       if (index > 0) {
         const sep = document.createElement('span');

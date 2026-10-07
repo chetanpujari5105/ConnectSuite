@@ -433,9 +433,34 @@ test('control — the harness can see a rail row, so an absence above means some
     assert.equal(pane.rail.queryAll('.files-root').length, 3, 'three roots, three rows');
     assert.deepEqual(
       pane.rail.queryAll('.files-root-name').map((n) => n.textContent),
-      ['ConnectSuite', 'App files', 'DCIM'],
-      'and the labels are the phone’s, in the phone’s order',
+      ['Received files', 'Sidekick private storage', 'DCIM'],
+      'the two fixed roots by kind (rootName), a granted tree by the phone’s label, in the phone’s order',
     );
+  } finally {
+    pane.restore();
+  }
+});
+
+test('the two fixed roots are named by what they are, so a destination cannot be taken for the other one', async () => {
+  // 2026-10-07 22:2x: `Download/ConnectSuite` was listed as "Received files" and the app-private root
+  // as "ConnectSuite" — the on-disk name of the OTHER root's folder. A root chosen by that name was
+  // app-private, and the drop tile then promised "…send them to ConnectSuite". The phone in this test
+  // is the old one, still sending that label, which is the one every installed phone sends today.
+  const OLD_APP: RootRow = { ...APP, label: 'ConnectSuite' };
+  const pane = mount();
+  try {
+    await readyToSend(pane, [{ ...DOWNLOADS, label: 'Received files' }, OLD_APP, TREE]);
+    const rows = pane.rail.queryAll('.files-root');
+    assert.equal(rows.length, 3, 'control: three roots, three rows');
+    const appRow = rows[1]!.textContent;
+    assert.doesNotMatch(appRow, /ConnectSuite/, 'the private root never wears the received folder’s name');
+    assert.match(appRow, /private/i, 'it says it is private to Sidekick');
+    assert.match(rows[0]!.textContent, /Download\/ConnectSuite/, 'the received root says where it is on the phone');
+    rows[1]!.dispatch('click', {});
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    assert.equal(pane.drop.hidden, false, 'control: the private root still takes a drop');
+    assert.doesNotMatch(pane.drop.textContent, /ConnectSuite/, pane.drop.textContent);
+    assert.doesNotMatch(pane.crumbs.textContent, /ConnectSuite/, pane.crumbs.textContent);
   } finally {
     pane.restore();
   }
