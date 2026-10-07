@@ -164,7 +164,8 @@ export class AppsClient {
     this.icons.clear();
     this.missing.clear();
     this.listed = 0;
-    log.info('apps', `cleared ${held} cached app icons on disconnect`);
+    // Every non-connected tick runs this; it speaks only when it removed something (PC-only audit F1).
+    if (held > 0) log.info('apps', `cleared ${held} cached app icon${held === 1 ? '' : 's'} on disconnect`);
   }
 }
 

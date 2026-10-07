@@ -496,11 +496,17 @@ export class ClipboardClient {
    */
   clear(): number {
     const had = this.history.clear();
-    for (const id of this.offers.clear()) this.offerGone(id);
+    const offers = this.offers.clear();
+    for (const id of offers) this.offerGone(id);
     this.restoreGuards.clear();
     this.echo.linkDropped();
     this.onChanged();
-    log.info('clipboard', `Cleared ${had} clipboard entries: the link dropped`);
+    // Every non-connected status tick runs this (a late arrival can land after the drop); it speaks
+    // only when it removed something, so an outage does not rotate the log's evidence out (PC-only
+    // audit F1: one outage wrote 148 × "Cleared 0").
+    if (had > 0 || offers.length > 0) {
+      log.info('clipboard', `Cleared ${had} clipboard entries and ${offers.length} offer(s): the link dropped`);
+    }
     return had;
   }
 

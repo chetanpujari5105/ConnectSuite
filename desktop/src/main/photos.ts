@@ -335,7 +335,9 @@ export class PhotosClient {
     this.missing.clear();
     this.bucketCount = 0;
     this.listCount = 0;
-    log.info('photos', `cleared ${held} cached thumbnails on disconnect`);
+    // Runs on every non-connected status tick (a late ack can land after the drop); it speaks only when
+    // it removed something, so an outage does not rotate the log's evidence out (PC-only audit F1).
+    if (held > 0) log.info('photos', `cleared ${held} cached thumbnail${held === 1 ? '' : 's'} on disconnect`);
   }
 }
 

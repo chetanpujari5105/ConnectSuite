@@ -201,3 +201,18 @@ test('S7: no log line carries clipboard text, an app name or a package', () => {
     assert.deepEqual(leaked, [], `a log line carried "${secret}"`);
   }
 });
+
+test('F1: an empty disconnect clear is silent on every tick; one that drops history or an offer is logged once', () => {
+  const lines = (act: () => void) => {
+    const seen: string[] = [];
+    const real = console.log;
+    console.log = (...args: unknown[]) => { seen.push(args.map(String).join(' ')); };
+    try { act(); } finally { console.log = real; }
+    return seen.filter((l) => l.includes('[clipboard]') && /Cleared/.test(l));
+  };
+  const { c } = client();
+  assert.deepEqual(lines(() => { c.clear(); c.clear(); c.clear(); }), [], 'nothing held, nothing said');
+  c.onPush(push({ origin: 'selection' }));
+  const held = lines(() => { c.clear(); c.clear(); });
+  assert.equal(held.length, 1, `control: the clear that removed the offer is logged: ${held.join(' | ')}`);
+});
