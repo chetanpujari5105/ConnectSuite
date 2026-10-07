@@ -28423,3 +28423,63 @@ expected to be unreachable on it; its handler is proven only on the JVM.
 2. *The SM-S938B, after approval B (install).* No acceleration. Read `types=0x10` once after install and after one
    `MainActivity` open; leave the app backgrounded for more than six hours; pass = no new `exit-info` record, `link-up.sh` three
    OKs, every claim `0x10`. A pass is about the type, not about `onTimeout` — that path stays JVM-only.
+
+### Install B — the `c05efcc` APK on the SM-S938B (2026-10-07 13:44–14:06 IST)
+
+Owner-approved (`install -r --user 0`; no `-d`, `-g`, uninstall, force-stop, data clear or permission change). Owner confirmed
+fresh harmless text on both clipboards before the install; neither clipboard was read. `MainActivity` was **not** opened. User
+95 not started or switched to by us; user 150 untouched.
+
+- **Pre-checks, all OK:** pin `RZCY12330DT` (SM-S938B, sdk 36), USB authorized, current user 0; users 0 / 95 / 150 present.
+  Installed `286e2b0` (`5f014e9e…`, pulled and hashed; equals the rollback copy). Prepared APK
+  `0d42e27dfb668e022aa20ff0164df6d00df8b323ed77aa02bedbae814a130af6` — the full recorded hash, re-hashed immediately before the
+  install. Both: `com.chetan.connectsuite.debug` 1 / 2.0.0, target 36, v2 only, `CN=Android Debug`, cert `d3a505d2…7d26`.
+  Rollback `SHA256SUMS`, `-bf096e1`, `-c05efcc` all `OK`. Mac: stored `pairing: 2`, `watchClipboard: False`; live (through
+  `probe.mjs`, control `status()` answered) `clip-watching` → `watching=false`, `phase: connected`, `pairing.kind: paired`.
+- **Manifest difference, old → new**, with line numbers stripped and resource ids resolved to names (control: 7 labels resolved, 0
+  raw ids left): **exactly two** — `uses-permission FOREGROUND_SERVICE_DATA_SYNC` removed, and `LinkService`
+  `foregroundServiceType` `0x11` → `0x10`. The raw diff's label-id changes all resolve to the same names.
+- **Baseline:** user 0 14 runtime grants, user 95 0; listener bound (user 0); accessibility `null` / `0`; `link-up.sh` three OKs;
+  newest exit record the 07:14 defect-199 crash. **The running old build's `LinkService` already read `types=0x10`** (after its
+  07:14 `START_STICKY` restart), so a post-install `0x10` cannot by itself tell the builds apart.
+- **Install 13:55:54–13:56:09:** `Performing Streamed Install` / `Success`, exit 0.
+- **After:** installed `base.apk` pulled and hashed `0d42e27d…0af6` = prepared. `lastUpdateTime 13:56:08`; users 0 and 95
+  `installed=true` with the **same data inodes** as before, user 150 `installed=false`. Grants: user 0 14, user 95 0, both
+  name-for-name identical to the baseline. Declared `FOREGROUND_SERVICE_DATA_SYNC` 0 (control `…CONNECTED_DEVICE` 2). Listener
+  bound (new proxy); accessibility `null` / `0`. Exit record `PACKAGE UPDATED` 13:56:08.525; no new crash.
+- **Automatic restart, no Activity:** `PACKAGE_REPLACED` and `LISTENER_REBIND` both at 13:56:09.484 → `Foreground claimed as
+  LISTENER_REBIND, types=0x10`, `RE-claimed as PACKAGE_REPLACED, types=0x10`, `Listening on 42501/42502/42503` at .518. 2 claims, 0
+  not `0x10`. `dumpsys activity services`: `LinkService` `isForeground=true types=0x00000010`.
+- **Profile 95:** a `u95_a1011` process started at 13:56:07, the same second as user 0's — by the platform after the update, not by
+  any command here. Recorded, not investigated.
+- **Mac reconnect on existing v2 trust:** `read ECONNRESET` 13:56:08.739, retry 1 s, `pairing: v2`, `Connected to Samsung SM-S938B`
+  13:56:09.821 (+1.08 s). Nothing forgotten or re-paired. `link-up.sh` after: three OKs (`createTime -4m0s`, three ports, 1
+  session). Watcher still off: stored `False`, live `watching=false`.
+- **Errors and clipboard events:** phone, 104 lines since the baseline — 0 E, 1 W (`contacts.get refused: no-such-contact`, as
+  before), one `[clip]` line, which is the feature-registration line (`Clipboard feature installed with all 3 verbs`) and **not** a
+  clipboard event. Mac, 124 lines — 0 E, 2 W (the reset above; `contacts.get refused: NOT_FOUND`, as at A3), 5 × `Cleared 0
+  clipboard entries: the link dropped`; 0 applied / offered / sent. `activity.jsonl` +2 (`system` Disconnected, Connected).
+- **Instrument faults caught in the run:** an unsplit `$P` in zsh made the first read run nothing (exit 127, caught on the empty
+  output); a remote-shell `$p` in `sed -n '1180,$p'` returned an empty phone log (caught by `wc -l` showing 1,283 lines, no
+  rotation; re-read with `tail`); the Mac watcher's start/stop lines had rotated out of both logs, so their zero had no known
+  positive and was replaced by the live IPC reading.
+- **Also seen, not this install's:** the Mac lost the link 11:18:41–13:38:01 — 267 of 274 attempts `ENETUNREACH` (the Mac's
+  network) — and each retry cycle wrote its disconnect clears again (~825 lines per pane over the gap).
+- **Defect 199 is not hardware-closed.** Pending: the six-hour background run (plan item 2 above) and the emulator run (item 1).
+- **Rollback:** `install -r --user 0` of the verified `286e2b0` copy (`5f014e9e…`); same versionCode, so no `-d`. A separate
+  approval.
+
+### Foreground-start check after install B — pre-checks only, **not run** (2026-10-07, before 14:35 IST)
+
+Approved as one `MainActivity` start in user 0. The read-only pre-checks were taken; the owner then answered **"Not yet / stop"** to
+the fresh-clipboard confirmation, so **no Activity was opened** and nothing on either device changed. No start route was exercised;
+there is no foreground reading.
+
+- **Pre-checks (all OK):** pin `RZCY12330DT`, current user 0; installed `base.apk` re-pulled and hashed
+  `0d42e27dfb668e022aa20ff0164df6d00df8b323ed77aa02bedbae814a130af6`; Mac stored `pairing: 2` / `watchClipboard: False`, live
+  `watching=false`, `phase: connected`, `pairing.kind: paired`; `link-up.sh` three OKs.
+- **Start state recorded:** one app process, u0 PID 23946 (started 13:56:07; the u95 process seen after the install had exited);
+  `LinkService` `isForeground=true types=0x00000010`, created about 18 min earlier; latest exit record 13:56:08.525 `PACKAGE UPDATED`;
+  `MainActivity` **not running** — the only matches in `dumpsys activity activities` were refresh-rate history from 2026-10-06
+  23:57, not a live record; the top resumed activity was another app in profile 95. So an open would have been a real cold start
+  of the Activity, not a no-op. Phone `link.log` 1,295 lines; Mac log 4,574 lines.

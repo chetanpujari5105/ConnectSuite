@@ -247,6 +247,7 @@ test('the plan: packaged, the switch off, the bridge missing — no ext and noth
 test('the gate closed: no bridge spawned, Ask refused with the reason, and the phone is asked nothing', T, async () => {
   const r = rig(planWebcam({ packaged: false, devSwitch: false, appPath: scratch, execPath: '/x' }));
   assert.equal(r.wiring.bridgePid(), null);
+  assert.equal(r.wiring.busy(), false, 'quit has nothing to wait for (defect 200)');
   const result = await r.invoke(WEBCAM_IPC.ASK, 'front');
   assert.equal(result.ok, false);
   assert.match(result.reason, /webcamDev/);
@@ -482,6 +483,18 @@ test('quit: the stop is written first, then the bridge is shut down and reaped',
   await r.wiring.dispose();
 });
 
+test('busy(), what quit waits for (defect 200): true while a bridge child runs and while a session lives, false once disposed', T, async () => {
+  const r = rig(injectedPlan, { injected: true });
+  await injectedReady(r);
+  assert.equal(r.wiring.controller.current().session, null);
+  assert.equal(r.wiring.busy(), true, 'a running bridge child is work, with no session');
+  await toRunning(r);
+  assert.equal(r.wiring.busy(), true, 'a live session is work');
+  await r.wiring.dispose();
+  assert.equal(r.wiring.bridgePid(), null, 'control: the child was reaped');
+  assert.equal(r.wiring.busy(), false, 'nothing left after dispose');
+});
+
 // ---- main.ts calls this factory, with the real objects -------------------------------------------------
 
 test('main.ts wires the production factory with the real link, ipcMain, powerMonitor and pinned socket', T, () => {
@@ -494,7 +507,7 @@ test('main.ts wires the production factory with the real link, ipcMain, powerMon
   assert.ok(call.includes('power: powerMonitor'));
   assert.ok(main.includes('devSwitch: !app.isPackaged && debugSwitches().webcamDev'), 'the switch is forced off when packaged');
   assert.ok(main.includes('...filesAdvert, ...webcamPlan.ext }'), 'the advertisement is the plan’s');
-  assert.ok(main.includes("app.prependListener('before-quit'"), 'quit waits for the bridge, ahead of the link closing');
+  assert.ok(main.includes('pending: () => webcam?.busy() ?? false'), 'quit waits for the bridge only while it has work (defect 200)');
   // The preload's channels are the factory's.
   const preload = readFileSync(join(__dirname, '../preload.ts'), 'utf8');
   for (const channel of Object.values(WEBCAM_IPC)) assert.ok(preload.includes(`'${channel}'`), `preload lacks ${channel}`);

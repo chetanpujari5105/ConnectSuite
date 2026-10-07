@@ -462,6 +462,11 @@ export class EncoderSpike {
     }
   }
 
+  /** Whether quit has anything to wait for: a run between its start and its end, or a probe not yet reaped. */
+  hasWork(): boolean {
+    return (this.phase !== 'idle' && this.phase !== 'done') || (this.probe !== null && this.probeExited === null);
+  }
+
   /** Sleep, screen lock, a user switch or quit: stop at once, cause `shutdown`. */
   async lifecycle(what: string): Promise<void> {
     if (this.phase === 'awaiting-approval') {
@@ -765,6 +770,8 @@ export interface SpikeWiring {
   /** Null when not armed; `reason` says why. */
   readonly spike: EncoderSpike | null;
   readonly reason: string | null;
+  /** Whether quit has anything to wait for. Always false when not armed. Defect 200. */
+  busy(): boolean;
   dispose(): Promise<void>;
 }
 
@@ -775,9 +782,9 @@ export function wireWebcamSpike(deps: SpikeWiringDeps): SpikeWiring {
     : !deps.devSwitch ? 'the webcamSpike switch needs webcamDev too'
     : !deps.webcamAdvertised ? 'ext.webcam is not advertised (the bridge is not built at its one path)'
     : null;
-  if (!deps.spikeSwitch || why) return { spike: null, reason: why ?? 'the webcamSpike switch is off', dispose: async () => undefined };
+  if (!deps.spikeSwitch || why) return { spike: null, reason: why ?? 'the webcamSpike switch is off', busy: () => false, dispose: async () => undefined };
   const probe = resolveDecodeProbe({ packaged: deps.packaged, appPath: deps.appPath });
-  if (probe.path === null) return { spike: null, reason: probe.reason, dispose: async () => undefined };
+  if (probe.path === null) return { spike: null, reason: probe.reason, busy: () => false, dispose: async () => undefined };
   const executable = probe.path;
 
   const spike = new EncoderSpike({
@@ -805,5 +812,5 @@ export function wireWebcamSpike(deps: SpikeWiringDeps): SpikeWiring {
   for (const event of ['suspend', 'lock-screen', 'user-did-resign-active']) deps.power.on(event, () => void spike.lifecycle(event));
   deps.handle(SPIKE_IPC.CURRENT, () => spike.current());
   deps.handle(SPIKE_IPC.RUN, () => spike.run('back'));
-  return { spike, reason: null, dispose: () => spike.lifecycle('quit') };
+  return { spike, reason: null, busy: () => spike.hasWork(), dispose: () => spike.lifecycle('quit') };
 }

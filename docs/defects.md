@@ -214,7 +214,8 @@ own heading there, and its own row here.
 | **196** | **Settings → Connection kept a stale trust sentence after Forget and re-pair** — *"Paired before secure pairing…"* over a phone just verified with v2, until the tab was reopened. The sentence was chosen once at build time; a Settings pane is rebuilt only on open and on a theme change. Found in stage B (2026-10-06 23:57). | **fixed in source 2026-10-07 — not installed.** One writer, `paintTrustedDevice`, called from `render()` on every status; three sentences (legacy, unpaired, v2). Legacy → unpaired → v2 driven in one open pane; 3 mutations red. | — | see below |
 | **197** | **View → Zoom could shrink the page below the layout's minimum**: at 125% the 1100×700 minimum window is an 880×560 page — Files' listing column ~50 px with its toolbar clipped, Calls' centre column ~78 px, a Clipboard filter under *Clear all*. Found by the isolated renderer harness, 2026-10-07. | **fixed in source 2026-10-07 — not installed.** Zoom items go through `zoomStep`: a step that would leave the page under 1100×700 CSS px is refused with a toast saying the size needed, and the window minimum scales with the zoom (reset at load). Sweep after: 0 overlaps / 0 clipped / 0 h-scroll in 32 jobs; 4 tests + menu test; 3 mutations red. | — | see below |
 | **198** | **A failed pairing code left the pairing screen unexplained**: `pairing-qr` rejects (`Link not ready`, or the code cannot be armed or drawn) and `showQr` let the rejection go unhandled — the card kept its last code, or none, and said nothing. Found by the harness's `failing` mode (8 of 8 jobs). | **fixed in source 2026-10-07 — not installed.** A third pairing-card shape, *No pairing code yet* / *This Mac could not make a pairing code*, with *Try again*; not a network claim. 3 tests; 1 mutation red. | — | see below |
-| **199** | **`LinkService` was killed by Android's `dataSync` time limit** — release-blocking reliability. 2026-10-07 07:14:00, installed `286e2b0`: `ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: …/LinkService`, exit record `APP CRASH(EXCEPTION)`. A `USER` start claimed `connectedDevice|dataSync` (`0x11`) for an all-day link; Android 15+ gives `dataSync` six hours per rolling 24, and nothing implemented `onTimeout`. `START_STICKY` restarted it 1.5 s later and the Mac reconnected on v2 in 5 s — **recovery, not a fix**. | **fixed in source 2026-10-07 — not installed, not hardware-verified.** Every start route claims `connectedDevice` only; `dataSync` removed from the manifest (type and permission); `onTimeout(startId, fgsType)` stops first, then closes sessions with a stated reason, releases locks and posts a notification; automatic routes held after a timeout until the app is visible. 20 new tests; 9 mutations red (executed, cache off). | — | see below |
+| **199** | **`LinkService` was killed by Android's `dataSync` time limit** — release-blocking reliability. 2026-10-07 07:14:00, installed `286e2b0`: `ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: …/LinkService`, exit record `APP CRASH(EXCEPTION)`. A `USER` start claimed `connectedDevice|dataSync` (`0x11`) for an all-day link; Android 15+ gives `dataSync` six hours per rolling 24, and nothing implemented `onTimeout`. `START_STICKY` restarted it 1.5 s later and the Mac reconnected on v2 in 5 s — **recovery, not a fix**. | **fixed in source 2026-10-07 — installed on the SM-S938B 2026-10-07 13:56 (install B, `0d42e27d…0af6`), not hardware-verified: the six-hour background run is pending.** Every start route claims `connectedDevice` only; `dataSync` removed from the manifest (type and permission); `onTimeout(startId, fgsType)` stops first, then closes sessions with a stated reason, releases locks and posts a notification; automatic routes held after a timeout until the app is visible. 20 new tests; 9 mutations red (executed, cache off). | — | see below |
+| **200** | **The first named *Quit Sidekick* left a windowless main process alive** — lifecycle. 2026-10-07 10:30:52, live development `dist` `bb594168…` (`4661015`), PID 67469: `Disconnected: app quit` was logged and the windows and renderer went, but the main process stayed idle in its run loop (`sample`: `CFRunLoopRun` / `mach_msg`) holding 9222 with 0 targets for more than 3 minutes. A second click of the same named item at 10:38:33 exited at once (no process, no helpers, 9222 free). One occurrence; not reproduced | **fixed in source 2026-10-07 — not deployed, and the cause is still not established.** One quit coordinator (`desktop/src/main/quitCoordinator.ts`) replaces both `before-quit` listeners: an idle quit is not held; with work it holds once, cleans up once, waits at most 10 s, then tears the link down once and re-issues quit once; every stage logs under `[quit]`, including `will-quit reached`. 9 new tests, 10 mutations red. Not reached: whether Electron's process exits | — | see below |
 
 ---
 
@@ -3980,6 +3981,91 @@ a stopped link with no timeout still starts); who clears the hold; the state lef
 reached:** the platform timer, whether and when Android calls `onTimeout`, `stopSelf`/`onDestroy`, the notification drawn, real
 sockets closing. Hardware/emulator verification is a separate approval (plan in `docs/testing.md` → this defect).
 
+**Installed 2026-10-07 13:56 (install B, `docs/testing.md` → *Install B*):** the declared type is `0x10` and the permission is
+gone; the automatic restart claimed `0x10` on both routes; three OKs. **Not hardware-verified:** a `0x10` reading at install is
+not discriminating — the old build's `LinkService` also read `0x10` after its 07:14 `START_STICKY` restart — and the pass is the
+six-hour background run with no new exit record, still pending.
+
 **Wrong fixes to avoid:** catching the exception (it is thrown by the platform on the main looper; there is nothing to catch,
 and it would hide the stop); relying on `START_STICKY` (that is the loop, not recovery); a periodic restart or a
 foregrounding trick to reset the budget; lowering `targetSdk`; claiming a different type the link does not do.
+
+### 200 — the first named Quit left a windowless process · **fixed in source; cause not established**
+
+**Measured** (`docs/testing.md` → *Morning 2026-10-07* → Mac update A): the first *Quit Sidekick* (clicked by name, PID re-checked,
+10:30:52) logged `Disconnected: app quit` and the disconnect clears; the windows and renderer were gone; the main process stayed
+alive and idle in its run loop, holding 9222 with 0 targets, for more than 3 minutes. The second click of the same named item
+(10:38:33) exited at once. Nothing in the log between them. **One occurrence. Not reproduced, and not to be reproduced by quitting
+the live app.**
+
+**Hypothesis — not established.** `main.ts` prepends a `before-quit` listener that, while `webcam` is set and `webcamQuitDone` is
+false, calls `preventDefault()` and re-issues `app.quit()` from `Promise.all([webcam.dispose(), webcamSpike?.dispose()]).finally`.
+`webcam` is wired unconditionally, so **every** first quit goes through that hold; the second click finds `webcamQuitDone` true and
+takes a plain quit, which matches what was seen. `preventDefault` does not stop the other `before-quit` listener, which is why
+`link.stop('app quit')` ran on the first click — consistent with the log.
+
+**What weighs against it, recorded so it is not lost:** (1) that launch logged `webcam not advertised` — no session and no bridge —
+so `lifecycle('quit')` had nothing to await and dispose should have settled almost at once; a dispose that never settled is
+therefore unlikely. (2) Electron documents `before-quit` as emitted *before the application starts closing its windows*, with
+`preventDefault()` preventing termination (`electron.d.ts`), so the windows going suggests the re-issued quit **did** run and the
+stall came later. The other documented canceller — a window's `beforeunload` returning `false` — is ruled out: nothing in
+`desktop/src` registers one (the same search finds `before-quit` in `main.ts`). Either reading keeps the gate's prevent-and-re-issue as the common factor,
+because the plain quit (second click) exited cleanly. **The log cannot tell the stages apart:** the gate logs nothing, and
+`will-quit`'s only trace, `clearPreviews('app quit')`, logs only when the preview cache held something. A possibly related
+sighting: on 2026-10-04 SIGTERM had not quit the spike launch in 35 s (`docs/testing.md`, the defect 177 run) — same gate,
+different stimulus; not established.
+
+**Fix direction (code only; nothing implemented):**
+1. Extract the gate into an electron-free `desktop/src/main/quitGate.ts` — `installQuitGate({ on, quit, work, dispose, boundMs,
+   setTimer, log })` — and have `main.ts` call it, so a test drives the production rule rather than a copy.
+2. Hold the quit **only when there is work**: `webcam.busy()` (a live session or a bridge child) or an armed spike. With nothing
+   to stop, return without `preventDefault()`, so an ordinary quit is exactly the plain quit that exited cleanly on the second
+   click.
+3. When it does hold, **bound** the wait: `Promise.allSettled` raced against `boundMs` (10 s: above the bridge's 2 s graceful +
+   1 s SIGTERM reap and the 5 s request timeout), then `quit()` exactly once.
+4. **Log every stage** — held (with what work), settled (ok / failed / bound reached, with ms), quit re-issued — so the next
+   occurrence names the stage it stalled in, instead of leaving it to a `sample`.
+
+**Deterministic regression test (`quitGate.test.ts`, fake emitter and fake timer, no Electron):** (a) no work → no
+`preventDefault`, no dispose, no re-quit — **red against the current inline gate**, which holds whenever `webcam` is set; (b) a
+dispose that never settles → `quit()` once, at `boundMs`, with a *bound reached* line; (c) a dispose that rejects → `quit()` once;
+(d) a second `before-quit` while held → not prevented again, dispose not called twice, still one re-quit; (e) the stage lines are
+emitted in order. Red first against the current code; mutations: drop the bound (b red), drop the work check (a red), drop the
+once-guard (d red). **Not reached by it:** whether Electron's own exit completes after a re-issued `app.quit()` — the stage reading
+(2) above points at. That needs one named Quit on a launch carrying the fix, approved separately.
+
+**Implemented 2026-10-07 (code only; not deployed, no live quit).** Points 1–4 above, with two decisions beyond them:
+- **The teardown moved inside the coordinator.** The old second `before-quit` listener closed the video socket and the link on
+  *every* quit event — immediately on the held first one, which defeated the gate's stated intent (the webcam's stop written while
+  the link is up), and again on the re-issued one. Now it runs exactly once: at once for an idle quit, after cleanup (or the bound)
+  for a held one. `main.ts` has no `before-quit` listener of its own, and a test fails if one comes back.
+- **Data safety, stated rather than implied.** A held quit keeps the link up while the webcam ends its session and the bridge is
+  reaped. If the 10 s bound passes first, nothing is killed and `app.exit()` is not called: the warning names what was unfinished
+  (`webcam (bridge pid N)`) and says it may outlive the app, and the ordinary quit path runs. File transfers are not quit work: an
+  interrupted pull or push keeps its partial and resume record exactly as on a dropped link (defect 157), so Quit never waits on the
+  network. Cleanup failures log the error's **name only** — never its message, which can carry paths or addresses.
+- `WebcamWiring.busy()` (a session, or a bridge child not yet exited), `SpikeWiring.busy()` / `EncoderSpike.hasWork()` (a run between
+  start and end, or a probe not reaped; always false unarmed). An item whose state cannot be read is treated as busy.
+
+**Tests:** `quitCoordinator.test.ts` (8, through the production `installQuitCoordinator`, a labelled stand-in `FakeApp` that follows
+Electron's documented `before-quit` → `will-quit` order, and a manual clock): idle; successful cleanup; rejected and synchronously
+throwing cleanup (name only, no message); never-settling cleanup (held at bound − 1 ms, released at the bound); a late settle after
+the bound; repeated quit events (three requests, one cleanup, one deadline, one teardown, one re-issue); an unreadable work state;
+and the `main.ts` wiring (sole `before-quit` writer, with a control). `webcamWiring.test.ts` +1 (`busy()` through the production
+factory and the injected bridge: true with a bridge child and no session, true with a session, false after dispose) and +1
+assertion in the gate-closed test; `webcamSpike.test.ts` +4 assertions (`hasWork` idle / running / done; unarmed `busy()` false
+for each of the five gates). **Mutations, each executed and restored by SHA-256:** M1 the old gate's semantics (always hold, no
+bound) → 5 red; M2 no work check → 3; M3 no bound → 3; M4 a repeat restarts cleanup → 1; M5 a released quit re-enters → **red by
+hang** (the file failed after 33.6 s on the recursion, not on a named assertion); M6 error message logged → 2; M7 link torn down at
+hold → 3; M8 a second `before-quit` writer in `main.ts` → 1; M9 webcam `busy()` ignores the bridge → 1; M10 spike never busy → 1.
+**Not reached by any test:** Electron's real quit — windows, the run loop, whether the process exits after the re-issued
+`quit()`. The `will-quit reached` line is the reading that would place the next occurrence.
+
+**Verification (separate approval):** on a launch carrying this build, quit by the named menu item and read the `[quit]` lines —
+an idle quit should log `nothing to wait for` and `will-quit reached` once. One clean quit is not proof (one sighting in many quits);
+the lines are what make a recurrence diagnosable.
+
+**Wrong fixes to avoid:** `app.exit()` from the gate (skips `will-quit`, so the preview cache is never emptied and the link's own
+quit path is bypassed); removing the webcam wait altogether (a live bridge child could outlive the app — the reason the gate
+exists); a timer that force-exits the process whatever the stage (hides which stage stalls); judging a fix by a single clean quit
+(the defect has one sighting in many quits, so one clean quit cannot tell fixed from lucky).

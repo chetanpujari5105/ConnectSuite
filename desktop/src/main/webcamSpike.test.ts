@@ -284,7 +284,9 @@ test('the hard cap is independent: with the planned Stop out of reach, the cap e
 
 test('a decline or an expiry before the tap is a no-reading, with no socket opened', T, async () => {
   const declined = rig();
+  assert.equal(declined.spike.hasWork(), false, 'idle: quit has nothing to wait for (defect 200)');
   await declined.spike.run('back');
+  assert.equal(declined.spike.hasWork(), true, 'awaiting approval with a probe running is work');
   declined.phone.state({ state: 'stopped', reason: 'declined', framesSent: 0, framesDropped: 0 });
   const d = (await declined.spike.done())!;
   assert.equal(d.noReading, 'ended-before-capture');
@@ -299,6 +301,7 @@ test('a decline or an expiry before the tap is a no-reading, with no socket open
   assert.deepEqual(expired.phone.calls[1], { type: 'webcam.stop', payload: { sessionId: SESSION, cause: 'failure', detail: 'no-answer' } });
   assert.equal(expired.sockets.length, 0);
   for (const pid of [...declined.probePids, ...expired.probePids]) await waitFor(`probe ${pid} reaped`, () => !alive(pid));
+  assert.equal(declined.spike.hasWork(), false, 'done and reaped: nothing left for quit');
 });
 
 test('a refusal from the phone is a no-reading carrying its code', T, async () => {
@@ -422,6 +425,7 @@ test('wiring: no IPC channel exists unless every gate is open, and the run is ba
   ] as const) {
     const { w, handled } = wire(over);
     assert.equal(w.spike, null, what);
+    assert.equal(w.busy(), false, `${what}: quit has nothing to wait for (defect 200)`);
     assert.match(w.reason ?? '', reason, what);
     assert.deepEqual(handled, [], `${what}: no channel registered`);
   }

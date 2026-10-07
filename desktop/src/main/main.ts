@@ -106,6 +106,7 @@ import { SmsClient } from './sms';
 import { LinkClient } from './link';
 import { globalShortcut } from 'electron';
 import { initLogger, log, tailLog } from './logger';
+import { installQuitCoordinator } from './quitCoordinator';
 // The main process imports this normally; `float.html` loads the same file as a classic script and
 // gets the globals it declares. Both are the same source, which is the point — the counting rule
 // has one home and the two windows cannot drift.
@@ -2119,19 +2120,32 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => clearPreviews('app quit'));
-// Quit waits for the webcam: its stop is written while the link is still up, and the bridge is reaped
-// (shutdown, then SIGTERM, then SIGKILL — bounded) before the app exits, so no child outlives it.
-// Prepended so it runs before the handler below closes the link.
-let webcamQuitDone = false;
-app.prependListener('before-quit', (event) => {
-  if (!webcam || webcamQuitDone) return;
-  webcamQuitDone = true;
-  event.preventDefault();
-  void Promise.all([webcam.dispose(), webcamSpike?.dispose()]).finally(() => app.quit());
-});
-app.on('before-quit', () => {
-  video?.close('app quit');
-  link?.stop('app quit');
+// Quit, in one place (defect 200): held only while the webcam or the spike has something to stop, for
+// at most QUIT_CLEANUP_BOUND_MS; the link closes once, after that cleanup, so the webcam's stop is written
+// while the link is still up. Every stage is logged under [quit].
+installQuitCoordinator({
+  app,
+  work: [
+    {
+      name: 'webcam',
+      pending: () => webcam?.busy() ?? false,
+      cleanup: () => webcam?.dispose() ?? Promise.resolve(),
+      detail: () => {
+        const pid = webcam?.bridgePid() ?? null;
+        return pid === null ? null : `bridge pid ${pid}`;
+      },
+    },
+    {
+      name: 'webcam-spike',
+      pending: () => webcamSpike?.busy() ?? false,
+      cleanup: () => webcamSpike?.dispose() ?? Promise.resolve(),
+    },
+  ],
+  teardown: () => {
+    video?.close('app quit');
+    link?.stop('app quit');
+  },
+  log,
 });
 
 /**

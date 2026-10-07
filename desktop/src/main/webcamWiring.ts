@@ -97,6 +97,8 @@ export interface WebcamWiring {
   readonly controller: WebcamController;
   /** The running bridge child's pid, or null — for the log, and for the tests to prove it was reaped. */
   bridgePid(): number | null;
+  /** Whether quit has anything to wait for: a session, or a bridge child not yet exited. Defect 200. */
+  busy(): boolean;
   /** Quit: ends any session (`webcam.stop` `shutdown`), then stops and reaps the bridge. */
   dispose(): Promise<void>;
 }
@@ -179,6 +181,7 @@ export function wireWebcam(deps: WebcamWiringDeps): WebcamWiring {
   return {
     controller,
     bridgePid: () => (bridge && !bridge.exited ? bridge.pid : null),
+    busy: () => controller.current().session !== null || (bridge !== null && !bridge.exited),
     dispose: () => (disposing ??= controller.lifecycle('quit')),
   };
 }
