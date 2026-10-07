@@ -47,7 +47,7 @@ const appearanceRules = require('../shared/appearance') as {
   FLOAT_GROUND: Record<'light' | 'dark', string>;
 };
 // F6 / P3: the mDNS watch that tells "nobody has scanned" from "scanned, and now searching".
-import { watchForPairIntent } from './discovery';
+import { discoverCandidates, watchForPairIntent } from './discovery';
 // The one home for "is this clipboard entry something we may hand to the operating system".
 // The pane requires the same module to decide whether to draw the button; see clipLink.ts.
 const { openableUrl } = require('../shared/clipLink') as {
@@ -112,6 +112,7 @@ import { installQuitCoordinator } from './quitCoordinator';
 // has one home and the two windows cannot drift.
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
+import { PAIR_DECOY_HOST, PAIR_DECOY_PORT, withPairDecoy } from './pairDecoy';
 import { guardWindow } from './windowGuard';
 import { ResourceGrants, WindowRegistry, guardIpc } from './ipcAuth';
 import { EVENT_ROLES, IPC_POLICY } from './ipcPolicy';
@@ -1236,7 +1237,15 @@ app.whenReady().then(() => {
   log.info('webcam', webcamPlan.ext.webcam
     ? `webcam ${webcamPlan.ext.webcam} ADVERTISED (development gate open, bridge at its resolved path; release policy WEBCAM_RELEASE false)`
     : `webcam not advertised: ${webcamPlan.absentReason ?? 'the development gate is closed'}`);
-  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }));
+  // H7: the impostor stand-in answers first while pairing is armed — development only.
+  const pairDecoy = !app.isPackaged && debugSwitches().pairDecoyFirst;
+  if (pairDecoy) log.warn('debug', `pairDecoyFirst: while pairing is armed, ${PAIR_DECOY_HOST}:${PAIR_DECOY_PORT} is tried before every real candidate`);
+  link = new LinkClient(
+    identity,
+    () => rePairPending,
+    () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }),
+    pairDecoy ? { candidates: () => withPairDecoy(() => link?.isPairingArmed() ?? false, discoverCandidates) } : {},
+  );
   // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).
   void files.sweepResumeRecords().then((n) => log.info('files', `resume records: ${n} expired at start (limit 7 days, 16 records)`));
   video = new VideoClient(identity, () => link?.peerFingerprint() ?? null);

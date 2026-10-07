@@ -146,6 +146,12 @@ export interface DebugSwitches {
    * guard: the banner carries no action and its click only opens the Calls pane.
    */
   callBanner: boolean;
+  /**
+   * H7 (`docs/pairing-v2-hardware-test-proposal.md`): while pairing is armed, try `127.0.0.1:42611` before
+   * every real candidate, so `scripts/pair-decoy.mjs` — an impostor answering without a proof — answers
+   * first. It weakens no guard; it lets the guard be read on hardware. Forced off in a packaged build.
+   */
+  pairDecoyFirst: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -164,6 +170,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'webcamDev',
   'webcamSpike',
   'callBanner',
+  'pairDecoyFirst',
 ];
 
 function read(): DebugSwitches {
@@ -183,6 +190,7 @@ function read(): DebugSwitches {
     webcamDev: false,
     webcamSpike: false,
     callBanner: false,
+    pairDecoyFirst: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.
