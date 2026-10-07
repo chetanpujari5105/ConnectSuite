@@ -19,6 +19,7 @@
 | P3 / 188 | High (claims) | "Nothing leaves your network" while ML Kit sends usage metrics to Google | open — unmeasured; capture F9, then decide | 4 |
 | RB5 | High (policy) | No privacy policy, publisher identity or contact anywhere | open — owner supplies; not invented here | 4 |
 | RB6 | High | Five privacy fixes and every Phase 1 fix exist in source only | open — plan F | 5 |
+| R-199 | High (reliability) | The phone's link service was killed by Android's `dataSync` time limit (2026-10-07 07:14; `ForegroundServiceDidNotStopInTimeException`) — a user-started link held a six-hour type all day and implemented no `onTimeout` | **fixed in source 2026-10-07** (defect 199: `connectedDevice` only, `dataSync` undeclared, `onTimeout` stops and holds automatic restarts); **not installed, not hardware-verified** — needs the timeout verification plan, then the release build | 5 |
 | U-1 | **Unknown** | Whether any existing pairing was made with an impostor (v1 pairing could not tell) | **unknown, and will stay so** — legacy records are labelled, never upgraded; release verification requires a v2 re-pair (`docs/pairing-v2-hardware-test-proposal.md` H4) | 5 |
 | U-2 | **Unknown** | Dependency advisories (no `npm audit` / OSV run — it would send the dependency list off this machine) | **unknown** — §Dependency audit below | 2 |
 | U-3 | **Unknown** | Behaviour on any phone but the SM-S938B (and the Moto for some rows) | **unknown** — `docs/single-device-audit.md` | 6 |

@@ -1,0 +1,4 @@
+# dumpsys activity exit-info com.chetan.connectsuite.debug, read 2026-10-07 ~09:1x IST — the three most recent records (fixed fields; copied from the session read)
+timestamp=2026-10-07 07:14:00.300 pid=23809 user=0 reason=4 (APP CRASH(EXCEPTION)) subreason=0 (UNKNOWN) importance=125 rss=141MB description=crash
+timestamp=2026-10-06 23:23:31.926 pid=4000 user=0 reason=16 (PACKAGE UPDATED) description=stop … due to installPackageLI
+timestamp=2026-10-04 17:08:34.568 pid=9170 user=0 reason=16 (PACKAGE UPDATED) description=stop … due to installPackageLI

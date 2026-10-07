@@ -1,0 +1,46 @@
+# phone files/logs/link.log — timestamped lines only, service/autostart/tls/server/trust tags and handshakes, 2026-10-06T23:23 → 2026-10-07T07:15 (IPs, fingerprints and keys masked in the message field)
+2026-10-06T23:23:32.828+05:30 I [autostart] PACKAGE_REPLACED: 1 paired device(s), link not running — starting LinkService
+2026-10-06T23:23:32.829+05:30 I [autostart] LISTENER_REBIND: 1 paired device(s), link not running — starting LinkService
+2026-10-06T23:23:32.849+05:30 I [service] Foreground claimed as PACKAGE_REPLACED, types=0x10
+2026-10-06T23:23:32.850+05:30 I [service] Foreground RE-claimed as LISTENER_REBIND, types=0x10
+2026-10-06T23:23:32.853+05:30 I [tls] Port 42501 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-06T23:23:32.854+05:30 I [tls] Port 42502 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-06T23:23:32.854+05:30 I [tls] Port 42503 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-06T23:23:32.856+05:30 I [server] Listening on 42501/42502/42503, 1 paired device(s)
+2026-10-06T23:23:33.270+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-06T23:23:33.270+05:30 I [trust] pairing for <fp>: legacy (v1, not authenticated) — forget and pair again to verify
+2026-10-06T23:28:06.247+05:30 I [service] Foreground RE-claimed as USER, types=0x11
+2026-10-06T23:28:06.247+05:30 I [service] Foreground RE-claimed as UNKNOWN, types=0x10
+2026-10-06T23:40:12.041+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-06T23:40:12.041+05:30 I [trust] pairing for <fp>: legacy (v1, not authenticated) — forget and pair again to verify
+2026-10-06T23:55:58.424+05:30 I [service] Foreground RE-claimed as USER, types=0x11
+2026-10-06T23:55:58.425+05:30 I [service] Foreground RE-claimed as UNKNOWN, types=0x10
+2026-10-06T23:56:31.432+05:30 I [trust] Forgot <hex>
+2026-10-06T23:56:31.433+05:30 I [trust] Forgot <hex> and closed 0 live session(s) — 0 other session(s) left alone
+2026-10-06T23:56:41.842+05:30 W [tls] Rejected unpaired client <fp>
+2026-10-06T23:56:41.845+05:30 W [server] Refused <ip>, key <fp> — 1 refused / 57 accepted since start :: SSLHandshakeException: This Mac is not paired with the phone. Scan the pairing QR code first.
+2026-10-06T23:56:45.883+05:30 W [tls] Rejected unpaired client <fp>
+2026-10-06T23:56:45.884+05:30 W [server] Refused <ip>, key <fp> — 2 refused / 57 accepted since start :: SSLHandshakeException: This Mac is not paired with the phone. Scan the pairing QR code first.
+2026-10-06T23:56:49.935+05:30 W [tls] Rejected unpaired client <fp>
+2026-10-06T23:56:49.936+05:30 W [server] Refused <ip>, key <fp> — 3 refused / 57 accepted since start :: SSLHandshakeException: This Mac is not paired with the phone. Scan the pairing QR code first.
+2026-10-06T23:56:56.410+05:30 I [service] Foreground RE-claimed as USER, types=0x11
+2026-10-06T23:56:56.411+05:30 I [service] Foreground RE-claimed as UNKNOWN, types=0x10
+2026-10-06T23:56:57.995+05:30 W [tls] Rejected unpaired client <fp>
+2026-10-06T23:56:57.997+05:30 W [server] Refused <ip>, key <fp> — 4 refused / 57 accepted since start :: SSLHandshakeException: This Mac is not paired with the phone. Scan the pairing QR code first.
+2026-10-06T23:57:05.375+05:30 I [trust] Pairing armed for Chetans-MacBook-Pro (<hex>) — waiting for it to prove the code
+2026-10-06T23:57:05.383+05:30 I [service] Foreground RE-claimed as USER, types=0x11
+2026-10-06T23:57:14.091+05:30 I [trust] Paired with Chetans-MacBook-Pro (<hex>) — pairing v2, both sides proved the code
+2026-10-06T23:57:14.131+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-06T23:57:14.131+05:30 I [trust] pairing for <fp>: v2 (both sides proved the code)
+2026-10-07T00:14:54.602+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-07T00:14:54.602+05:30 I [trust] pairing for <fp>: v2 (both sides proved the code)
+2026-10-07T01:02:42.428+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-07T01:02:42.428+05:30 I [trust] pairing for <fp>: v2 (both sides proved the code)
+2026-10-07T07:14:01.789+05:30 I [service] Foreground claimed as UNKNOWN, types=0x10
+2026-10-07T07:14:01.805+05:30 I [tls] Port 42501 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-07T07:14:01.805+05:30 I [tls] Port 42502 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-07T07:14:01.805+05:30 I [tls] Port 42503 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-10-07T07:14:01.808+05:30 I [server] Listening on 42501/42502/42503, 1 paired device(s)
+2026-10-07T07:14:01.808+05:30 I [autostart] LISTENER_REBIND: already listening — nothing to do
+2026-10-07T07:14:05.709+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at <ip>
+2026-10-07T07:14:05.709+05:30 I [trust] pairing for <fp>: v2 (both sides proved the code)

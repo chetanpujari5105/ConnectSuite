@@ -1,0 +1,16 @@
+# logcat -b crash -d, this package's block only (other apps' entries in the same buffer excluded)
+10-07 07:14:00.290 E/AndroidRuntime(23809): FATAL EXCEPTION: main
+10-07 07:14:00.290 E/AndroidRuntime(23809): Process: com.chetan.connectsuite.debug, PID: 23809
+10-07 07:14:00.290 E/AndroidRuntime(23809): android.app.RemoteServiceException$ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: ComponentInfo{com.chetan.connectsuite.debug/com.chetan.connectsuite.core.link.LinkService}
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.app.ActivityThread.generateForegroundServiceDidNotStopInTimeException(ActivityThread.java:2819)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2781)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(ActivityThread.java:0)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:3205)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.os.Handler.dispatchMessage(Handler.java:132)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.os.Looper.dispatchMessage(Looper.java:358)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.os.Looper.loopOnce(Looper.java:288)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.os.Looper.loop(Looper.java:392)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at android.app.ActivityThread.main(ActivityThread.java:10346)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:638)
+10-07 07:14:00.290 E/AndroidRuntime(23809): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:972)

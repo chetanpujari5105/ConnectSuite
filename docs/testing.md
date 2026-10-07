@@ -28343,3 +28343,83 @@ skips or sleeps were added.
 **Artifacts built, NOT installed** (session scratch `artifacts-bf096e1/`): Mac `dist` `0c074f7d…2f29` (312 files);
 packaged `Sidekick.app`, `app.asar` `5127b900…f9851`, deep-verified ad-hoc; debug APK `9b7d34f0…17f7`, signer
 `d3a505d2…7d26`, versionCode 1. Superseded: the `6777b74` scratch package.
+
+## Morning 2026-10-07 — Mac update A (development build), and defect 199 (code only)
+
+### Mac update A — `bf096e1` development `dist` deployed and relaunched (10:29–10:41 IST)
+
+Owner confirmed harmless text on both clipboards first; neither clipboard was read. Packaged `Sidekick.app` not launched;
+Android APK not installed; nothing forgotten or re-paired.
+
+- **Pre-checks, all OK:** one instance (PID 67469, launcher 67467) owning 9222; live `dist` `bb594168…` (308 files, 0
+  specials); `entry.js` `e76a4701…` = HEAD; `watchClipboard` False; stored `pairing: 2`; IPC `watching=false` and status
+  connected / paired / not legacy (control `login-item-get` answered); `mac-build-bf096e1/dist` `0c074f7d…`; A2a copies,
+  both `f862a1ae` trees, APK sums and the Activity backup verify. `activity.jsonl` before: 4,941 lines (hash and size only).
+- **Quit stalled once (candidate defect, not registered).** *Quit Sidekick* clicked by name with the PID re-checked
+  (10:30:52): `Disconnected: app quit`, windows and renderer gone, but the main process stayed alive and idle in its run loop
+  (`sample`: main thread in `CFRunLoopRun`/`mach_msg`), holding 9222 with 0 targets, for more than 3 minutes. Asked the owner;
+  a second click of the same named item (10:38:33) exited at once (no process, no helpers, 9222 free). **Cause not
+  established.** Hypothesis from the code: the first `before-quit` is held by the webcam handler (`preventDefault` until
+  `webcam.dispose()` settles, then `app.quit()` again); the second click skips it because `webcamQuitDone` is true. (The first
+  script never ran: `it` is reserved in AppleScript and nothing was clicked.)
+- **Deploy:** `desktop/dist` moved (not deleted) to `~/.connectsuite-evidence-private/rollback-2026-10-06/
+  mac-live-dist-moved-at-update-2026-10-07/dist` and re-verified `bb594168…`; `ditto` of the private `bf096e1` copy;
+  `0c074f7d…`, 312 files, 0 specials, per-file listing equal to an independent isolated rebuild from `git archive bf096e1`.
+- **Launch 10:39:53:** `./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222` from
+  `desktop/`, 0 `CONNECTSUITE_*` variables in the process environment. One instance (PID 88287), owner of 9222.
+- **After:** status connected / paired / not legacy (settled in one poll); `pairing: v2` and `Connected to Samsung` once
+  each in the log; IPC `watching=false`; stored `pairing: 2`; new offer-banner counters 0 requested / 0 failed;
+  `innerWidth` = `outerWidth` = 1440. Log since launch: 172 lines, 170 I, 2 W (the `share.ask` notice and one
+  `contacts.get refused: NOT_FOUND`, as at A3), 0 E; **`Rewrote` 0, unknown-field warnings 0**, `Activity log: 2000
+  event(s) read / 0 line(s) unreadable`; 0 applied / offered / sent clipboard lines (only the three on-disconnect clears);
+  no `.rewrite` file; `activity.jsonl` 4,944 lines (appends only).
+- **Phone side: no reading.** The phone was no longer on USB (`adb devices` empty), so `link-up.sh` could not run; the Mac's
+  connection to *Samsung SM-S938B* on v2 is the only evidence of the phone end.
+- **Rollback:** quit, move the new `dist` aside, `ditto` `mac-build-4661015/dist` back, verify `bb594168…`, relaunch;
+  `entry.js@4661015` (in `launch-files-2026-10-07/`) only if the exact earlier launch files are wanted. A `dist`-only rollback
+  does not restore profile writes made while this build ran.
+
+### Defect 199 — `LinkService` killed by the `dataSync` time limit · fixed in source (`c05efcc`), not installed
+
+Evidence and the measured / not-established split: `docs/evidence/fgs-timeout-2026-10-07/` (README, crash block, exit
+records, phone and Mac link lines, mutations). Register: `docs/defects.md` → 199. Release tracker: R-199.
+
+**Tests (fresh, on the committed bytes):** phone JVM **1,454 / 0** (`--rerun-tasks --no-build-cache`, 138 tasks executed,
+six modules — core 276, app 206, sync-module 668, camera-module 187, mirror-module 65, input-module 52 — 0 of 153 result
+files older than the run); Mac **1,955 / 0** (`.test-run.json` 05:33:24Z, green); both Mac typechecks clean; 16 guards and
+both hook fixture suites exit 0. 9 mutations red, each executed with the build cache off and restored by SHA-256.
+
+**Instrument fault, caught and fixed in the run:** the first mutation pass judged freshness by the results file's mtime with the
+build cache on, and reported M2 (a manifest-only edit) green — Gradle had restored an earlier passing run's outputs
+FROM-CACHE, fresh mtime, no test executed. Executed, M2 is red. `core/build.gradle.kts` now declares the module manifests as
+test inputs; with the cache on, M2 then executed and went red.
+
+**Verification APK** (built from `git archive c05efcc` in isolation; `--no-build-cache`):
+`0d42e27dfb668e022aa20ff0164df6d00df8b323ed77aa02bedbae814a130af6`, 94,889,445 bytes, `com.chetan.connectsuite.debug`
+versionCode 1 / 2.0.0, target 36, v2 signer `CN=Android Debug`, certificate `d3a505d2…7d26` (same as installed — an
+`install -r` update, no `-d`). Kept at `rollback-2026-10-06/android/sidekick-debug-c05efcc.apk` (`SHA256SUMS-c05efcc`).
+Against the installed `286e2b0` (`5f014e9e…`): permissions 33 → 32 (`FOREGROUND_SERVICE_DATA_SYNC` removed);
+`LinkService` `foregroundServiceType` `0x11` → `0x10`; four activity labels renumbered by one resource id, resolving to the same
+names (`send_selection_label`, `share_to_mac_label`, `notification_listener_label`); one new string
+(`link_service_interrupted_title`); changed entries: `AndroidManifest.xml`, `resources.arsc`, `classes5/9/12/14/16/21.dex`.
+Carries everything in `bf096e1`. **Storage:** none — no Room, preferences or file change; the timeout latch is process
+memory. **Profiles:** `install -r` replaces the code for users 0 and 95 alike; removing an install-time permission changes no
+runtime grant (user 0 14/14, user 95 0/14 expected unchanged); user 150 not installed. **The `bf096e1` APK
+(`9b7d34f0…`) is superseded for deployment.**
+
+**Not reached by any test:** the platform timer, whether and when Android calls `onTimeout`, `stopSelf`/`onDestroy`, the
+notification drawn, real sockets closing. By construction the shipping build claims no time-limited type, so `onTimeout` is
+expected to be unreachable on it; its handler is proven only on the JVM.
+
+**Verification plan (each part needs its own approval; nothing below has run):**
+
+1. *Emulator, Android 15 or 16 image (no personal device).* Read the activity-manager constants first and use only keys the
+   image reports (`dumpsys activity settings`, expected `data_sync_fgs_timeout_duration`). Control: the installed-build APK
+   `286e2b0`, one `MainActivity` start, app backgrounded, the `dataSync` timeout shortened on the emulator only → expect
+   `ForegroundServiceDidNotStopInTimeException` (proves the stimulus reproduces the defect). Then `c05efcc`, same steps →
+   expect `types=0x10` in `dumpsys activity services`, every `Foreground … claimed` line `0x10`, no timeout exit record over
+   several shortened periods, the link still listening. Restore the constant afterwards and say so. Pairing is not needed
+   (a `USER` start runs regardless).
+2. *The SM-S938B, after approval B (install).* No acceleration. Read `types=0x10` once after install and after one
+   `MainActivity` open; leave the app backgrounded for more than six hours; pass = no new `exit-info` record, `link-up.sh` three
+   OKs, every claim `0x10`. A pass is about the type, not about `onTimeout` — that path stays JVM-only.

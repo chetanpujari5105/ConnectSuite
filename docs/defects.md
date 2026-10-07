@@ -214,6 +214,7 @@ own heading there, and its own row here.
 | **196** | **Settings → Connection kept a stale trust sentence after Forget and re-pair** — *"Paired before secure pairing…"* over a phone just verified with v2, until the tab was reopened. The sentence was chosen once at build time; a Settings pane is rebuilt only on open and on a theme change. Found in stage B (2026-10-06 23:57). | **fixed in source 2026-10-07 — not installed.** One writer, `paintTrustedDevice`, called from `render()` on every status; three sentences (legacy, unpaired, v2). Legacy → unpaired → v2 driven in one open pane; 3 mutations red. | — | see below |
 | **197** | **View → Zoom could shrink the page below the layout's minimum**: at 125% the 1100×700 minimum window is an 880×560 page — Files' listing column ~50 px with its toolbar clipped, Calls' centre column ~78 px, a Clipboard filter under *Clear all*. Found by the isolated renderer harness, 2026-10-07. | **fixed in source 2026-10-07 — not installed.** Zoom items go through `zoomStep`: a step that would leave the page under 1100×700 CSS px is refused with a toast saying the size needed, and the window minimum scales with the zoom (reset at load). Sweep after: 0 overlaps / 0 clipped / 0 h-scroll in 32 jobs; 4 tests + menu test; 3 mutations red. | — | see below |
 | **198** | **A failed pairing code left the pairing screen unexplained**: `pairing-qr` rejects (`Link not ready`, or the code cannot be armed or drawn) and `showQr` let the rejection go unhandled — the card kept its last code, or none, and said nothing. Found by the harness's `failing` mode (8 of 8 jobs). | **fixed in source 2026-10-07 — not installed.** A third pairing-card shape, *No pairing code yet* / *This Mac could not make a pairing code*, with *Try again*; not a network claim. 3 tests; 1 mutation red. | — | see below |
+| **199** | **`LinkService` was killed by Android's `dataSync` time limit** — release-blocking reliability. 2026-10-07 07:14:00, installed `286e2b0`: `ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: …/LinkService`, exit record `APP CRASH(EXCEPTION)`. A `USER` start claimed `connectedDevice|dataSync` (`0x11`) for an all-day link; Android 15+ gives `dataSync` six hours per rolling 24, and nothing implemented `onTimeout`. `START_STICKY` restarted it 1.5 s later and the Mac reconnected on v2 in 5 s — **recovery, not a fix**. | **fixed in source 2026-10-07 — not installed, not hardware-verified.** Every start route claims `connectedDevice` only; `dataSync` removed from the manifest (type and permission); `onTimeout(startId, fgsType)` stops first, then closes sessions with a stated reason, releases locks and posts a notification; automatic routes held after a timeout until the app is visible. 20 new tests; 9 mutations red (executed, cache off). | — | see below |
 
 ---
 
@@ -3947,3 +3948,38 @@ draws it through the existing one-writer `applyPairCard`; the header's network s
 because a code that could not be made is not a network fact. **Not reached:** the real failure on hardware
 (it needs the link not to be ready at the moment the screen asks).
 
+### 199 — the link service killed by the `dataSync` time limit · **fixed in source**
+
+**Measured** (`docs/evidence/fgs-timeout-2026-10-07/`): the exception and component above; the runtime types — every start
+command re-claims, a `USER` start claimed `0x11` and every other reason `0x10`, and the last `USER` claim (23:57:05.383, the
+v2 re-pair) had no narrowing claim after it, so `dataSync` was in force until the crash; the restart (`UNKNOWN`, `0x10`,
+07:14:01.789, a `START_STICKY` null intent) and the Mac's v2 reconnect at 07:14:05.678. **Not established:** when the six-hour
+budget began. 23:57 + 6 h is 05:57, not 07:14; the platform resets the budget when the app comes to the foreground and this app
+does not log that, so foreground use during stage D (01:11–01:42) plus six hours is *consistent* and nothing more.
+
+**Every start route, inspected:** `USER` (`MainActivity.onCreate`, `LinkRoute` ×2, onboarding), the capability refresh
+(`MainActivity.onResume`, `LinkRoute` — a `startService` with no reason, so `UNKNOWN`), `PACKAGE_REPLACED`, `BOOT`/`QUICKBOOT`
+(`LinkBootReceiver`), `LISTENER_REBIND` (`NotificationMirrorService`), `ACCESSIBILITY_BIND` (`ConnectSuiteInputService`), and
+`START_STICKY` (`UNKNOWN`). Reconnect is the Mac's: no phone timer starts the service.
+
+**Fix:** (1) `LinkAutoStart.foregroundTypesFor` returns `connectedDevice` for every reason — no time limit, and its runtime
+prerequisite (`CHANGE_WIFI_STATE` / `CHANGE_NETWORK_STATE` / `CHANGE_WIFI_MULTICAST_STATE` declared) is met. A bulk transfer
+always has a Mac connected (it needs a live session's token), which is what the type describes. (2) `dataSync` is no longer in
+`LinkService`'s `foregroundServiceType` and `FOREGROUND_SERVICE_DATA_SYNC` is gone from both manifests, so claiming it throws
+instead of starting a clock. (3) `LinkService.onTimeout(startId, fgsType)` → `LinkTimeoutStop`: `stopForeground(REMOVE)` +
+`stopSelf()` **first**, then close sessions and listeners with the sentence *"Android stopped the connection to your Mac: its
+time limit for <type> background work ran out. Open Sidekick to reconnect."* (`LinkState.afterStopped`), release the locks,
+post a plain notification; each step isolated so one failure does not skip the rest; a repeat re-requests the stop and does not
+clean up twice. (4) `LinkTimeoutLatch` (process memory, no stored state) makes `ensureRunning` hold every automatic route after
+a timeout; it clears only on a `USER` start or any start while an Activity is visible — the moment the platform resets the budget.
+(5) `core/build.gradle.kts` declares every module manifest as a test input (a manifest-only change was being served a cached green).
+
+**Tests:** `LinkTimeoutTest` (20) and `BootAutoStartTest` (updated): types per route at API 29/33/34/35/36; the manifest the claim
+is checked against, with a control; the stop order, idempotence, both failure paths; the gate (no loop; running link untouched;
+a stopped link with no timeout still starts); who clears the hold; the state left behind; the override's presence. **Not
+reached:** the platform timer, whether and when Android calls `onTimeout`, `stopSelf`/`onDestroy`, the notification drawn, real
+sockets closing. Hardware/emulator verification is a separate approval (plan in `docs/testing.md` → this defect).
+
+**Wrong fixes to avoid:** catching the exception (it is thrown by the platform on the main looper; there is nothing to catch,
+and it would hide the stop); relying on `START_STICKY` (that is the loop, not recovery); a periodic restart or a
+foregrounding trick to reset the budget; lowering `targetSdk`; claiming a different type the link does not do.

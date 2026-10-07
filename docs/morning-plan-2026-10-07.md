@@ -1,5 +1,7 @@
 # Morning plan — 2026-10-07 (owner present; every numbered step needs its own go-ahead)
 
+> **Update 2026-10-07 11:1x:** step 1's Mac half is done (`bf096e1` dist live, v2, watcher off — `docs/testing.md` → *Morning 2026-10-07*). **The `bf096e1` APK (`9b7d34f0…`) is superseded for deployment** by `c05efcc` (`0d42e27d…0af6`, defect 199: the link no longer claims `dataSync`); installing it is a separate approval.
+
 **State at handoff (03:55 IST):** Mac runs `4661015` (PID 67469, `desktop/dist` `bb594168…`), watcher **off**,
 pairing **v2**. Phone runs `286e2b0` (`5f014e9e…30ad`, installed 2026-10-06 23:23:31), **locked and dozing**
 at the 02:4x read-only check. Nothing from tonight is installed. Stage D is **PARTIAL** (`docs/evidence/

@@ -1,0 +1,27 @@
+# Defect 199 — red-first mutations, 2026-10-07
+# Runner: apply one edit, run `:core:testDebugUnitTest --tests *LinkTimeoutTest --tests *BootAutoStartTest`,
+# restore the file and verify its SHA-256, read the results XML. Final run: `--console=plain --no-build-cache --rerun`,
+# printing Gradle's own task outcome line so a cache-served result cannot pass as an executed one.
+
+M1 USER claims dataSync again (the defect)          RED  executed  4 failing: no start route claims a type with a time budget;
+                                                                     every start route claims exactly connectedDevice on API 34 and later;
+                                                                     every type a route claims is declared on the service;
+                                                                     (BootAutoStartTest) a user-driven start claims connectedDevice only
+M2 manifest declares dataSync on LinkService again RED  executed  LinkService declares connectedDevice and nothing time-limited
+M3 onTimeout override deleted (renamed private)    RED  executed  LinkService overrides the two-argument onTimeout
+M4 cleanup runs before the stop                    RED  executed  4 failing (order, repeat, both failure-path tests)
+M5 no idempotence guard                            RED  executed  a second timeout re-requests the stop and does not clean up twice
+M6 gate ignores the timeout latch (restart loop)   RED  executed  after a timeout the automatic routes hold, and a running link is left alone
+M7 any start clears the hold                       RED  executed  only a person clears the hold
+M8 stop reason not recorded on the state           RED  executed  a stop with a reason says it, and a stop without one keeps what was there
+M9 a throwing cleanup step aborts the rest         RED  executed  a stop that throws is logged and cleanup still runs; a cleanup step that throws does not stop the rest
+
+All nine files restored, SHA-256 equal to the pre-mutation bytes.
+
+# Instrument fault caught in the first pass
+The first pass ran with the build cache on and judged freshness by the results file's mtime. M2 (a manifest-only edit)
+reported GREEN with a results file "0 s old". The manifests were not inputs of the test task, so after M1's restore the
+task's inputs matched an earlier passing run and Gradle restored that run's outputs FROM-CACHE — a fresh mtime over tests
+that never executed. Re-run executed: RED. Fixed twice: the runner now uses --no-build-cache --rerun and prints the task
+outcome; and core/build.gradle.kts declares every module's src/main/AndroidManifest.xml as a test-task input, verified
+with the cache ON: baseline executed green → repeat UP-TO-DATE → M2 executed RED → restored FROM-CACHE green.
