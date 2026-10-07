@@ -52,6 +52,17 @@ test('a phone that sent no digest gives an unverified pull, never an invented di
   assert.equal(h.pulls[0]!.expectedSha256, null);
 });
 
+test('L3: a refused resume and a mid-pull pause keep what arrived, and their sentences say so', async () => {
+  // The up-front sentence ends "Nothing was copied." — true before a pull, false once a partial is
+  // kept. Until 2026-10-08 a mid-pull pause and a refused Resume both used it.
+  const tight = async () => ({ bavail: 100, bsize: 4096 });
+  const rest = await pullSpaceRefusal('/x', 5_000_000_000, tight, 'rest');
+  assert.match(rest ?? '', /the rest of that file: it needs 5\.5 GB free in the receive folder and has 1 MB\. What had arrived is kept\./);
+  const during = await pullSpaceRefusal('/x', 5_000_000_000, tight, 'during');
+  assert.match(during ?? '', /^this Mac is running low on space: the rest of the file needs 5\.5 GB free/);
+  for (const sentence of [rest, during]) assert.doesNotMatch(sentence ?? '', /Nothing was copied/);
+});
+
 test('L3: a file that cannot fit is refused before any byte, and the phone’s agreed transfer is cancelled', async () => {
   // Control: the refusal rule itself, with a fake statfs.
   const tight = async () => ({ bavail: 100, bsize: 4096 }); // 409,600 bytes free

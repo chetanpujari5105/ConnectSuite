@@ -469,22 +469,46 @@ class FilesView {
 
   /** `fs.blocks` pulls in flight on this pane, by [pullKey] → the `transferId` Pause and Cancel name. */
   private readonly pullIds = new Map<string, string>();
+  /** Every pull in flight, block or not, by [pullKey] → its `transferId`: what its progress events carry. */
+  private readonly pullTransfer = new Map<string, string>();
+  /** The phone's latest `fs.transfer.progress` for a pull in flight, by [pullKey]. */
+  private readonly pullProgress = new Map<string, PullProgress>();
   /** Paused block pulls this Mac keeps for the paired phone, by [pullKey]. */
   private paused = new Map<string, { name: string; size: number; verifiedBytes: number }>();
 
   /** A block pull was agreed (main's `fs-pull-agreed`): Pause and Cancel can now name it. */
   onPullAgreed(info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }): void {
-    if (!info.blocks) return;
-    this.pullIds.set(pullKey(info.rootId, info.id), info.transferId);
+    const key = pullKey(info.rootId, info.id);
+    // Every pull's progress is shown; only a block pull can be paused or cancelled from here.
+    this.pullTransfer.set(key, info.transferId);
+    if (info.blocks) this.pullIds.set(key, info.transferId);
     this.render();
   }
 
   /** A pull the Mac resumed by itself after a reconnect has ended. */
   onPullFinished(info: { rootId: string; id: string; name: string; result: PullResult }): void {
-    this.pullIds.delete(pullKey(info.rootId, info.id));
+    this.forgetPull(pullKey(info.rootId, info.id));
     this.applyPullResult(info.rootId, info.id, info.name, info.result);
     void this.refreshPaused();
     this.render();
+  }
+
+  private forgetPull(key: string): void {
+    this.pullIds.delete(key);
+    this.pullTransfer.delete(key);
+    this.pullProgress.delete(key);
+  }
+
+  /** A progress event for a pull in flight: kept, and the detail redrawn if it shows that pull. */
+  private onPullProgress(payload: Record<string, unknown>): boolean {
+    const transferId = payload.transferId;
+    const key = [...this.pullTransfer].find(([, id]) => id === transferId)?.[0];
+    if (key === undefined) return false;
+    if (typeof payload.bytes !== 'number' || typeof payload.total !== 'number') return true;
+    this.pullProgress.set(key, { bytes: payload.bytes, total: payload.total, verifying: payload.phase === 'verifying' });
+    // A tick redraws the detail only — the same budget as a send's progress (see [onTransferEvent]).
+    if (this.selectedRoot !== null && key.startsWith(`${this.selectedRoot}\u0000`)) this.renderDetail();
+    return true;
   }
 
   private async refreshPaused(): Promise<void> {
@@ -676,10 +700,11 @@ class FilesView {
    * hold — a pull, a photo — fall through untouched, because `updateItem` matches nothing.
    */
   onTransferEvent(envelope: unknown): void {
-    if (!this.batch) return;
     const message = envelope as { type?: string; payload?: Record<string, unknown> };
     const payload = message?.payload;
     if (!payload || typeof payload.transferId !== 'string') return;
+    if (message.type === 'fs.transfer.progress' && this.onPullProgress(payload)) return;
+    if (!this.batch) return;
     let next = this.batch;
     if (message.type === 'fs.transfer.progress' && typeof payload.bytes === 'number') {
       next = sendBatchOnProgress(this.batch, payload.transferId, payload.bytes);
@@ -951,7 +976,7 @@ class FilesView {
       // the reason. Both now live in [pullOutcomeText], beside a paused, cancelled or changed pull.
       this.applyPullResult(rootId, entry.id, entry.name, result);
     } finally {
-      this.pullIds.delete(key);
+      this.forgetPull(key);
       void this.refreshPaused();
       this.copying.delete(key);
       if (this.copying.size === 0) this.copyingName = null;
@@ -1822,6 +1847,26 @@ class FilesView {
       b.addEventListener('click', act);
       this.detail.append(b);
     };
+    const progress = key ? this.pullProgress.get(key) : undefined;
+    if (this.isCopying(entry.id) && progress) {
+      // What the phone says it has sent — the far end's own count, labelled as such; the Mac's check of
+      // what arrived is the outcome line. Never an indeterminate bar (see the send card).
+      const block = document.createElement('div');
+      block.className = 'files-detail-note';
+      block.id = 'files-pull-progress';
+      if (!progress.verifying && progress.total > 0) {
+        const bar = document.createElement('progress');
+        bar.className = 'files-send-bar';
+        bar.setAttribute('max', String(progress.total));
+        bar.setAttribute('value', String(Math.min(progress.bytes, progress.total)));
+        bar.setAttribute('aria-label', pullProgressText(progress));
+        block.append(bar);
+      }
+      const words = document.createElement('p');
+      words.textContent = pullProgressText(progress);
+      block.append(words);
+      this.detail.append(block);
+    }
     if (this.isCopying(entry.id) && running && this.bridge.fsPullStop) {
       const stop = this.bridge.fsPullStop.bind(this.bridge);
       control('files-pull-pause', 'Pause', `Pause copying ${entry.name}; what has arrived is kept`, () => void stop({ transferId: running, how: 'pause' }));
@@ -2251,6 +2296,16 @@ function pullKey(rootId: string, id: string): string {
 }
 
 /** What a paused block pull has kept, in the units a person reads. */
+interface PullProgress { bytes: number; total: number; verifying: boolean }
+
+/** A pull's progress in words: the phone's count, a fraction only with its bytes beside it. */
+function pullProgressText(p: PullProgress): string {
+  if (p.verifying) return `The phone is re-checking what already arrived: ${fileBytes(p.bytes)} so far.`;
+  if (p.total <= 0) return `The phone has sent ${fileBytes(p.bytes)}.`;
+  const percent = Math.floor((Math.min(p.bytes, p.total) * 100) / p.total);
+  return `The phone has sent ${fileBytes(p.bytes)} of ${fileBytes(p.total)} (${percent}%).`;
+}
+
 function pausedSentence(verifiedBytes: number, size: number): string {
   // Facts only: what to do next is said once, by the outcome line (defect 165).
   return `Paused: ${fileBytes(verifiedBytes)} of ${fileBytes(size)} is on this Mac, checked block by block.`;

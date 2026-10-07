@@ -2582,9 +2582,16 @@ stays exclusive (defect 150).
   of them first."* — and a resume of an existing record is always allowed.
 - **Forget or re-pair** drops every record for that phone and removes only partials passing the identity
   check.
-- **Space.** The up-front refusal (L3) stays. While receiving, the Mac re-reads free space every 1 GiB
-  and **pauses** when it falls below the bytes still to come + 1 GiB, saying which volume and how much
-  more is needed. It never publishes a partial file.
+- **Space.** One rule, `room(n) = n + max(256 MiB, ⌈n/10⌉)`, always applied to the bytes **still to
+  come**. Up front (L3) it refuses a pull before the phone is asked — for a fresh pull `n` is the size;
+  **for a resume it is the size minus the verified prefix**, so a pull paused for space resumes once
+  there is room for the rest, not for the whole file again. While receiving, the Mac re-reads free space
+  every 1 GiB and **pauses** (keeping what arrived) when free space falls below `room(remaining)`, saying
+  how much is needed and how much is free. It never publishes a partial file. *(Revised 2026-10-08: this
+  line said "the bytes still to come + 1 GiB", which no build implemented. The shipped rule is kept
+  because it cannot pause a pull that passed the up-front check unless something else fills the
+  volume — free space and `room(remaining)` fall together — whereas a fixed 1 GiB margin would pause,
+  for example, a 2 GiB pull with 2.5 GB free after its first GiB.)*
 - **Resume is automatic only within the same run of the Mac app and within 10 minutes** of an
   interruption; otherwise the card shows *Paused* and nothing moves without a click on **Resume**.
 

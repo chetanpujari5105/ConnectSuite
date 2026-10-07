@@ -10,6 +10,7 @@ import test from 'node:test';
 
 import { BulkClient } from './bulk';
 import { FilesClient } from './files';
+import { spaceNeeded } from './shareDestination';
 import { PullResumeStore, MAX_RESUME_RECORDS, STORE_FULL_SENTENCE } from './pullResume';
 import { blockCountFor, blockSizeFor, rootOf } from '../shared/fsBlocks';
 import { pullPartPathFor } from '../shared/transferFiles';
@@ -61,6 +62,8 @@ interface Scenario {
   lateVerdictWaitMs?: number;
   /** Dial this port instead of the fake phone's: nothing listens there, so the connect is refused. */
   refusedPort?: number;
+  /** The receive folder's free bytes, read at each check. Absent: the real volume's. */
+  freeBytes?: () => number;
 }
 
 interface Ending {
@@ -181,6 +184,7 @@ function harness(scenario: Scenario = {}) {
     {
       resume: { store: () => resumeStore, phone: () => PHONE_FP },
       receiveFolder: async () => ({ ok: true, folder }),
+      ...(scenario.freeBytes ? { statfs: async () => ({ bavail: scenario.freeBytes!(), bsize: 1 }) } : {}),
       now: () => clock.now,
       onPullAgreed: (info) => agreed.push(info),
     },
@@ -1031,4 +1035,32 @@ test('165: "started again" is reported only when the phone refused a resume and 
     assert.ok((r.resumedFrom ?? 0) > 0, 'control: an accepted resume');
     assert.equal(r.restarted, undefined, 'an accepted resume did not restart');
   } finally { resumed.done(); }
+});
+
+test('a pull paused for space resumes once there is room for the rest — not for the whole file again', T, async () => {
+  // 2026-10-08 (code reading): the pane says "free some space, then choose Resume", and Resume then
+  // checked room for the WHOLE file before it knew it was a resume. On a 200 GB pull with 150 GB already
+  // on this Mac, freeing room for the 50 GB still to come was not enough.
+  let free = Number.MAX_SAFE_INTEGER;
+  const h = harness({ stallAfter: 20 * MiB, freeBytes: () => free });
+  try {
+    const record = await pausedWithRecord(h);
+    const toCome = SIZE - record.digests.length * BS;
+    assert.ok(spaceNeeded(toCome) < spaceNeeded(SIZE), 'control: room for the rest is less than room for the whole');
+
+    free = spaceNeeded(toCome) - 1;
+    const short = await h.pull();
+    assert.equal(short.ok, false, 'control: one byte too few is still refused');
+    assert.match(short.reason ?? '', /rest/, short.reason);
+    assert.doesNotMatch(short.reason ?? '', /Nothing was copied/, 'what had arrived is still here');
+    assert.equal((await h.resumeStore.all()).length, 1, 'the record is kept for the next Resume');
+    assert.equal(h.begins.length, 1, 'the phone was not asked');
+
+    free = spaceNeeded(toCome);
+    const resumed = await h.pull();
+    assert.equal(resumed.ok, true, `resumed with room for the rest: ${resumed.reason}`);
+    assert.equal(resumed.resumedFrom, record.digests.length * BS);
+  } finally {
+    h.done();
+  }
 });

@@ -125,6 +125,8 @@ export class FilesClient {
       now?: () => number;
       /** Tests only: where pulls land. The product uses the configured receive folder. */
       receiveFolder?: typeof ensureReceiveFolder;
+      /** Tests only: the receive folder's free space. The product reads `statfs`. */
+      statfs?: (p: string) => Promise<{ bavail: number | bigint; bsize: number | bigint }>;
       /** A pull was agreed: its `transferId`, so the pane can offer Pause and Cancel for it. */
       onPullAgreed?: (info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }) => void;
     } = {},
@@ -373,14 +375,6 @@ export class FilesClient {
       return { ok: false, reason: ready.reason, fixHint: ready.fixHint };
     }
 
-    // Room first (large-file increment L3): a pull that cannot fit is refused before the phone is asked,
-    // with the numbers, rather than failing part-way through a multi-gigabyte file.
-    const short = await pullSpaceRefusal(ready.folder, options.size);
-    if (short) {
-      log.warn('files', `pull of ${options.name} refused on this Mac: ${short}`);
-      return { ok: false, reason: short };
-    }
-
     // `fs.blocks` (docs/protocol.md → Block-verified, resumable pulls): decided before the phone is asked,
     // because a resume is part of the request. Only on a negotiated session, above 64 MiB, with a store.
     const phone = this.resume?.phone() ?? null;
@@ -399,6 +393,17 @@ export class FilesClient {
         }
       }
     }
+    // Room (large-file increment L3): a pull that cannot fit is refused before the phone is asked, with
+    // the numbers, rather than failing part-way through a multi-gigabyte file. Measured on the bytes
+    // **still to come**, so it runs after a resume is prepared: a pull paused for space tells the person
+    // to free some and choose Resume, and that Resume must not then ask for room for the whole file.
+    const short = await pullSpaceRefusal(ready.folder, options.size - (prepared?.from ?? 0), this.extra.statfs, prepared ? 'rest' : 'whole');
+    if (short) {
+      await prepared?.handle.close().catch(() => undefined);
+      log.warn('files', `pull of ${options.name} refused on this Mac: ${short}`);
+      return { ok: false, reason: short };
+    }
+
     const resumeRequest = prepared
       ? {
           resume: {
@@ -538,7 +543,7 @@ export class FilesClient {
         expectedSha256: agreed.data.sha256,
         ...(verifier ? { blocks: verifier } : {}),
         signal: abort.signal,
-        spaceCheck: (remaining) => pullSpaceRefusal(ready.folder, remaining),
+        spaceCheck: (remaining) => pullSpaceRefusal(ready.folder, remaining, this.extra.statfs, 'during'),
         ...(owned
           ? {
               owned: {
@@ -970,8 +975,15 @@ function toEntry(row: Record<string, unknown>): FsEntryRow {
 export async function pullSpaceRefusal(
   folder: string,
   size: number,
-  statfs: (p: string) => Promise<{ bavail: number | bigint; bsize: number | bigint }> = (p) => fsp.statfs(p),
+  statfs: ((p: string) => Promise<{ bavail: number | bigint; bsize: number | bigint }>) | undefined = (p) => fsp.statfs(p),
+  /**
+   * What [size] is: the `whole` file before anything arrived, the `rest` of a resumed pull whose
+   * verified part is kept, or the bytes still to come `during` a pull — which pauses it, keeping what
+   * arrived, so the sentence must not say nothing was copied.
+   */
+  of: 'whole' | 'rest' | 'during' = 'whole',
 ): Promise<string | null> {
+  statfs ??= (p) => fsp.statfs(p);
   if (!Number.isFinite(size) || size <= 0) return null;
   let free: number;
   try {
@@ -983,7 +995,15 @@ export async function pullSpaceRefusal(
   if (!Number.isFinite(free)) return null;
   const need = spaceNeeded(size);
   if (free >= need) return null;
-  return `There isn't room on this Mac for that file: it needs ${gib(need)} free in the receive folder and has ${gib(free)}. Nothing was copied.`;
+  switch (of) {
+    case 'whole':
+      return `There isn't room on this Mac for that file: it needs ${gib(need)} free in the receive folder and has ${gib(free)}. Nothing was copied.`;
+    case 'rest':
+      return `There isn't room on this Mac for the rest of that file: it needs ${gib(need)} free in the receive folder and has ${gib(free)}. What had arrived is kept.`;
+    case 'during':
+      // The pane adds what happens next ("What had arrived is kept; free some space…").
+      return `this Mac is running low on space: the rest of the file needs ${gib(need)} free in the receive folder and it has ${gib(free)}`;
+  }
 }
 
 /** Decimal units, as Finder counts them (and as the receive window does). */

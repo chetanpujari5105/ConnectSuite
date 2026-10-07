@@ -1005,6 +1005,37 @@ const view5c = (pane: Pane) => pane.view as unknown as {
 };
 const one = (pane: Pane, id: string) => pane.detail.queryAll(`#${id}`);
 
+test('a pull in flight shows how much the phone has sent, as a fraction with its bytes beside it', async () => {
+  // Until 2026-10-08 a pull drew only "Copying…": nothing between the click and the result, on a file
+  // that can take minutes. The phone already sends `fs.transfer.progress` for it; the pane dropped it.
+  // A non-block pull (every pull in a release build, where fs.blocks is off) must show it too.
+  for (const blocks of [false, true]) {
+    const pane = mount();
+    try {
+      await loaded(pane);
+      withPullControls(pane);
+      const finish = await startPull(pane);
+      const progress = () => one(pane, 'files-pull-progress');
+      assert.equal(progress().length, 0, 'control: nothing before the phone agreed');
+      view5c(pane).onPullAgreed({ transferId: 't-9', rootId: TREE.rootId, id: 'f3', name: 'report.pdf', resumedFrom: 0, blocks });
+      pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 'other', bytes: 1, total: 2 } });
+      assert.equal(progress().length, 0, 'another transfer’s progress is not this pull’s');
+      pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 't-9', bytes: 52_428_800, total: 209_715_200 } });
+      assert.equal(progress().length, 1, `blocks=${blocks}: a bar`);
+      const bar = pane.detail.queryAll('#files-pull-progress progress')[0]!;
+      assert.equal(bar.getAttribute('max'), '209715200');
+      assert.equal(bar.getAttribute('value'), '52428800');
+      assert.match(progress()[0]!.textContent, /The phone has sent 50 MB of 200 MB \(25%\)/);
+      pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 't-9', bytes: 41_943_040, total: 209_715_200, phase: 'verifying' } });
+      assert.match(progress()[0]!.textContent, /re-checking what already arrived: 40 MB so far/);
+      await finish({ ok: true, path: '/r/report.pdf', bytes: 200_000_000, verified: true });
+      assert.equal(progress().length, 0, 'the bar goes when the pull is over');
+    } finally {
+      pane.restore();
+    }
+  }
+});
+
 test('5c: a block pull in flight offers Pause and Cancel, and each sends that transfer and that choice', async () => {
   const pane = mount();
   try {
@@ -1115,7 +1146,10 @@ test('5c: every way a pull ends has its own truthful sentence', () => {
   const n = 'clip.mov';
   assert.match(say(n, { ok: true, verified: true, verifiedBy: 'blocks' }), /Verified block by block/);
   assert.doesNotMatch(say(n, { ok: true, verified: true, verifiedBy: 'blocks' }), /continued/, 'not resumed, not claimed');
-  assert.match(say(n, { ok: false, paused: true, noSpace: true, reason: 'Not enough space left on "Macintosh HD": 1 GB more is needed.' }), /Not enough space.*free some space, then choose Resume/);
+  // The clause main's `pullSpaceRefusal(…, 'during')` writes, verbatim in shape (photosPull.test.ts holds its source).
+  const lowSpace = say(n, { ok: false, paused: true, noSpace: true, reason: 'this Mac is running low on space: the rest of the file needs 1.2 GB free in the receive folder and it has 900 MB' });
+  assert.match(lowSpace, /paused — this Mac is running low on space: .*and it has 900 MB\. What had arrived is kept; free some space, then choose Resume\.$/);
+  assert.doesNotMatch(lowSpace, /Nothing was copied/);
   assert.match(say(n, { ok: false, paused: true, reason: 'The phone disconnected.' }), /paused — The phone disconnected\. What had arrived is kept/);
   assert.match(say(n, { ok: false, cancelled: true }), /cancelled\. Nothing was saved/);
   assert.match(say(n, { ok: false, sourceChanged: true, reason: 'clip.mov changed on the phone while it was being sent, so it was not saved.' }), /changed on the phone.*Nothing was saved\./);
