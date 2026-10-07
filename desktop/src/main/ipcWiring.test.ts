@@ -12,7 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -383,4 +383,22 @@ test('S7: Copy, Dismiss and Restore on the clipboard are main-window only, by id
   assert.equal(restore.ok, false);
   await settle();
   assert.deepEqual(effects.filter((e) => e.startsWith('clipboard ')), [], 'not one clipboard write');
+});
+
+test('S7: opening a clipboard link writes nothing of the link into the Activity file', async () => {
+  // PC-only audit F2 (2026-10-07): `clip-open` recorded the link's host in activity.jsonl — a piece of
+  // clipboard content written to disk, against the clipboard's storage rule (memory only, no text in
+  // any log line). A synthetic host, so the assertion cannot be satisfied by a coincidence.
+  const link = 'https://synthetic-host-7f3a.example/path?q=1';
+  // The store main.ts writes to (the same module instance), opened where `init()` would put it — the
+  // harness never reaches `whenReady`, where the product opens it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require('./activity') as typeof import('./activity')).activity.initAt(join(userData, 'logs'));
+  const r = (await call('clip-open', from(mainWin, PAGE.main), link)) as { ok: boolean };
+  assert.equal(r.ok, true);
+  assert.ok(effects.includes(`open ${link}`), 'control: the link was opened');
+  const file = join(userData, 'logs', 'activity.jsonl');
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  assert.match(text, /Opened a link/, 'control: the open is recorded in the file this test reads');
+  assert.doesNotMatch(text, /synthetic-host-7f3a/);
 });

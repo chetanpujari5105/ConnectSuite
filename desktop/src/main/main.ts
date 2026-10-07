@@ -2572,7 +2572,8 @@ ipc.handle('clip-open', async (_event, text: string) => {
     };
   }
   await shell.openExternal(url);
-  activity.record('clipboard', 'Opened a link', new URL(url).host);
+  // No detail: the link is clipboard content, and Activity is on disk (PC-only audit F2, 2026-10-07).
+  activity.record('clipboard', 'Opened a link');
   return { ok: true, data: null };
 });
 // A click on an older row, or Restore on a displaced entry. Arriving entries are applied by
