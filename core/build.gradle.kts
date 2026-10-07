@@ -62,3 +62,18 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
 }
+
+/*
+ * `BootAutoStartTest` and `LinkTimeoutTest` read every module's `src/main/AndroidManifest.xml` at run
+ * time. Gradle does not know that, so a manifest-only edit left this task's inputs unchanged and the
+ * build cache served the previous result: on 2026-10-07 a mutation re-declaring `dataSync` on
+ * `LinkService` was reported green from cache while the same mutation, executed, is red (defect 199's
+ * evidence). Declared here, so a manifest change re-runs the tests that read it.
+ */
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("*/src/main/AndroidManifest.xml")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("moduleManifests")
+}

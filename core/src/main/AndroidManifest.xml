@@ -16,7 +16,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!--
       Declared beside the receiver that finally uses it. It was declared in :app from Phase 1 and
       nothing received it for five phases; a permission whose receiver lives in another module is
@@ -33,14 +32,16 @@
             android:stopWithTask="false" />
 
         <!--
-          v2 link: the three TLS listeners. dataSync is declared alongside connectedDevice
-          because file transfer on the bulk channel keeps running with no device "attached" in
-          the sense Android means.
+          v2 link: the three TLS listeners. connectedDevice only (defect 199). dataSync used to be
+          declared beside it for bulk transfers, but it carries a six-hour budget per 24 hours on
+          Android 15+ and this service runs all day; a transfer always has a Mac connected, which is
+          what connectedDevice describes. Not declaring dataSync makes claiming it impossible: a type
+          outside this attribute throws rather than quietly starting a six-hour clock.
         -->
         <service
             android:name=".link.LinkService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|dataSync"
+            android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
 
         <!--

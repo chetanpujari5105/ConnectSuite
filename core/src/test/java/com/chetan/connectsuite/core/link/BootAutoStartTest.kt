@@ -32,18 +32,17 @@ class BootAutoStartTest {
     private val connectedDevice = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
     private val dataSync = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
 
+    /**
+     * Defect 199 replaced `a user-driven start claims both declared types`. A user start used to add
+     * `dataSync`, whose six-hour budget a day-long link overran on 2026-10-07; the full per-route,
+     * per-API assertion is `LinkTimeoutTest`.
+     */
     @Test
-    fun `a user-driven start claims both declared types`() {
+    fun `a user-driven start claims connectedDevice only`() {
         val types = LinkAutoStart.foregroundTypesFor(LinkStartReason.USER, sdkInt = 36)
-        assertEquals(connectedDevice or dataSync, types)
+        assertEquals(connectedDevice, types)
     }
 
-    /**
-     * The assertion that fails if someone simplifies `foregroundTypesFor` back to one branch.
-     *
-     * Shown to fail before it was kept: with the `when` collapsed to always return
-     * `connectedDevice or dataSync`, this reports `expected 16 but was 17`.
-     */
     /**
      * **Derived from the enum, not typed out.** This list used to be three names written by hand,
      * which meant it did not cover `LISTENER_REBIND` and would not have covered

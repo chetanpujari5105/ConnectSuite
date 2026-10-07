@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.chetan.connectsuite.core.R
+import com.chetan.connectsuite.core.app.AppForeground
 import com.chetan.connectsuite.core.notification.NotificationChannels
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,6 +69,25 @@ class LinkService : LifecycleService() {
      * restriction the phone can apply and lift while the app is running.
      */
     private var everForeground = false
+
+    /**
+     * Defect 199: the reaction to `onTimeout`, with the real effects. Its order and idempotence are
+     * `LinkTimeoutStop`'s and are tested there; this only wires it.
+     */
+    private val timeoutStop by lazy {
+        LinkTimeoutStop(
+            latch = LinkTimeoutLatch.process,
+            stopService = {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            },
+            closeLink = { reason -> advertiser?.stop(); advertiser = null; server.stop(reason) },
+            releaseLocks = { releaseLocks() },
+            showInterrupted = { sentence -> showInterrupted(sentence) },
+            log = { line -> LinkLog.w("service", line) },
+            now = System::currentTimeMillis,
+        )
+    }
 
     /**
      * Published together so a lapse count is never read without the denominators beside it.
@@ -132,6 +152,19 @@ class LinkService : LifecycleService() {
         startReason = LinkStartReason.fromExtra(
             intent?.getStringExtra(LinkStartReason.EXTRA),
         )
+        // Defect 199: a person asking for the link ends the hold a foreground-service timeout put on
+        // the automatic routes, and takes down the notification that explained it.
+        if (LinkTimeoutLatch.clearsOn(startReason, AppForeground.isForeground)) {
+            LinkTimeoutLatch.process.clear()?.let { cleared ->
+                runCatching { NotificationManagerCompat.from(this).cancel(INTERRUPTED_NOTIFICATION_ID) }
+                LinkLog.i(
+                    "service",
+                    "Timeout hold cleared by a $startReason start (app visible: ${AppForeground.isForeground}); " +
+                        "the ${LinkTimeout.typeName(cleared.fgsType)} timeout was " +
+                        "${(System.currentTimeMillis() - cleared.atMillis) / 1000}s ago",
+                )
+            }
+        }
         if (!startForegroundWithStatus(getString(R.string.link_service_starting))) {
             if (!everForeground) {
                 // Never reached the foreground, so there are no sockets to protect. A
@@ -166,11 +199,48 @@ class LinkService : LifecycleService() {
         return null
     }
 
+    /**
+     * Android 15+: one of this service's foreground types has used its time budget, and the platform
+     * allows a few seconds to stop before it kills the process (defect 199). Since that defect no
+     * start claims a time-limited type, so this is expected to be unreachable — it is here so that if
+     * it is ever reached the service stops honestly instead of crashing and being restarted by
+     * `START_STICKY` into the same state. Never called below API 35.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        timeoutStop.onTimeout(startId, fgsType)
+    }
+
     override fun onDestroy() {
         advertiser?.stop()
         server.stop()
         releaseLocks()
         super.onDestroy()
+    }
+
+    /** Defect 199: a plain notification that outlives the service, saying what stopped it and how to resume. */
+    private fun showInterrupted(sentence: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            LinkLog.w("service", "Timeout notification not shown: notifications are not permitted; the log line is the record")
+            return
+        }
+        val notification = NotificationCompat.Builder(this, NotificationChannels.CONNECTION)
+            .setSmallIcon(R.drawable.ic_connect_status)
+            .setContentTitle(getString(R.string.link_service_interrupted_title))
+            .setContentText(sentence)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(sentence))
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(
+                packageManager.getLaunchIntentForPackage(packageName)?.let {
+                    PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
+                },
+            )
+            .build()
+        runCatching { NotificationManagerCompat.from(this).notify(INTERRUPTED_NOTIFICATION_ID, notification) }
+            .onFailure { LinkLog.w("service", "Timeout notification could not be posted: ${it.javaClass.simpleName}") }
     }
 
     private fun statusText(state: LinkState): String = when {
@@ -342,6 +412,7 @@ class LinkService : LifecycleService() {
 
     companion object {
         private const val NOTIFICATION_ID = 2001
+        private const val INTERRUPTED_NOTIFICATION_ID = 2002
 
         const val ACTION_STOP = "com.chetan.connectsuite.link.STOP"
         const val ACTION_REFRESH_CAPABILITIES = "com.chetan.connectsuite.link.REFRESH_CAPS"

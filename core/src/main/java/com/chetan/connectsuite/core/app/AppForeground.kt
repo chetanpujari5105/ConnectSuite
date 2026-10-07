@@ -15,9 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * callback waiting on that activity waits forever. So the only safe way to ask for consent is to
  * know, *before* asking, whether there is a foreground Activity to ask from; that is this.
  *
- * A foreground service is not enough. The link runs as `connectedDevice|dataSync`, and those types
- * carry no background-activity-start exemption — the block observed on this project was recorded
- * with `callingUidProcState: FOREGROUND_SERVICE` and blocked anyway.
+ * A foreground service is not enough. The link runs as `connectedDevice` (with `dataSync` beside it
+ * until defect 199), and neither type carries a background-activity-start exemption — the block
+ * observed on this project was recorded with `callingUidProcState: FOREGROUND_SERVICE` and blocked
+ * anyway.
  *
  * `started` is counted rather than held as a boolean because a rotation stops the old Activity
  * after starting the new one, and a boolean flickers false across that.

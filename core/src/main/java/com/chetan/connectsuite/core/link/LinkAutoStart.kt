@@ -47,9 +47,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  * So this code is written so the unmeasured half does not matter: a boot start claims
  * `connectedDevice` **only**, which is the minimal honest type for a service whose job is holding
  * a link to a connected device, and which is on the documented *allowed* list. If the documented
- * denial set is wrong in either direction, `connectedDevice` is still correct. The `dataSync` type
- * is only ever added on a start the user can see — which is also the only kind of start that has
- * ever had a bulk transfer behind it.
+ * denial set is wrong in either direction, `connectedDevice` is still correct.
+ *
+ * **And since defect 199, every start claims `connectedDevice` only.** A user-driven start used to
+ * add `dataSync`, on the argument that it was the only kind of start with a bulk transfer behind it.
+ * But `dataSync` carries a six-hour budget per rolling 24 hours on Android 15+, this service runs all
+ * day, and on 2026-10-07 the platform killed the process for overrunning it. A transfer is not a
+ * reason for the type: every bulk transfer needs a live control session's token, so a Mac is always
+ * connected while one runs — which is what `connectedDevice` describes ("interactions with external
+ * devices that require a … network connection"). The manifest no longer declares `dataSync`.
  */
 enum class LinkStartReason {
     /** A visible Activity, the notification action, or anything else the user drove. */
@@ -186,10 +192,23 @@ object LinkAutoStart {
 
         // Cheap, in-process, and the reason this is safe to call from a path that may fire while
         // the link is perfectly healthy: the listener rebinds on an ordinary grant toggle too.
-        if (LinkController.peek()?.state?.value?.running == true) {
-            LinkLog.i("autostart", "$reason: already listening — nothing to do")
-            onFinished()
-            return
+        val latch = LinkTimeoutLatch.process.current()
+        when (gate(LinkController.peek()?.state?.value?.running == true, latch)) {
+            Gate.ALREADY_RUNNING -> {
+                LinkLog.i("autostart", "$reason: already listening — nothing to do")
+                onFinished()
+                return
+            }
+            Gate.HELD_AFTER_TIMEOUT -> {
+                LinkLog.i(
+                    "autostart",
+                    "$reason: not starting — Android timed out the link's ${LinkTimeout.typeName(latch!!.fgsType)} " +
+                        "foreground service in this process; it starts again when Sidekick is opened",
+                )
+                onFinished()
+                return
+            }
+            Gate.START -> Unit
         }
 
         scope.launch {
@@ -255,24 +274,32 @@ object LinkAutoStart {
      * Returns `0` below API 34, where `startForeground` takes no type at all and passing one is
      * meaningless rather than merely unnecessary.
      *
-     * [UNKNOWN] is treated as [BOOT] deliberately. A null-intent `START_STICKY` restart inherits
-     * whatever allowance the original start had, and the original start may well have been the
-     * boot one; claiming the smaller set costs nothing and guessing the larger set is the only
-     * choice here that can throw.
+     * One answer for every reason since defect 199: `connectedDevice`, which has no time limit and
+     * whose runtime prerequisite (`CHANGE_WIFI_STATE`, `CHANGE_NETWORK_STATE` or
+     * `CHANGE_WIFI_MULTICAST_STATE` declared) this app meets. The reason is still a parameter because
+     * the log names it and because a future type decision belongs here, not in the service.
+     *
+     * **Every** start command re-claims (defect 103), so the type in force is the one chosen for the
+     * latest command — which is how a user start could leave `dataSync` in force for the life of the
+     * link.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun foregroundTypesFor(reason: LinkStartReason, sdkInt: Int = Build.VERSION.SDK_INT): Int {
         if (sdkInt < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return 0
-        return when (reason) {
-            LinkStartReason.USER ->
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            LinkStartReason.PACKAGE_REPLACED,
-            LinkStartReason.LISTENER_REBIND,
-            LinkStartReason.ACCESSIBILITY_BIND,
-            LinkStartReason.BOOT,
-            LinkStartReason.QUICKBOOT,
-            LinkStartReason.UNKNOWN,
-            -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-        }
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+    }
+
+    /** What an automatic route should do, decided before anything is started. */
+    enum class Gate { ALREADY_RUNNING, HELD_AFTER_TIMEOUT, START }
+
+    /**
+     * The automatic routes' decision, pulled out so a test reaches it. A running link is never
+     * restarted; after a foreground-service timeout ([LinkTimeoutLatch]) the automatic routes wait for
+     * a person, so a rebind cannot put the link straight back into the state the platform just ended.
+     */
+    fun gate(running: Boolean, timedOut: LinkTimeoutLatch.TimedOut?): Gate = when {
+        running -> Gate.ALREADY_RUNNING
+        timedOut != null -> Gate.HELD_AFTER_TIMEOUT
+        else -> Gate.START
     }
 }

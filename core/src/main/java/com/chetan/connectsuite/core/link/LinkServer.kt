@@ -145,6 +145,14 @@ data class LinkState(
      */
     fun afterSessionReady(peerName: String): LinkState = copy(clients = clients + peerName)
 
+    /**
+     * The state after the listeners close. Named so the one field that survives a stop is a call a test
+     * can make: [lastError] keeps whatever was there unless the stop has its own [reason] — a
+     * foreground-service timeout (defect 199) — in which case that sentence is what the state says.
+     */
+    fun afterStopped(reason: String? = null): LinkState =
+        LinkState(running = false, lastError = reason ?: lastError)
+
     fun afterSessionEnded(peerName: String, closeReason: String?, nowMillis: Long): LinkState {
         val remaining = clients.filterNot { it == peerName }
         return copy(
@@ -477,13 +485,18 @@ class LinkServer(
         )
     }
 
-    fun stop() {
+    /**
+     * Closes every session and listener. [reason], when given, is the session close reason and the
+     * link's [LinkState.lastError] — used for a foreground-service timeout (defect 199). Safe to call
+     * twice: the second call finds nothing open and keeps the reason the first one wrote.
+     */
+    fun stop(reason: String? = null) {
         // The Settings observer deliberately survives stop(): see the `init` block. Stopping the
         // server does not stop the user from changing grants, and it is that window the observer
         // exists for.
         acceptJobs.forEach(Job::cancel)
         acceptJobs.clear()
-        liveSessions.keys.forEach { it.close("service stopping") }
+        liveSessions.keys.forEach { it.close(reason ?: "service stopping") }
         liveSessions.clear()
         listOf(controlSocket, videoSocket, bulkSocket).forEach { socket ->
             runCatching { socket?.close() }
@@ -491,8 +504,8 @@ class LinkServer(
         controlSocket = null
         videoSocket = null
         bulkSocket = null
-        _state.update { LinkState(running = false, lastError = it.lastError) }
-        LinkLog.i("server", "Listeners closed")
+        _state.update { it.afterStopped(reason) }
+        LinkLog.i("server", if (reason == null) "Listeners closed" else "Listeners closed: $reason")
     }
 
     // ---- accept loops -------------------------------------------------------------------
