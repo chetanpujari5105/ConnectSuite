@@ -77,7 +77,7 @@ Gate = what a **release** build from HEAD does. "HW latest" names the build pair
 | 2 | **P3 / 188** | Phone copy says *"nothing leaves your network"*; ML Kit + Google `datatransport` (CCT backend) are on the release classpath (structural, re-verified 2026-10-08) | **open — owner decision** | §5 below: disclose with the exact wording, or replace the scanner |
 | 3 | **RB5** | No privacy policy, publisher identity or contact | **blocked — owner** | the addendum's skeleton filled in by the owner |
 | 4 | **R-199** | `LinkService` killed by the `dataSync` limit | fixed `c05efcc`, installed; **soak running** (end ≥ 06:04:41); static discriminator recorded at install B; dynamic discriminator (emulator) **not run** | end check (stage 0); emulator control |
-| 5 | **S1/182 + S2b/189** | pairing authentication; side channels bound to the owning session | **hardware-verified (partial)** — a v2 pair exists; impostor/replay/side-channel cases **not run** | stage 3 |
+| 5 | **S1/182 + S2b/189** | pairing authentication; side channels bound to the owning session | **hardware-verified (partial)** — a v2 pair exists; impostor-first **tooling built 2026-10-08, not run**; replay and wrong-peer side channel are loopback/JVM-only by construction | stage 3 |
 | 6 | **137** | granted SAF trees list 0 entries | **open** — provider returns an empty cursor; no Sidekick defect found | stage 11 (fresh-grant control) |
 | 7 | **30** | new conversation to a number with no thread | **open** | stage 11, consenting number only |
 | 8 | **201–204** | drop-sheet keys; root names; space resume; pull progress | **tests-only** (fixed in source, not deployed) | stages 2, 4, 7 |
@@ -119,20 +119,37 @@ are the verification session's CDP access, not release configuration). Compare e
 **Pass:** grants, bindings, pairing and watcher unchanged; link up on v2 with no pairing request; 0 E in both logs;
 the next quit of the new build logs `[quit] … will-quit reached`.
 
-**Stage 3 — secure re-pair (S1/S2b), approved once by the owner.** Forget on both sides, scan a fresh QR. Cases:
-(a) **attacker answers first** — a loopback stand-in that answers the Mac before the phone must be refused and receive
-no token (the H7 stand-in does not exist yet; if it cannot be built safely, record **not run**); (b) **no replay
-before authentication** — the Mac's log shows no non-handshake message processed before `pair.confirm`; (c) **side
-channels bound to the owning session** — a bulk claim with the right token from a second TLS peer is refused. No other
-state deleted. **Pass:** `pairing: v2` on both sides, the three refusals logged with counts.
+**Stage 3 — secure re-pair (S1/S2b), approved once by the owner.** Tooling built in Phase 1 (`scripts/pair-decoy.mjs`,
+the development switch `pairDecoyFirst` in `desktop/src/main/pairDecoy.ts`; loopback-tested, forced off when packaged).
+Order: (1) relaunch the Mac dev build with `CONNECTSUITE_DEBUG_SWITCHES=pairDecoyFirst` (the `[debug]` warning names it);
+start `node scripts/pair-decoy.mjs --seconds 600 --inject`; (2) Forget on the Mac and on the phone (nothing else
+deleted), open the pairing screen, the owner scans. **Pass:** the Mac logs the decoy refused *without proving the pairing
+code*; the decoy's summary reads `hellosWithPair ≥ 1` (control: it was reached while pairing) and `pair.confirm received:
+0` (the Mac sent it no proof); the inject marker `SIDEKICK-DECOY-INJECT-7f3a` appears in **no** Mac pane or log line
+(searched by that exact synthetic string, with a control that the search finds a string known to be in the log); then
+the real phone pairs in the same attempt — `pairing v2, both sides proved the code` on both sides. (3) Quit and relaunch
+**without** the switch; `link-up.sh` three OKs on the new v2 pairing. **Not reachable on hardware, said so:** a
+replayed proof and a side-channel claim with the right token from a second TLS peer both need the live session's secret,
+which nothing outside the two apps holds; they stay proven by `pairingV2Link.test.ts` (*replay*) and
+`SideChannelAuthTest` / `pinnedTls.test.ts`. The hardware side-channel reading is the positive one: bulk and video
+authorised for the new session (`bulk channel authorised` / `video channel authorised` on the phone).
 
 **Stage 4 — T2–T5 on the 200 MiB synthetic source** via the real Files-pane Pause/Resume (CDP by accessible name).
 T2 (Pause at 40–60 % by the phone's `sending` report → no auto-resume for 60 s → Resume → SHA-256 equal, partial and
 record gone); **new with 204:** the pane's `#files-pull-progress` advances and shows *re-checking* on Resume. T3
 (Disconnect at 40–60 % → stop < 2 s, 0 B growth → Connect → auto-resume → equal). T4-A (debug probe armed once →
 block named, nothing published, `.failed` kept — note `(7).bin.failed` already exists, so the free-name rule must be
-re-checked at preflight). T5 needs a stimulus MediaStore reflects (runbook revision 2 failed on metadata) — **design
-before running**; if none is safe, T5 stays **not run**. Each with before/after receive-folder inventory.
+re-checked at preflight). **T5-B, redesigned 2026-10-08:** both earlier attempts stopped at a gate waiting for
+MediaStore's `DATE_MODIFIED`, which a shell write never moves. Defect 166 (`685a8f4`, **in the installed build**) made
+the phone take a block pull's size and mtime from `fstat` on the provider's descriptor, so the gate is now the file's
+**own** stat. Source: the dedicated `sidekick-t5-source-change-200mb.bin` (`_id` 1000313356; **not** the T2–T4 file);
+re-hash it at preflight (it was left as H1 on 2026-10-01). Pause at 40–60 %; a guarded one-byte `dd conv=notrunc` at an
+offset **beyond the verified prefix** (so the prefix re-hash passes and only the size/mtime check can catch it); gate:
+`stat` mtime moved and SHA-256 changed (shell client — the stimulus measured at the file, not the index); Resume once.
+**Pass:** the phone answers source-changed by its own-stat check (log names the reason), the Mac discards the partial
+and record and starts again from byte 0 (*"…changed on the phone since it paused, so it started again from the
+beginning"*), and the published file's SHA-256 equals the **changed** source — never a mix. Each test with a
+before/after receive-folder inventory.
 
 **Stage 5 — small files both ways.** Synthetic files only: push one and three (multi-select in Gallery/My Files share
 on the phone) → Accept / Decline / Cancel each once on the Mac's receive window; collision names `name (2)`;
@@ -172,12 +189,52 @@ grants are in a bad state (re-granting them becomes the owner's remediation); 0 
 appops/package reading names it). No re-grant of existing folders, no MediaStore/path fallback. Defect 30 only with a
 consenting number, absence proven in `mms-sms/conversations` **and** `content://sms` first.
 
-**Stage 12 — accessibility.** Prepare the VoiceOver and TalkBack checklists; ask before taking over the screen or speech.
+**Stage 12 — accessibility.** Ask before taking over the screen or speech. Each item passes only if what is *spoken*
+matches what is *drawn* (name, role, state), in a sensible order, with no unlabelled control.
+
+*VoiceOver (Mac, ⌘F5; VO = Ctrl-Option):*
+1. VO-Right through the sidebar: every pane announced by name and *selected* state; the status island announces the
+   current link state, not history.
+2. Files: the rail reads *Received files, Download/ConnectSuite on the phone…* and *Sidekick private storage, Private to
+   Sidekick…* (202); the listing is one tab stop with rows named *name, size, modified*; Enter = Copy to Mac.
+3. A pull: the progress bar announces *The phone has sent X of Y (Z%)* (204's `aria-label`); Pause and Cancel are
+   named for the file; the outcome line is read once.
+4. The drop sheet: VoiceOver reads the message, the file path(s), and *Cancel* / *Send*; Escape cancels (201).
+5. Clipboard: an offer row reads its kind and *not on this Mac's clipboard*; *Copy* and *Dismiss* are named for the
+   entry; the refusal sentence after a Restore-over-newer is announced.
+6. Settings: every toggle reads its name and *on/off*; the trust sentence is reachable.
+7. Mirror: the canvas has a name; the tool rail buttons (Capture, Refresh, …) are named — no empty glyphs.
+
+*TalkBack (phone; Settings → Accessibility → TalkBack, owner toggles):*
+1. Onboarding and *Link your Mac*: headings and the three trust columns read in order; *Scan QR code* is a button.
+2. The scan screen: the viewfinder has a description; *Code scanned. Verifying your Mac…* is announced, then *Paired*.
+3. Folders: each granted folder reads its breadcrumb, access and *Remove*; the `Download` wall card is read.
+4. *Send to Mac* (share sheet target) and the file sheet: the destination and *Send* are named.
+5. The link service notification: its title and action are read.
+6. Set up Sidekick: each row reads its name, status and the action word (*Allow* / *Open Settings*).
 
 **Stage 13 — packaged builds.** Mac: the isolated ad-hoc packaged build of the final HEAD (static checks as in Phase 1);
 a **launch** only with approval and preferably on a fresh macOS user (it mints its own identity and needs its own
 pairing). Android: `assembleRelease` **unsigned** in an isolated copy (the signing flag is never typed); manifest and
 `aapt dump badging`; **not installed**, never signed with the owner's key.
+
+## 4a. Artifacts prepared in Phase 1 (scratch, not installed or launched)
+
+| Artifact | Built from | Identity | Checked |
+|---|---|---|---|
+| Phone debug APK (stage 2) | `81ff971` (phone code unchanged through `7507217`), `git archive`, `--offline --no-build-cache` | `fbb1de42bafcd88a21452b3a78781551f3c181b58c9cb5653157d58ff73eab7e`, 94,889,445 B | v2 signer `CN=Android Debug`, `d3a505d2…7d26` = installed; package, version and all permissions identical to the installed `c05efcc` (aapt badging), `foregroundServiceType` attributes identical |
+| Mac dev `dist` (stage 2) | `7507217`, `git archive`, `tsc` + assets | manifest `68173c634799…`, 316 files | carries 200–204, F1, F2, `pairDecoyFirst`; method checked by reproducing the live `dist`'s `0c074f7d…` |
+| Mac packaged `.app` (stage 13, static only) | `81ff971` | `app.asar` `7a008519…` | fuses `000011011`, ASAR integrity, quarantine key, ad-hoc deep signature OK; **not launched** |
+| Android release candidate (stage 13) | `7507217` | `app-release-unsigned.apk` `8803cfcd…`, 27,054,378 B | **unsigned** (`apksigner`: does not verify — intended); `com.chetan.connectsuite` 1 / 2.0.0, not debuggable, 0 probe components, the debug build's 30 permissions; `CameraActivity` and `WebcamActivity` declared and gated off in code (`CameraReleaseGate`, `WEBCAM_RELEASE`). **Not installed, never signed with the owner's key** |
+
+## 4b. The soak while Phase 1 ran
+
+The phone **left USB between the 00:26 and 00:56 monitor checks** (`adb devices` empty; no Samsung device in the
+macOS USB tree); the monitor's later checks hold **no phone reading** and must not be read as anything. Indirect
+liveness from the Mac's side only: the control socket to `10.225.215.199:42501` was ESTABLISHED at 01:3x, the phone
+delivered a notification update over it at **01:32:21**, and the Mac logged no disconnect since T0. The phone has been
+**on battery** since it left USB (the soak began charging), so the remaining interval is closer to real use. The end
+check needs USB back; it is stage 0.
 
 ## 5. ML Kit — the copy, and the two honest options
 
