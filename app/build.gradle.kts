@@ -173,13 +173,15 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
 
-    // QR pairing: CameraX preview plus ML Kit's bundled barcode model, so a first scan works
-    // with no Play Services model download and no network.
+    // QR pairing: CameraX preview plus ZXing's core decoder (Apache-2.0, pure Java, no network, no
+    // Play services). It replaced ML Kit on 2026-10-08: ML Kit's terms allow it to send Google usage
+    // metrics and it brought `datatransport`'s CCT backend onto the release classpath, which made the
+    // phone's "nothing leaves your network" untrue. `QrFrameDecoderTest` decodes the Mac's own code.
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -73,7 +73,7 @@ import com.chetan.connectsuite.core.ui.components.StatusPill
  * | Reference | Here | Why |
  * |---|---|---|
  * | 02 Entry | [EntryStage] | as drawn, with one honest substitution (see below) |
- * | 03 QR scan | `QrScanScreen` | real camera, ML Kit, unchanged behaviour |
+ * | 03 QR scan | `QrScanScreen` | real camera, ZXing decoder (on the phone, no network) |
  * | 04 Searching | **no** | the phone does not search. Locked decision #2: it binds and waits |
  * | 05 Connecting | [WaitingStage] | "Code scanned. Verifying your Mac…" — pairing v2's verification, with the code's real deadline |
  * | 06 Success | [ConnectedStage] | "Paired" only after a verified pairing (`ConnectStage.Paired`); "Connected" otherwise |
@@ -237,6 +237,13 @@ private fun EntryStage(
  * of that is **false**: this app keeps a trust store, a transfer history and mirrored notifications
  * in Room. What is true is that none of it leaves the local network, so that is what it says. A
  * privacy claim is the worst possible place to round a sentence up.
+ *
+ * **It was untrue from Phase 1 until 2026-10-08**, while the QR scanner was Google ML Kit — whose terms
+ * let it send Google usage metrics, and which put `datatransport`'s CCT backend in the APK. The scanner
+ * is ZXing now (`QrFrameDecoder`), the phone's main sources contain no HTTP client and no URL at all,
+ * and `NoGoogleTelemetryTest` keeps ML Kit, Play services, Firebase and `datatransport` out of the build
+ * files. What the sentence does not cover, and the privacy policy says: a Tailscale address the person
+ * sets on the Mac carries the link over their own tailnet.
  */
 @Composable
 private fun TrustRow() {

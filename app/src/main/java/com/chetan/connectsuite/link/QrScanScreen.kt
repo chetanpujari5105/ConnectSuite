@@ -35,8 +35,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.chetan.connectsuite.core.link.PairingQrPayload
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -58,7 +56,6 @@ import com.chetan.connectsuite.core.ui.components.SecondaryButton
 import com.chetan.connectsuite.core.ui.components.SidekickCard
 import com.chetan.connectsuite.core.ui.components.StateBlock
 import com.chetan.connectsuite.core.ui.components.StateKind
-import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
 /**
@@ -253,12 +250,10 @@ private fun CameraPreview(onBarcode: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
-    val scanner = remember { BarcodeScanning.getClient() }
 
     DisposableEffect(Unit) {
         onDispose {
             analysisExecutor.shutdown()
-            scanner.close()
         }
     }
 
@@ -279,7 +274,7 @@ private fun CameraPreview(onBarcode: (String) -> Unit) {
                     .build()
                     .apply {
                         setAnalyzer(analysisExecutor) { proxy ->
-                            scanFrame(proxy, scanner, onBarcode)
+                            scanFrame(proxy, onBarcode)
                         }
                     }
                 provider.unbindAll()
@@ -295,25 +290,21 @@ private fun CameraPreview(onBarcode: (String) -> Unit) {
     )
 }
 
-@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-private fun scanFrame(
-    proxy: ImageProxy,
-    scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
-    onBarcode: (String) -> Unit,
-) {
-    val image = proxy.image
-    if (image == null) {
-        proxy.close()
-        return
-    }
-    val input = InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)
-    scanner.process(input)
-        .addOnSuccessListener { barcodes ->
-            barcodes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE }
-                ?.rawValue
-                ?.let(onBarcode)
-        }
+/**
+ * One camera frame through [QrFrameDecoder], on the analysis thread. Only the luminance plane is read —
+ * a QR code is black and white, and the default `YUV_420_888` analysis format puts luminance first.
+ * Nothing leaves the phone: ZXing is a pure-Java decoder with no network or telemetry of any kind.
+ */
+private fun scanFrame(proxy: ImageProxy, onBarcode: (String) -> Unit) {
+    try {
+        val plane = proxy.planes.firstOrNull() ?: return
+        val buffer = plane.buffer
+        val luma = ByteArray(buffer.remaining())
+        buffer.get(luma)
+        QrFrameDecoder.decode(luma, plane.rowStride, proxy.width, proxy.height)?.let(onBarcode)
+    } finally {
         // The proxy must be closed on every path or the analyzer stops receiving frames after
         // the queue depth is reached, which looks exactly like a dead camera.
-        .addOnCompleteListener { proxy.close() }
+        proxy.close()
+    }
 }
