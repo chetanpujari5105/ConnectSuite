@@ -28969,3 +28969,26 @@ on the phone's hotspot, so *phone Wi-Fi off/on* tests nothing here.
 USB (a USB link needs the phone's USB function changed to tethering, which would drop the `adb` connection this run
 depends on). **What the recovery time is made of:** detection is the heartbeat (≤ 15 s + one interval); the reconnect
 itself is sub-second on the last-known address.
+
+### Stage 10 — camera v1 (17:49–17:56) · steps 2, 4, 5, 7 **hardware-verified**; 6, 8, 9 and the call banner **not run**
+
+Development-gated feature (the installed build is debuggable). Plan: `docs/camera-v1.md` → *Supervised hardware-test plan*.
+Camera-in-use read from `dumpsys media.camera` → *Active Camera Clients* (`[]` = none). **Instrument fault caught:** the
+first counter grepped for *Client* and counted the header and the listener-PID line (a constant 2 before, during and
+after); recalibrated against the idle `[]`, and step 2's answer was taken from the camera service's own time-stamped
+event log instead.
+
+- **Step 2 — a request alone opens nothing:** *Ask phone for camera* 17:49:25 with Sidekick in the background → phone
+  `awaiting consent: notification posted`; `EXPIRED — 0 sent / 0 dropped` at 17:49:55.412 (30.0 s); the camera service's
+  last *Device … is open* event was 17:37:28, before the request — none during or after. **Pass.**
+- **Step 4 — approve (owner's one tap):** *Ask again* 17:54:14 → *Start camera tapped* 17:54:18.590 → `Camera bound:
+  back` → `stream attached` → `first frame 960 × 720 from the back camera` 17:54:19.167; Mac **"Live · back camera · 960 × 720 ·
+  up to 15 fps"**; the phone's client list non-empty.
+- **Step 5 — switch:** *Switch to front camera* (Mac) 17:55:42 → `Camera released (replaced by a switch) … back`, `Camera
+  bound: front, epoch 1`, `switch confirmed: first frame 960 × 720 from the front camera`; **no new request on the phone**;
+  Mac *"Live · front camera …"*. (Landscape not tried.)
+- **Step 7 — Mac Stop:** *Stop camera* 17:55:45 → phone `stopped: STOPPED_BY_MAC — 1224 sent / 0 dropped`, `Camera
+  released (closed) … 2 released of 2 bound`; client list `[]`; Mac *"Camera off — You stopped the camera from this Mac."*
+  and **"1224 frames sent by the phone, 0 dropped there; 1224 received here, 1223 drawn."**
+- **Not run:** step 6 (Home on the phone), step 8 (Disconnect during a live stream), step 9 (busy — needs a second
+  mirror consent), the pane-exit half of 7; **incoming-call banner** — no consenting caller was named.

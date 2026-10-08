@@ -279,6 +279,7 @@ which has no ML Kit; it stands.)
 | 7 drop sheet / push / drag-out | **failed → refixed → hardware-verified** | 201 failed on real sheets (Return → Send after 1–14 s); refixed so Cancel holds Return: Return cancels at once, Escape does nothing, Send by click → one dispatch; push collision-safe to `drop-me (5).txt`, verified; genuine drag-out SHA equal. **Defect 207**: a second (packaged) build on the same profile overwrote the Mac identity; owner-approved re-pair restored the link |
 | 8 mirror + input | **hardware-verified** | consent tap → capture 1080×2340, encoder ticking for 30 s, Mac decodes at the same size; input refused with a reason while accessibility was off, delivered once it was on (Back → the screen changed); Stop from the Mac → projection null; an untapped start timed out at 30 s with the sentence on both sides |
 | 9 reconnect | Mac Wi-Fi off/on **hardware-verified**; hotspot, USB **not run** | 10 s and 40 s outages: one session after each, no pairing request, ~10.5 s from Wi-Fi back to connected (heartbeat-bound); hotspot equivalent and not scripted; USB would drop adb |
+| 10 camera v1 | steps 2/4/5/7 **hardware-verified**; 6/8/9, call banner **not run** | request alone expires at 30 s without opening the camera; one tap → live 960×720; switch without a new request; Mac Stop → released, 1224 sent / 1224 received / 1223 drawn. Call banner: no consenting caller named |
 
 ## 6. Phase 3 — report
 
