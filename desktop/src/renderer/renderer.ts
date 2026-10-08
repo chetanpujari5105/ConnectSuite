@@ -101,7 +101,10 @@ interface ConnectBridge {
   activityExportCsv(): Promise<{ ok: boolean; data?: { path: string }; reason?: string }>;
   pairingQr(
     rotate?: boolean,
-  ): Promise<{ payload: { host: string; name: string }; dataUrl: string; reachable: boolean }>;
+  ): Promise<
+    | { payload: { host: string; name: string }; dataUrl: string; reachable: boolean }
+    | { remembered: { phoneName: string | null } }
+  >;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   retryNow(): Promise<void>;
@@ -710,6 +713,18 @@ async function showQr(rotate = false): Promise<void> {
     applyPairShape('failed');
     return;
   }
+  if ('remembered' in made) {
+    // Defect 207 (d): a phone is stored, so no code was armed. The card's one action is Forget, then a code.
+    shownCode = null;
+    el<HTMLImageElement>('qr').removeAttribute('src');
+    applyPairShape({ remembered: made.remembered.phoneName }, async () => {
+      await connect.forgetDevice();
+      render(await connect.status());
+      await showQr();
+    });
+    el('pair-scanned').hidden = true;
+    return;
+  }
   const { payload, dataUrl, reachable } = made;
   el<HTMLImageElement>('qr').src = dataUrl;
   shownCode = { name: payload.name, host: payload.host };
@@ -732,12 +747,15 @@ async function showQr(rotate = false): Promise<void> {
  * It is also what a probe can call. `pairCard.ts` covers the card and `pairSteps.ts` covers the
  * column; only this says the two move together, and only in a browser is that observable.
  */
-function applyPairShape(reachable: boolean | 'failed'): void {
+function applyPairShape(
+  reachable: boolean | 'failed' | { remembered: string | null },
+  action: () => Promise<void> = () => showQr(),
+): void {
   codeIsScannable = reachable === true;
   // The header is the third surface on this screen and it was the last to be told. Its sentence is
   // the shell's to write; this only hands over the fact. A code that could not be made is not a
   // network fact, so the header is left as it was rather than told the Mac is offline.
-  if (reachable !== 'failed') shell.setPairReachable(reachable);
+  if (typeof reachable === 'boolean') shell.setPairReachable(reachable);
   /*
    * The action re-runs `showQr` without rotating — re-reading the interfaces is the whole of
    * "check again", and rotating would invalidate a code somebody may already be looking at.
@@ -752,7 +770,7 @@ function applyPairShape(reachable: boolean | 'failed'): void {
       button: el('new-qr'),
     },
     pairCardView(reachable),
-    () => void showQr(),
+    () => void action(),
   );
   drawPairSteps();
 }

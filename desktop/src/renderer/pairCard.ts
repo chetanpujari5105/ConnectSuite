@@ -20,7 +20,7 @@
  */
 
 interface PairCardView {
-  kind: 'code' | 'no-network' | 'code-failed';
+  kind: 'code' | 'no-network' | 'code-failed' | 'phone-remembered';
   /** The card's `h2`. One writer for both shapes, so the two cannot drift apart. */
   title: string;
   /** Whether the QR plate, its note and the standing instructions are on the card at all. */
@@ -81,7 +81,31 @@ const PAIR_CARD_FAILED: PairCardView = {
     'Sidekick opens. Try again; if it keeps happening, quit Sidekick and open it again.',
 };
 
-function pairCardView(reachable: boolean | 'failed'): PairCardView {
+/**
+ * The fourth shape (defect 207): this Mac still stores a phone, so its hello would not ask any phone
+ * for a code, and a code drawn here would be refused (`TOKEN_MISSING`) however it was scanned. On
+ * 2026-10-08 an identity change left exactly that — a stale record, an "armed" code that could never
+ * pair, and *Forget this phone* only in Settings, which the pinned pairing screen hid. The way out is
+ * on this card now, and the card says what pressing it does.
+ */
+function pairCardRemembered(phoneName: string | null): PairCardView {
+  const who = phoneName ?? 'this phone';
+  return {
+    kind: 'phone-remembered',
+    title: 'This Mac still remembers a phone',
+    showCode: false,
+    action: `Forget ${who}`,
+    headline: `Paired with ${phoneName ?? 'a phone'}`,
+    body:
+      'A pairing code only works once this Mac has forgotten the phone it is paired with. If that ' +
+      'phone no longer connects — after reinstalling Sidekick on either side, or after this Mac’s key ' +
+      'changed — forget it here, then scan the new code. Forgetting ends any connection to it now. ' +
+      'Remove this Mac on the phone too, under Paired Macs.',
+  };
+}
+
+function pairCardView(reachable: boolean | 'failed' | { remembered: string | null }): PairCardView {
+  if (typeof reachable === 'object') return pairCardRemembered(reachable.remembered);
   if (reachable === 'failed') return PAIR_CARD_FAILED;
   return reachable ? PAIR_CARD_CODE : PAIR_CARD_NO_NETWORK;
 }

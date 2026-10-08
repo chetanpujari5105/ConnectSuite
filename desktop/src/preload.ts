@@ -38,7 +38,10 @@ contextBridge.exposeInMainWorld('connect', {
   status: (): Promise<ConnectionStatus | null> => ipcRenderer.invoke('status'),
   pairingQr: (
     rotate?: boolean,
-  ): Promise<{ payload: Pick<PairingQrPayload, 'host' | 'name'>; dataUrl: string; reachable: boolean }> =>
+  ): Promise<
+    | { payload: Pick<PairingQrPayload, 'host' | 'name'>; dataUrl: string; reachable: boolean }
+    | { remembered: { phoneName: string | null } }
+  > =>
     ipcRenderer.invoke('pairing-qr', rotate === true),
   /**
    * The nav list, handed to the main process so the macOS menu bar is a **view** of

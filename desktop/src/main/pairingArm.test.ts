@@ -41,7 +41,7 @@ moduleWithLoad._load = function (request: string, ...rest: unknown[]) {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { LinkClient } = require('./link') as typeof import('./link');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { armPairingCode } = require('./pairingArm') as typeof import('./pairingArm');
+const { armPairingCode, armIfAsked } = require('./pairingArm') as typeof import('./pairingArm');
 
 const PAIRED = { deviceId: 'phone-1', deviceName: 'Galaxy', fingerprint: 'AA:BB', pairedAt: 1 };
 const IDENTITY = { certPem: 'CERT', keyPem: 'KEY', fingerprint: '11:22:33', deviceName: 'Mac' };
@@ -75,6 +75,17 @@ function connectedClient() {
   return { client, inner, calls, identity };
 }
 
+/** A stopped client with no phone stored — the only state in which a code is asked for. */
+function unpairedClient() {
+  storeData.set('paired', null);
+  storeWrites.length = 0;
+  const identity = { ...IDENTITY };
+  const client = new LinkClient(identity);
+  const inner = client as unknown as Internals;
+  inner.attempt = async () => {};
+  return { client, inner, identity };
+}
+
 test('opening the pairing screen while connected leaves the session up', () => {
   const { client, inner, calls } = connectedClient();
   armPairingCode(client, '192.168.1.5', false);
@@ -92,26 +103,54 @@ test('opening the pairing screen while connected keeps the pairing', () => {
   assert.equal(client.status().paired, true);
 });
 
-test('re-opening the pairing screen keeps the code already on screen', () => {
+/*
+ * Defect 207 (d). With a phone stored, this Mac's hello carries no `pair` (link.ts → `pairingNow`), so a
+ * code on screen is one the phone answers with TOKEN_MISSING however it is scanned. On 2026-10-08 the
+ * screen drew such a code as armed for a phone record that the identity change had already made
+ * stale. No code is armed and none is returned; the screen says why and offers Forget instead.
+ */
+test('with a phone stored, no code is armed — the hello would not ask for one (defect 207)', () => {
   const { client } = connectedClient();
-  const first = armPairingCode(client, '192.168.1.5', false);
-  const second = armPairingCode(client, '192.168.1.5', false);
+  const result = armPairingCode(client, '192.168.1.5', false);
+  assert.equal(result, null, 'a code was drawn that this Mac would never ask the phone for');
+  assert.equal(client.isPairingArmed(), false);
+  assert.equal(client.codeWouldBeAsked(), false);
+});
+
+test('the refusal path arms nothing either while a phone is stored (defect 207)', () => {
+  const { client } = connectedClient();
+  assert.equal(armIfAsked(client, '192.168.1.5', true), null);
+  assert.equal(client.isPairingArmed(), false);
+});
+
+test('control: with no phone stored, the same calls arm a code', () => {
+  const { client } = unpairedClient();
+  assert.equal(client.codeWouldBeAsked(), true);
+  const payload = armPairingCode(client, '192.168.1.5', false);
+  assert.ok(payload, 'no code armed for an unpaired Mac');
+  assert.equal(client.isPairingArmed(), true);
+  assert.ok(armIfAsked(client, '192.168.1.5', true));
+});
+
+test('re-opening the pairing screen keeps the code already on screen', () => {
+  const { client } = unpairedClient();
+  const first = armPairingCode(client, '192.168.1.5', false)!;
+  const second = armPairingCode(client, '192.168.1.5', false)!;
   assert.equal(second.secret, first.secret);
   assert.equal(client.isPairingArmed(), true);
 });
 
 test('only an explicit new code rotates the token', () => {
   // The control for the test above: the token *can* change, so "unchanged" is a reading.
-  const { client } = connectedClient();
-  const first = armPairingCode(client, '192.168.1.5', false);
-  const rotated = armPairingCode(client, '192.168.1.5', true);
+  const { client } = unpairedClient();
+  const first = armPairingCode(client, '192.168.1.5', false)!;
+  const rotated = armPairingCode(client, '192.168.1.5', true)!;
   assert.notEqual(rotated.secret, first.secret);
-  assert.equal(client.isConnected(), true, 'a rotation must not end the session either');
 });
 
 test('the code carries the same TLS identity, and arming does not change it', () => {
-  const { client, identity } = connectedClient();
-  const payload = armPairingCode(client, '192.168.1.5', false);
+  const { client, identity } = unpairedClient();
+  const payload = armPairingCode(client, '192.168.1.5', false)!;
   armPairingCode(client, '192.168.1.5', true);
   assert.equal(payload.fp, IDENTITY.fingerprint);
   assert.equal(payload.name, IDENTITY.deviceName);

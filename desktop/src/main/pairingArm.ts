@@ -3,6 +3,7 @@ import type { PairingQrPayload } from '../shared/protocol';
 /** The three calls the pairing screen makes on the link — nothing that could end a session. */
 export interface ArmableLink {
   armPairing(localAddress: string, rotate?: boolean): PairingQrPayload;
+  codeWouldBeAsked(): boolean;
   start(): void;
   retryNow(reason: string): void;
 }
@@ -18,9 +19,22 @@ export interface ArmableLink {
  * connected, and `armPairing(…, false)` keeps the token and only pushes the expiry out. There is
  * deliberately no `stop()` here — the screen can be opened with ⌘K mid-session.
  */
-export function armPairingCode(link: ArmableLink, localAddress: string, rotate: boolean): PairingQrPayload {
-  const payload = link.armPairing(localAddress, rotate);
+export function armPairingCode(link: ArmableLink, localAddress: string, rotate: boolean): PairingQrPayload | null {
+  const payload = armIfAsked(link, localAddress, rotate);
   link.start();
   link.retryNow('pairing QR armed');
   return payload;
+}
+
+/**
+ * A code, only when this Mac would really ask the phone for it — otherwise null (defect 207).
+ *
+ * While a phone is stored the hello carries no `pair`, so a code on screen would be answered
+ * `TOKEN_MISSING` whichever phone scans it, and calling it armed is a sentence about a handshake that
+ * cannot happen. Both places that draw a code — the pairing screen and the fresh code after a refusal —
+ * come through here, so neither can draw one the other would not.
+ */
+export function armIfAsked(link: Pick<ArmableLink, 'armPairing' | 'codeWouldBeAsked'>, localAddress: string, rotate: boolean): PairingQrPayload | null {
+  if (!link.codeWouldBeAsked()) return null;
+  return link.armPairing(localAddress, rotate);
 }

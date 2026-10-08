@@ -139,3 +139,40 @@ test('showQr catches a rejected pairing-qr and draws the failed shape', async ()
   const body = code.slice(start, code.indexOf('\n}\n', start));
   assert.match(body, /try \{\s*made = await connect\.pairingQr\(rotate\);\s*\} catch \{[\s\S]*applyPairShape\('failed'\);\s*return;\s*\}/);
 });
+
+// ---- Defect 207 (d): a phone is still stored, so no code would be asked for -------------------------
+
+test('with a phone remembered, the card offers Forget, names the phone, and draws no code', () => {
+  const n = nodes();
+  let forgets = 0;
+  const view = (g.pairCardView as (r: unknown) => any)({ remembered: 'Galaxy S25' });
+  applyPairCard(n, view, () => { forgets += 1; });
+  assert.doesNotMatch(n.title.textContent, /[Ss]can/, 'an instruction to scan a code the phone would refuse');
+  assert.equal(n.qr.hidden, true, 'a code was drawn beside a stored phone — the TOKEN_MISSING trap');
+  assert.equal(n.button.hidden, true);
+  const block = n.offline.children[0]!;
+  assert.match(block.textContent, /Galaxy S25/);
+  const actions = block.queryAll('.state-action');
+  assert.equal(actions.length, 1);
+  assert.match(actions[0]!.textContent, /^Forget Galaxy S25$/);
+  actions[0]!.click();
+  assert.equal(forgets, 1, 'Forget was not reachable from the pairing screen');
+});
+
+test('a remembered phone with no stored name still gets a working Forget', () => {
+  const n = nodes();
+  applyPairCard(n, (g.pairCardView as (r: unknown) => any)({ remembered: null }), () => {});
+  const actions = n.offline.children[0]!.queryAll('.state-action');
+  assert.equal(actions.length, 1);
+  assert.match(actions[0]!.textContent, /^Forget this phone$/);
+});
+
+test('remembered → code: after Forget the card is the code again', () => {
+  const n = nodes();
+  const view = g.pairCardView as (r: unknown) => any;
+  applyPairCard(n, view({ remembered: 'Galaxy' }), () => {});
+  applyPairCard(n, view(true), () => {});
+  assert.equal(n.title.textContent, 'Scan this with your phone');
+  assert.equal(n.qr.hidden, false);
+  assert.equal(n.offline.children.length, 0);
+});

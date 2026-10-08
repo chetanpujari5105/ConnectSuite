@@ -279,6 +279,16 @@ export class LinkClient extends EventEmitter {
     };
   }
 
+  /**
+   * Whether this Mac's next hello would ask the phone for the pairing code — true only while no phone
+   * is stored. The one home of that rule: the handshake reads it to decide whether to send `pair`, and
+   * the pairing screen reads it to decide whether a code may be drawn at all (defect 207 — a code drawn
+   * beside a stored phone record is answered `TOKEN_MISSING` however it is scanned).
+   */
+  codeWouldBeAsked(): boolean {
+    return !store.get('paired');
+  }
+
   isPairingArmed(): boolean {
     const armed = this.armedPairing;
     return armed !== null && this.now() < armed.expiresAt;
@@ -481,7 +491,7 @@ export class LinkClient extends EventEmitter {
       fingerprint: this.identity.fingerprint,
     };
     const helloId = randomUUID();
-    const pairingNow = !store.get('paired') && this.isPairingArmed();
+    const pairingNow = this.codeWouldBeAsked() && this.isPairingArmed();
     if (pairingNow) {
       // Pairing v2: a fresh nonce and nothing derived from the secret. The raw secret is never sent.
       const macNonce = newNonceHex();

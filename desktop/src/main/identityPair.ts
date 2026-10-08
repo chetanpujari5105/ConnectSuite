@@ -16,29 +16,44 @@ export function keyMatchesCert(certPem: string, keyPem: string): boolean {
   }
 }
 
-export type IdentityChoice = { use: 'stored' } | { use: 'regenerate'; reason: string };
+export type IdentityChoice =
+  | { use: 'stored' }
+  | { use: 'create' }
+  | { use: 'blocked'; reason: string };
 
 /**
- * Which identity a launch should use, given what was readable on disk.
+ * Which identity a launch should use, given what is on disk and what this build could open.
  *
- * The case this exists for is the last one: a certificate and a key that are each perfectly
- * readable and belong to different identities. Nothing downstream can recover from it — every
- * `tls.connect` throws while building its context, synchronously, so the discovery loop aborts
- * before a single socket opens and neither Wi-Fi nor USB can help. It has to be caught here.
+ * **Defect 207: only an empty folder may be filled.** Anything on disk that this build cannot use is
+ * kept exactly as it is and reported — never replaced. The old rule regenerated in every unusable case,
+ * which was right for a half-written pair and wrong for the case that matters: a key sealed by a
+ * *different build* (a development copy and a packaged copy on one profile, or an update that changes
+ * the signature) is perfectly good for the build that sealed it, and replacing it destroyed the pairing
+ * of that build and every phone that trusted it. Starting over is the person's act (`startOver`).
+ *
+ * The mismatched pair is still caught here — it is the case this function was first written for: every
+ * `tls.connect` throws `KEY_VALUES_MISMATCH` synchronously, so it can never be "used" — but it is now
+ * reported rather than silently replaced.
  */
 export function chooseIdentity(stored: {
+  certExists: boolean;
+  keyExists: boolean;
   certPem: string | null;
   keyPem: string | null;
+  sealingAvailable: boolean;
 }): IdentityChoice {
-  const { certPem, keyPem } = stored;
-  if (certPem === null && keyPem === null) return { use: 'regenerate', reason: 'no identity stored yet' };
-  if (certPem === null) return { use: 'regenerate', reason: 'the stored certificate is missing or unreadable' };
-  if (keyPem === null) return { use: 'regenerate', reason: 'the stored private key is missing or undecryptable' };
+  const { certExists, keyExists, certPem, keyPem, sealingAvailable } = stored;
+  if (!certExists && !keyExists) return { use: 'create' };
+  if (keyExists && !sealingAvailable) {
+    return { use: 'blocked', reason: 'this Mac’s keychain encryption is not available to this copy of Sidekick, so it cannot open the stored key' };
+  }
+  if (!keyExists) return { use: 'blocked', reason: 'the stored private key is missing (the certificate is still there)' };
+  if (!certExists || certPem === null) return { use: 'blocked', reason: 'the stored certificate is missing or unreadable (the key is still there)' };
+  if (keyPem === null) {
+    return { use: 'blocked', reason: 'this copy of Sidekick cannot open the stored private key — it was sealed by a different build' };
+  }
   if (!keyMatchesCert(certPem, keyPem)) {
-    return {
-      use: 'regenerate',
-      reason: 'the stored certificate and private key are from different identities',
-    };
+    return { use: 'blocked', reason: 'the stored certificate and private key are from different identities' };
   }
   return { use: 'stored' };
 }

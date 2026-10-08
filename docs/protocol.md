@@ -3579,6 +3579,50 @@ peer was the device the user scanned. How each side tells them apart:
 **Secure re-pairing:** Forget the phone on the Mac (Settings → Connection) **and** forget the Mac on the
 phone, then pair from a fresh code. Re-pairing is required for release verification.
 
+### The Mac's identity across builds and signing changes (defect 207)
+
+**No wire change.** This section states what a Mac build does with its stored identity, because the
+pairing contract above is only as durable as that identity: the phone pins the Mac's certificate
+fingerprint, and a Mac that loses its key is, to the phone, a stranger.
+
+**Where the key lives.** `<profile>/identity/cert.pem` and `key.enc`, the private key sealed by Electron's
+`safeStorage` — on macOS, with a Keychain item named `<app name> Safe Storage` whose access belongs to
+the signature of the build that created it. Two different builds can therefore find one `key.enc` that
+only one of them can open. Measured 2026-10-08 on the owner's Mac (attributes only, no secrets): two
+items exist, `sidekick-desktop Safe Storage` (created 2026-09-17) and `Sidekick Safe Storage`
+(2026-09-20) — consistent with the development and packaged builds sealing under different names.
+
+**Profiles.** A packaged build uses `~/Library/Application Support/sidekick-desktop` (unchanged, so an
+update keeps its pairings); a development build uses `sidekick-desktop-dev`, seeded once by copying the
+shared folder (the original untouched). One process per profile (`requestSingleInstanceLock`); a second
+copy says so and quits having written nothing. `desktop/src/main/profile.ts`.
+
+**The rule: a stored identity this build cannot use is never replaced.** Only an empty identity folder is
+filled automatically. Anything else — a key this build cannot open, encryption unavailable with a key on
+disk, a lone half, a mismatched pair — stops before any socket opens and asks: *Quit* (default),
+*Show the Key's Folder*, or *Start Over with a New Key…* (confirmed a second time). Start over moves the
+old files unchanged into `identity/retired-<time>/`, seals a new identity, and **drops the stored phone in
+the same step** — its record pins the old fingerprint, and while a phone is stored the hello carries no
+`pair`, so a pairing code would be answered `TOKEN_MISSING` (below). `desktop/src/main/identityStore.ts`.
+
+**A code is drawn only when it would be asked for.** While a phone is stored, `pairing-qr` arms no code
+and the pairing screen says *This Mac still remembers a phone* with one action, *Forget <phone>*; the
+fresh code after a refusal follows the same rule (`armIfAsked`).
+
+#### Migrating through a signing change (ad-hoc → Developer ID)
+
+Three routes were considered. Only the first is implemented; the second is the expected path and is
+unmeasured; the third is rejected.
+
+| Route | What happens | Status |
+|---|---|---|
+| **M1 — honest re-pair** | The new build cannot open the key → the blocked prompt above → *Start Over* → the phone shows the Mac as unknown → Forget on both sides, scan a fresh code (pairing v2, both proofs). Nothing is lost silently and the old key is kept | **Implemented and tested** (`identityStore.test.ts`; isolated Electron run in `docs/testing.md` → *Defect 207*) |
+| **M2 — Keychain consent** | The update keeps the app name, so it asks for the same `Sidekick Safe Storage` item; macOS shows its own *"Sidekick wants to use confidential information…"* prompt to the new signature. **Allow** → the key opens, the identity and every pairing survive, nothing on the wire changes. **Deny** → M1 | **Expected, not measured.** Needs one Developer ID–signed build opened over an ad-hoc build's profile, on a disposable macOS user — requires Apple Developer Program enrolment (owner approval) |
+| M3 — key rotation on the wire | The old identity signs an endorsement of the new fingerprint and the phone re-pins | **Rejected for v1.** The new build cannot open the old key, so the endorsement would have to be made by the *previous* build before the update — which needs both keys alive at once, or the private key outside the Keychain. Copying the key out of `safeStorage` into plain storage is the wrong fix this defect names |
+
+**What must not change between releases** for M2 to be available at all: the product name (it names the
+Keychain item), `appId` (`electron-builder.yml` already pins it), and the packaged profile folder name.
+
 ### Pairing intent in the discovery record
 
 `_connectsuite._tcp` carries one further TXT attribute, present **only** between a successful scan

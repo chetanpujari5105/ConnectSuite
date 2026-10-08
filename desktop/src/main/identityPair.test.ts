@@ -43,32 +43,48 @@ describe('keyMatchesCert', () => {
 });
 
 describe('chooseIdentity', () => {
+  const on = (certPem: string | null, keyPem: string | null, over: Partial<{ certExists: boolean; keyExists: boolean; sealingAvailable: boolean }> = {}) =>
+    chooseIdentity({ certExists: certPem !== null, keyExists: keyPem !== null, certPem, keyPem, sealingAvailable: true, ...over });
+
   it('uses a stored identity whose halves match', () => {
-    assert.deepEqual(chooseIdentity({ certPem: a.certPem, keyPem: a.keyPem }), { use: 'stored' });
+    assert.deepEqual(on(a.certPem, a.keyPem), { use: 'stored' });
+  });
+
+  it('creates only into an empty folder', () => {
+    assert.deepEqual(on(null, null), { use: 'create' });
   });
 
   // Defect: a certificate written on 2026-09-07 beside a key written on 2026-08-24. Both readable,
   // both valid, from different identities — and every tls.connect threw KEY_VALUES_MISMATCH
-  // synchronously, aborting discovery before any socket opened.
-  it('regenerates when the stored halves are from different identities', () => {
-    const choice = chooseIdentity({ certPem: a.certPem, keyPem: b.keyPem });
-    assert.equal(choice.use, 'regenerate');
+  // synchronously. Still caught; since defect 207 it is reported rather than replaced.
+  it('blocks, rather than replaces, halves from different identities', () => {
+    const choice = on(a.certPem, b.keyPem);
+    assert.equal(choice.use, 'blocked');
     assert.match((choice as { reason: string }).reason, /different identities/);
   });
 
-  it('regenerates when nothing is stored', () => {
-    assert.equal(chooseIdentity({ certPem: null, keyPem: null }).use, 'regenerate');
+  // Defect 207: the key file is there and this build cannot open it — another build sealed it.
+  it('blocks when the key exists but this build cannot open it', () => {
+    const choice = on(a.certPem, null, { keyExists: true });
+    assert.equal(choice.use, 'blocked');
+    assert.match((choice as { reason: string }).reason, /different build/);
   });
 
-  it('regenerates when only the key survived', () => {
-    const choice = chooseIdentity({ certPem: null, keyPem: a.keyPem });
-    assert.equal(choice.use, 'regenerate');
+  it('blocks when the key exists and encryption is unavailable', () => {
+    const choice = on(a.certPem, null, { keyExists: true, sealingAvailable: false });
+    assert.equal(choice.use, 'blocked');
+    assert.match((choice as { reason: string }).reason, /not available/);
+  });
+
+  it('blocks when only the key survived', () => {
+    const choice = on(null, a.keyPem);
+    assert.equal(choice.use, 'blocked');
     assert.match((choice as { reason: string }).reason, /certificate/);
   });
 
-  it('regenerates when only the certificate survived', () => {
-    const choice = chooseIdentity({ certPem: a.certPem, keyPem: null });
-    assert.equal(choice.use, 'regenerate');
-    assert.match((choice as { reason: string }).reason, /private key/);
+  it('blocks when only the certificate survived', () => {
+    const choice = on(a.certPem, null);
+    assert.equal(choice.use, 'blocked');
+    assert.match((choice as { reason: string }).reason, /private key is missing/);
   });
 });

@@ -21,7 +21,8 @@ import {
   type CallBannerAction,
   type CallBannerView,
 } from '../shared/callBanner';
-import { loadIdentity } from './identity';
+import { loadIdentity, startOverIdentity, type Identity } from './identity';
+import { blockedPrompt } from './identityStore';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipOfferNotifier, offerBannerGuidance } from './clipOfferNotifier';
@@ -153,7 +154,7 @@ import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
 import { wireWebcamSpike, type SpikeWiring } from './webcamSpike';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
-import { armPairingCode } from './pairingArm';
+import { armIfAsked, armPairingCode } from './pairingArm';
 import { fitWindow, DESIGN, zoomStep, zoomFactorFor, type ZoomDirection } from '../shared/windowGeometry';
 
 const [MAIN_PAGE, FLOAT_PAGE, SHARE_PAGE] = ['index.html', 'float.html', 'share-window.html'].map((page) =>
@@ -1050,6 +1051,55 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 /**
+ * Defect 207 (a): this Mac's identity, or null when the person chose to quit.
+ *
+ * When a stored identity cannot be used by this build, nothing has been written (`identity.ts`), and
+ * the person decides: quit (the default — usually another copy of Sidekick made the key and should be
+ * the one opened), look at the folder, or start over. Only *Start over* writes, it keeps the old files,
+ * and it drops the stored phone in the same step: that record pins the old identity, and while a phone
+ * is stored no pairing code is asked for (defect 207 d), so keeping it would strand the pairing screen.
+ */
+function resolveIdentity(): Identity | null {
+  const loaded = loadIdentity();
+  if (loaded.kind === 'ready') return loaded.identity;
+  const prompt = blockedPrompt(loaded.reason);
+  for (;;) {
+    const options = { type: 'warning' as const, noLink: true, ...prompt };
+    const choice = window ? dialog.showMessageBoxSync(window, options) : dialog.showMessageBoxSync(options);
+    if (choice === 1) {
+      void shell.openPath(loaded.dir);
+      continue;
+    }
+    if (choice === 2) {
+      const confirm = {
+        type: 'warning' as const,
+        noLink: true,
+        message: 'Start over with a new key for this Mac?',
+        detail:
+          'Your phone will stop connecting to this Mac until you pair them again, and this Mac will ' +
+          'forget the phone it is paired with. The old key is moved into a folder named “retired” beside ' +
+          'it and kept.',
+        buttons: ['Cancel', 'Start Over'],
+        defaultId: 0,
+        cancelId: 0,
+      };
+      const sure = window ? dialog.showMessageBoxSync(window, confirm) : dialog.showMessageBoxSync(confirm);
+      if (sure !== 1) continue;
+      const identity = startOverIdentity();
+      const hadPhone = store.get('paired') !== null;
+      store.set('paired', null);
+      store.set('lastAddress', null);
+      log.warn('pairing', `Start over: ${hadPhone ? 'the stored phone was forgotten with the old key' : 'no phone was stored'}`);
+      activity.record('system', 'This Mac has a new key', 'Started over at your request; pair your phone again');
+      return identity;
+    }
+    log.info('identity', 'Quit chosen on the blocked-identity prompt; nothing was written');
+    app.exit(0);
+    return null;
+  }
+}
+
+/**
  * The menu is built when the renderer hands over its nav list, and a minimal one stands until then.
  *
  * The minimal menu is not a placeholder to be tidied away: it carries **Edit**, and without an Edit
@@ -1091,6 +1141,13 @@ ipc.handle('menu-routes', (_event, routes: unknown, commands: unknown) => {
 // Chromium fixes its scheme table at startup, so this runs at module load, before ready.
 registerPreviewScheme();
 
+// Defect 207 (c): entry.js holds the single-instance lock; a second launch on this profile quits and
+// this copy comes forward, so a person who opened Sidekick twice sees the one that is running.
+app.on('second-instance', () => {
+  log.info('app', 'A second copy was started on this profile and refused; showing this one');
+  if (app.isReady()) revealMainWindow('second-instance');
+});
+
 app.whenReady().then(() => {
   servePreviews();
   initLogger();
@@ -1125,6 +1182,14 @@ app.whenReady().then(() => {
   activity.init();
   activity.record('system', 'Sidekick started', `version ${app.getVersion()}`);
   log.info('app', `Sidekick ${app.getVersion()} starting`);
+  // Defect 207 (b, c): which profile this build chose in entry.js, and whether the development folder
+  // was seeded — every outcome, including "not applicable", so a seed that never ran is visible.
+  {
+    const chosen = (globalThis as { __sidekickProfile?: { dir: string; seed: string; seedError?: string } }).__sidekickProfile;
+    const line = `Profile ${app.getPath('userData')} (${app.isPackaged ? 'packaged' : 'development'}; seed: ${chosen?.seed ?? 'unknown — entry.js did not report'}${chosen?.seedError ? ` — ${chosen.seedError}` : ''}; single-instance lock held)`;
+    if (chosen?.seed === 'failed' || !chosen) log.warn('app', line);
+    else log.info('app', line);
+  }
   // Read here, and only here, so a weakened guard announces itself in the first lines of the log
   // rather than when it first bites — by which time a confusing result has already happened and
   // would be blamed on the feature. Packaged builds never reach this.
@@ -1157,7 +1222,10 @@ app.whenReady().then(() => {
    */
   createWindow();
 
-  const identity = loadIdentity();
+  const identity = resolveIdentity();
+  // Defect 207: Quit was chosen on the blocked-identity prompt — nothing was written, and nothing
+  // below (no link, no discovery) may run on a key this build could not open.
+  if (identity === null) return;
   selfName = identity.deviceName;
   selfFingerprint = identity.fingerprint;
   // Feature A (docs/protocol.md → Share). Version 1 — every live pairing, because both ends advertise
@@ -3701,7 +3769,12 @@ const QR_OPTIONS = { errorCorrectionLevel: 'M', margin: 1, width: 320 } as const
 async function freshCodeFor(wanted: boolean, why: string): Promise<string | null> {
   if (!wanted || !link) return null;
   try {
-    const armed = link.armPairing(localAddress(), true);
+    const armed = armIfAsked(link, localAddress(), true);
+    if (!armed) {
+      // Defect 207: a phone is stored, so no hello would carry the code — drawing one would be a lie.
+      log.info('pairing', `No fresh QR after ${why}: a phone is stored, so this Mac would not ask for a code`);
+      return null;
+    }
     log.info('pairing', `Fresh QR armed after ${why}`);
     return await QRCode.toDataURL(JSON.stringify(armed), QR_OPTIONS);
   } catch (error) {
@@ -3728,6 +3801,13 @@ ipc.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
   const reachable = pairingReachable();
   const armed = armPairingCode(link, localAddress(), rotate === true);
+  if (!armed) {
+    // Defect 207 (d): the screen offers Forget instead of a code no handshake would ask for.
+    const phoneName = store.get('paired')?.deviceName ?? null;
+    log.info('pairing', `No QR armed: this Mac still remembers ${phoneName === null ? 'a phone' : 'the paired phone'}, so a code would be refused (TOKEN_MISSING)`);
+    stopPairIntentWatch();
+    return { remembered: { phoneName } };
+  }
   const dataUrl = await QRCode.toDataURL(JSON.stringify(armed), QR_OPTIONS);
   // The raw secret field stays in this process: the renderer gets the image and the public fields. The image
   // encodes the secret (it is a QR code) — this keeps it out of payloads and away from other windows only.

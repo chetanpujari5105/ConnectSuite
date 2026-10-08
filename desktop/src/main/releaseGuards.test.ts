@@ -29,7 +29,7 @@ test('entry.js consults the guard before main.js is required, exits on a hit, an
   const guard = entry.indexOf("app.isPackaged ? require('./dist/main/releaseGuards.js').refusedSwitch(process.argv, true) : null");
   const main = entry.indexOf("require('./dist/main/main.js')");
   assert.ok(guard > 0 && main > guard, 'the guard runs first');
-  assert.match(entry, /if \(refused !== null\) \{[\s\S]*app\.exit\(78\);[\s\S]*\} else \{\s*require\('\.\/dist\/main\/main\.js'\);/);
+  assert.match(entry, /if \(refused !== null\) \{[\s\S]*app\.exit\(78\);[\s\S]*\} else \{[\s\S]*require\('\.\/dist\/main\/main\.js'\);/);
   // A development run of a dist built before this guard existed (the rollback copies) must not require it.
   assert.equal((entry.match(/releaseGuards/g) ?? []).length - (entry.match(/`src\/main\/releaseGuards\.ts`/g) ?? []).length, 1, 'required in exactly one place, behind isPackaged');
 });
@@ -96,4 +96,19 @@ test('the afterPack hook applies the release fuses before it signs anything', ()
   const firstSign = hook.indexOf('sign(t)');
   assert.ok(apply > 0, 'control: the hook applies fuses');
   assert.ok(apply < firstSign, 'fuses are written before the first signature, or the seal would not cover them');
+});
+
+/*
+ * Defect 207 (b, c). The profile is chosen and the single-instance lock taken **before** main.js loads
+ * (its modules read `userData` as they load), and main.js is required only when the lock was won.
+ * Source-shape, because entry.js runs only inside Electron; the isolated launch in `docs/testing.md` →
+ * *Defect 207* is the behavioural reading.
+ */
+test('entry.js sets the profile and takes the single-instance lock before main.js, and loads main.js only with the lock', () => {
+  const entry = readFileSync(join(__dirname, '..', '..', 'entry.js'), 'utf8');
+  const setPath = entry.indexOf("app.setPath('userData', plan.dir)");
+  const lock = entry.indexOf('app.requestSingleInstanceLock()');
+  const main = entry.indexOf("require('./dist/main/main.js')");
+  assert.ok(setPath > 0 && lock > setPath && main > lock, 'profile, then lock, then main.js');
+  assert.match(entry, /if \(!app\.requestSingleInstanceLock\(\)\) \{[\s\S]*app\.exit\(0\);[\s\S]*\} else \{[\s\S]*require\('\.\/dist\/main\/main\.js'\);/);
 });
