@@ -672,6 +672,7 @@ someone who had already read the rule against it.
 | **39** (open — do not) | delay the composer's re-fetch | Identical shape to both of the above, on the SMS send path. |
 | **34** (rejected) | make the Mac lenient about the shape it accepts | The two sides would disagree about the contract forever while appearing to work. The phone was fixed instead. |
 | **205** | **The link holds a partial wake lock all night, and it is the largest app battery consumer.** `dumpsys batterystats --charged` after the 2026-10-07/08 soak: 9 h 54 min on battery (9 h 6 min screen off), computed drain 3,663 mAh; Sidekick `u0a1011` **177 mAh, the largest single UID**, of which **176 mAh is `ConnectSuite:link` held 8 h 54 min** — the CPU kept awake (no deep Doze for the device) for an idle link with one connected Mac. Defect 61's re-armed lock is the design; its cost was never measured | **open — measured once, single device, one night** (the device's own largest drain was the mobile radio, 1,009 mAh, consistent with the hotspot, and is not Sidekick's) | — | `docs/testing.md` → Defect 205 |
+| **206** | **Every Accept and Decline in the receive window was refused** — *"refused: that offer is not on this window"*, logged nowhere. `share-decide` sends `{offerId, decision}`; the S4 window check (`8f2a483`, 2026-10-06) parsed it with `parseOfferRequest`, which accepts exactly `{offerId}`, so the parse failed for every decision. Found on hardware 2026-10-08 12:47 with the owner's real clicks; the decision tests called `handleShareDecision` directly and never crossed main's check | **fixed 2026-10-08 (`97193bf`); hardware-verified 13:14** (Accept → saved, SHA equal; Decline → declined; Cancel → cancelled; on the fixed build). `handleShareDecision` takes the window check as a required parameter and asks it with the id its own parser read | `shareDecision.test.ts` +2 (red first); 2 mutations red; Mac 1,981/0 | `docs/testing.md` → Defect 206 |
 
 The family resemblance: **each substitutes a plausible value for a known one.** The test is whether
 the code can name the fact it is waiting for. If it can, wait for that fact; if it cannot, the fix is
@@ -4125,3 +4126,12 @@ only while a session is connected and a transfer or mirror is active, or keeping
 5,000 mAh battery per night here, plus the lost device-wide Doze). **Wrong fixes:** removing the lock on this reading
 alone (defect 61 shows a lapsed lock opens a real gap); a shorter timeout that is re-armed anyway (same cost, more
 churn); calling the battery drain of 2026-10-08 Sidekick's (the radio, not the lock, was the largest drain).
+
+### 206 — the receive window could not decide anything since S4 · **fixed and hardware-verified 2026-10-08**
+
+Evidence: `docs/testing.md` → Phase 2 stage 5 and Defect 206. **Why the suite missed it:** every decision test called
+`handleShareDecision` with a hand-built window and never went through `main.ts`'s `share-decide` registration, where the
+second parser sat — the decision was tested, the wiring was not. **Fix direction (done):** one parser per payload; the
+window check asks with the parsed id. **Wrong fixes:** widening `parseOfferRequest` to allow `decision` (every other
+receive-window channel relies on it being exactly `{offerId}`); dropping the window check (S4's binding of actions to
+what a window was shown).

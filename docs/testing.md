@@ -28803,3 +28803,37 @@ held the H0 copy, so the pull named `(2).bin`.
 - **Result:** `sidekick-t5-source-change-200mb (2).bin`, 209,715,200 B, SHA-256 **`8ce38c36…` = H2, the changed source** —
   never a mix; 0 partials, 0 records. **Defect 166 is hardware-verified** by this run. **Left changed:** the phone's T5
   synthetic source is now H2.
+
+### Stage 5 — phone → Mac sharing, synthetic files (12:39–13:22) · **failed, fixed (defect 206), then hardware-verified**
+
+Synthetic files pushed to `Download/SidekickS5` on the phone (SHA-256 checked on both ends): `sidekick-s5-a.txt`
+`d43032ae…` and `-b.txt` `e7512f96…` (4,165 B each); `-c.bin` 256 MiB at first, then replaced by a 120 MiB file
+`ffbe601f…`. Shared by the owner from My Files (multi-select → Share → Sidekick). Accept is the owner's click (the
+window's *in front of a person* gate); nothing was scripted around it.
+
+- **Attempt 1 — FAILED (defect 206).** Two offers reached the receive window (12:47:14, `share.file 3`, *held for a
+  decision*); *c* stayed queued on the phone (`quota=148,158,515 B` < 256 MiB, one copy at a time). **Every Accept and
+  Decline — the owner's real clicks and a scripted Decline through the window's own bridge — returned `refused: that
+  offer is not on this window`**, and no decision was logged. Measured from the live window: straight after
+  `shareWindowState()` recorded both ids, a Decline on *b* was still refused. Cause: `share-decide` sends `{offerId,
+  decision}` and the S4 window check parsed it with `parseOfferRequest`, which accepts exactly `{offerId}`. **Every
+  receive-window decision had been refused since S4 (`8f2a483`, 2026-10-06).** Fixed in `97193bf` (red-first, 2
+  mutations red, Mac 1,981/0); `dist` rebuilt in isolation (`8c4efa7b…`) and redeployed 13:03 (old `dist` `68173c63…`
+  moved aside, not deleted). The Mac's relaunch ended the pending offers; the phone logged `ended with the session:
+  staged copy deleted` for both.
+- **Attempt 2 (13:14–13:22) — hardware-verified on the fixed build:** Accept (owner) → `receive window decision →
+  {"ok":true,"state":"receiving"}` → `sidekick-s5-b.txt` saved, **SHA-256 `e7512f96…` = source**, phone acknowledged.
+  Decline (owner) → `{"ok":true,"state":"declined"}`; phone `declined (user)`; **nothing written** for *a*. *c* (120 MiB)
+  offered as item 3/3; a watcher pressed **Cancel** by name the moment its card read *Stop receiving* — Mac *"cancelled on
+  this Mac while accepting (0 of 125,829,120 bytes received)"*, `share.cancel … stopped=true`, phone *"cancelled by the
+  mac (user): staged copy deleted"*; 0 partials. **This was a Cancel during acceptance, not mid-transfer** (0 bytes had
+  arrived). A second share (the owner chose *a*) → Accept → `sidekick-s5-a.txt`, **SHA-256 `d43032ae…` = source**.
+- **Not shown:** a share arriving over an existing name (no share collided); collision-safe naming was shown today for
+  pulls (stage 4: `(7)`, `(8)`, `(9)`, `(2)`) and is stage 7's for Mac → phone. Gallery multi-select was not used (My Files
+  only), and no personal file was touched.
+- **Left on the devices:** phone `Download/SidekickS5/` (three synthetic files); Mac `~/Downloads/Sidekick/sidekick-s5-
+  a.txt`, `-b.txt`.
+
+### Defect 206 — the receive window could not decide (found and fixed in stage 5)
+
+See stage 5. Fixed in `97193bf`; hardware-verified on the redeployed build at 13:14.
