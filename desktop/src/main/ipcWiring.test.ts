@@ -253,7 +253,7 @@ test('A: valid selection — a file chosen in the native open panel is read, by 
 test('A: forged drop — raw fs-confirm-drop with an arbitrary path grants nothing unless the native sheet says Send', async () => {
   const target = synthetic('synthetic-secret.txt');
   dialogScript.sheets.length = 0;
-  dialogScript.sheetAnswer = 'Escape'; // the person presses Escape
+  dialogScript.sheetAnswer = 'Cancel'; // the person presses Cancel (Return does the same)
   const r = (await call('fs-confirm-drop', from(mainWin, PAGE.main), [target])) as { ok: boolean; reason?: string };
   assert.deepEqual(r, { ok: false, reason: 'cancelled' });
   assert.equal(dialogScript.sheets.length, 1, 'the request reached a native sheet the renderer cannot press');

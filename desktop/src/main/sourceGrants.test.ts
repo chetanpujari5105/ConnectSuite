@@ -105,13 +105,15 @@ test('control: the model reproduces the 2026-10-07 reading of the shipped sheet 
   assert.equal(macSheetKeys({ buttons: ['Send', 'Cancel'], defaultId: -1, cancelId: 1 }).returnKey, 'Send');
 });
 
-test('the drop sheet: no key sends, Escape cancels, nothing is drawn as the default', () => {
+test('the drop sheet: Return is held by Cancel, so no key can send', () => {
+  // 2026-10-08, real sheets (Sidekick and an isolated harness, 20-30 s windows): with NO button holding Return,
+  // AppKit gave Return to a button anyway — Send, after 1-14 s, in 4 of the runs measured, and nothing in
+  // others. A sheet whose Return is unbound is non-deterministic, so Return must be bound, to Cancel.
   const options = dropSheetOptions({ message: 'Send “a.txt” to your phone?', detail: '~/a.txt' });
   const sheet = macSheetKeys(options);
-  assert.notEqual(sheet.returnKey, 'Send', 'Return must never send');
+  assert.equal(sheet.returnKey, 'Cancel', 'Return must be bound, and only to Cancel');
   assert.notEqual(sheet.escapeKey, 'Send', 'Escape must never send');
-  assert.equal(sheet.escapeKey, 'Cancel');
-  assert.equal(sheet.highlighted, null, 'a highlighted Cancel that Return does not press is a promise the sheet breaks');
+  assert.equal(sheet.highlighted, null);
   assert.deepEqual([...options.buttons].sort(), ['Cancel', 'Send']);
 });
 

@@ -2685,10 +2685,10 @@ ipc.handle('activity-csv', async () => {
  *
  * The renderer reports the paths it says were dropped; nothing in the main process can observe a drop,
  * so those paths are only a request. The sheet below is drawn by this process and names every file (or
- * every source folder, with counts), and only the person's **Send** grants them. **No key sends**:
- * Escape cancels and Return presses nothing (`dropSheetOptions` says why it cannot also cancel), so a
- * sheet that appears while someone is typing cannot be confirmed by Return. One sheet at a time: a
- * second request while one is open is refused, not queued.
+ * every source folder, with counts), and only the person's **Send** grants them. **Return cancels**
+ * (`dropSheetOptions` says why it must be bound, and why Escape then does nothing), so a sheet that
+ * appears while someone is typing cannot be confirmed by Return. One sheet at a time: a second request
+ * while one is open is refused, not queued.
  */
 let dropSheetOpen = false;
 ipc.handle('fs-confirm-drop', async (event, paths: string[]) => {

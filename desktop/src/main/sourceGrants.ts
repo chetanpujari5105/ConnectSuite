@@ -154,15 +154,16 @@ export interface DropSheetOptions {
 const DROP_SHEET_BUTTONS = ['Cancel', 'Send'];
 
 /**
- * **No key sends, Escape cancels, and no button is drawn as the default.** On macOS one button cannot
- * answer both Return and Escape: Electron puts Return on `defaultId`, then Escape on `cancelId`,
- * overwriting Return when they are the same button — and highlights it, so the 2026-10-07 sheet showed
- * Cancel as the default while Return pressed nothing. NSAlert itself gives Return to the first button,
- * so Cancel goes first and `defaultId` is left out: Return is then Cancel's only until Electron moves
- * Escape onto it. **Send must never be first with `defaultId` left out** — it would take Return.
+ * **Return is held by Cancel, so no key can send.** Measured on real sheets on 2026-10-08 (Sidekick and an
+ * isolated Electron harness, macOS 26.6.1): when **no** button holds Return, AppKit still gives Return to a
+ * button — *Send*, 1-14 s later, in four runs, and nothing in others. So Return must be bound, and only to
+ * Cancel: Cancel first (NSAlert's own Return) and `defaultId` on it. The cost, also measured: Electron then
+ * binds Escape to nothing (`cancelId` -1; one button cannot carry both keys), so Escape does nothing and
+ * Cancel is drawn as the default. **Never leave Return unbound, and never let `cancelId` move Escape onto
+ * the Return button** — Electron's Escape overwrites its Return.
  */
 export function dropSheetOptions(sheet: { message: string; detail: string }): DropSheetOptions {
-  return { type: 'question', message: sheet.message, detail: sheet.detail, buttons: [...DROP_SHEET_BUTTONS], defaultId: -1, cancelId: 0 };
+  return { type: 'question', message: sheet.message, detail: sheet.detail, buttons: [...DROP_SHEET_BUTTONS], defaultId: 0, cancelId: -1 };
 }
 
 /** Whether the sheet's answer is the person pressing **Send** — the only answer that grants anything. */
