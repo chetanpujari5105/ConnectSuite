@@ -28837,3 +28837,46 @@ window's *in front of a person* gate); nothing was scripted around it.
 ### Defect 206 — the receive window could not decide (found and fixed in stage 5)
 
 See stage 5. Fixed in `97193bf`; hardware-verified on the redeployed build at 13:14.
+
+### Stage 6 — clipboard S7 and the toolbar route (13:24–13:38) · S7 cases **hardware-verified**; toolbar route **not available (cause established)**
+
+Owner approved replacing both clipboards with synthetic markers. The Mac clipboard was read only through a helper that
+prints **which** marker matched (never content); log lines were read for counts and states.
+
+- **Toolbar (`PROCESS_TEXT`) route in Keep — the cause is now established.** Genuine test note (owner) holding the
+  synthetic `SKTEST-OFFER-7`, selected; the floating toolbar read by name (uiautomator `--windows`, buttons only): *Writing
+  toolkit, Cut, Copy, Paste, Translate, More options*; overflow (opened by tapping the named node): *Share, Clipboard,
+  Manage apps*. **One UI's *Manage apps* sheet — "Select apps to show in the contextual menu." — lists exactly two
+  apps, *Google · Ask Gemini* and *Samsung Pass*, both off; Sidekick is not a candidate there at all**, while
+  `query-activities PROCESS_TEXT` lists 22 resolver packages including `SendSelectionActivity`. So no text-processing
+  app reaches Keep's menu on this One UI build and none can be enabled there; not a Sidekick dispatch failure and not a
+  setting the owner turned off. Closed with Back; nothing changed. (On 2026-09-04 Keep did offer it — what changed is a
+  One UI/Keep matter, not measured here.)
+- **Delivery through the handler** (a different client — the shell, not Keep's menu): `am start -n …/SendSelectionActivity
+  -a android.intent.action.PROCESS_TEXT --es android.intent.extra.PROCESS_TEXT SKTEST-OFFER-7` → phone `selection route:
+  PROCESS_TEXT (Text) … chars=14 → Sent`, `origin selection`; Mac `Offered an arriving entry (origin selection): 14 bytes,
+  NOT applied`; clipboard still `SKTEST-BASE-8`. Banner: `offer notification FAILED — UNErrorDomain error 1` (development
+  build, expected; the pane said the offer still waits).
+- **Copy, and duplicate Copy:** the row selected by its marker, *Copy* pressed **twice in one tick** → exactly one
+  `Applied an arriving entry … previous clipboard captured` and one `Refused a Copy on an offer: unknown — nothing
+  written`; pane: *"That offer is no longer waiting — it was copied, dismissed or replaced. Nothing was copied now."*;
+  clipboard = `SKTEST-OFFER-7`.
+- **Restore over newer:** `SKTEST-NEWER-8` copied locally; *Restore* on the *Mac · replaced* row (the displaced entry
+  draws no text — the first selector by marker found 0 rows and stopped before clicking) → `Refused a Restore: the
+  clipboard changed since the entry was replaced`; clipboard **still `SKTEST-NEWER-8`**.
+- **Dismiss:** a second offer (`SKTEST-OFFER-9`, same handler) → *Dismiss* → `Offer dismissed; the clipboard was not
+  touched`.
+- **Instrument-caused side effect, recorded as a latent hazard (not a defect):** 21 ms after the second selection, the
+  phone ran `focus sync: SENT` (`origin clipboard`, 14 bytes) and the Mac **auto-applied** it over `SKTEST-NEWER-8`
+  (clipboard after: `SKTEST-OFFER-7`). Cause: the shell's `am start` launched `SendSelectionActivity` into **Sidekick's own
+  task**, where `MainActivity` (left there by the 12:10 pairing) came forward when the `noHistory` activity finished and
+  gained window focus — the only trigger of focus sync (`MainActivity.onWindowFocusChanged`). `dumpsys activity`: top
+  resumed `MainActivity` in task #2395. Keep's menu would start it in Keep's task, so the real route does not do this
+  (the 2026-10-07 share-route sends showed no focus sync). **Hazard:** any app launching *Send to Mac* as a new task
+  would trigger the same unasked sync; `SendSelectionActivity` lacks the `taskAffinity=""` its neighbour
+  `ShareToMacActivity` carries. **Hardening proposed, not made.**
+- **Copy faults seen (not filed):** after an offer is copied by the person, the pane's arrival card says *"It went
+  straight onto this Mac's clipboard … The next one needs **ConnectSuite** open on the phone again"* — wrong for a copied
+  offer, and the old app name.
+- **Left:** Mac clipboard `SKTEST-OFFER-7` (synthetic); Sidekick's in-memory history holds the session's entries until
+  the next disconnect; Keep test note with the marker (owner's); Sidekick in the foreground on the phone.
