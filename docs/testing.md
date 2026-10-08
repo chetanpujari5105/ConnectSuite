@@ -28880,3 +28880,49 @@ prints **which** marker matched (never content); log lines were read for counts 
   offer, and the old app name.
 - **Left:** Mac clipboard `SKTEST-OFFER-7` (synthetic); Sidekick's in-memory history holds the session's entries until
   the next disconnect; Keep test note with the marker (owner's); Sidekick in the foreground on the phone.
+
+### Stage 7 — the drop sheet, Mac → phone push, drag-out (13:55–15:16) · **failed (201), refixed, then hardware-verified**; defect 207 found
+
+Instrument: yesterday's `axtool` (genuine HID drags gated on the element under the pointer before mouse-down and before
+mouse-up; `sheet` is read-only — checked in source). Source: the synthetic `~/.s7-run/drop-me.txt` (129 B, `351b49cf…`).
+Destination tile located through CDP and confirmed by AX before every drag. Window work by the owner's permission:
+Brave's full-screen window was taken out of full screen and minimized (no tab or window closed), the `.s7-run` Finder
+window moved to the built-in display.
+
+- **202 on the drop tile:** *"Drop files here to send them to Received files"*.
+- **201 FAILED on hardware with `a178bfa`'s configuration** (Cancel first, `defaultId -1`, `cancelId 0`): the real sheet
+  showed AX default *none*, cancel *Cancel*; **Return was followed by *"drop of 1 file(s) confirmed in the native
+  sheet"* 4–14 s later and a push** (`drop-me (3).txt` 14:14:02, `drop-me (4).txt` 14:23:37 — synthetic). Controls: with
+  no key the sheet never confirmed in 30 s (trial X); Escape cancelled at once (14:22:33). An isolated Electron harness
+  (no Sidekick code; frontmost-gated keys; answer written to a file) showed the same configuration answering **Send** to
+  Return after 1 s and 7 s in two runs and nothing within 5 s in another — **non-deterministic**; with Cancel holding
+  Return (`defaultId 0, cancelId -1`) Return answered **Cancel** at once (2/2) and Escape did nothing (2/2, 20 s).
+  **Instrument faults on the way:** the harness's first 5 s window was shorter than the delayed answer (it read
+  "nothing"); and the 2026-10-07 reading of the old build (*Return answered nothing*) may have had the same short window.
+  A first incident (14:03) was entangled with the second Sidekick process below and was not counted.
+- **Refixed (`f3c9eec`), redeployed (`dist` `0c269edb…`):** AX now default **Cancel**, cancel none. **Return →
+  *"not confirmed — nothing granted"* in 1.2 s, nothing sent in 30 s (Z1, 15:09). Escape → nothing for 20 s (the
+  measured, accepted cost), Return then closed it (Z2). Send pressed by its title → exactly one dispatch (Z3, 15:12).**
+- **Push into Received files, collision-safe:** `drop-me.txt` … `drop-me (4).txt` already there → four `TARGET_STALE`
+  refusals, then **`drop-me (5).txt`**; phone *"received … sha256=351b49cf…, verified=true (agreed in advance)"*, on-disk
+  SHA-256 equal.
+- **Drag-out:** `drop-me (5).txt` copied to the Mac (`~/Downloads/Sidekick`, SHA equal), then a genuine drag of its tile into
+  the Finder `.s7-run` list → `~/.s7-run/drop-me (5).txt`, 129 B, SHA-256 equal; *"dragged 1 file(s) to Finder — 1 started
+  / 0 refused"*; the pulled original kept.
+- **Defect 207 (found here):** a packaged `Sidekick.app` (`desktop/release/mac-arm64`, 2026-09-19 build, same bundle id,
+  **same profile folder `sidekick-desktop`**) had been started at 13:39:58 (not by this run). It could not decrypt the
+  development build's stored key and **overwrote it with a new identity** (`87:2A:47:C3…`, 13:40:37); the phone refused
+  that identity every 30 s. The owner approved quitting it (by its own *Quit* item, 14:10:21; nothing deleted). The next
+  development relaunch (14:32:34) found the packaged key undecryptable and regenerated again (`A9:59:35:BB…`); the
+  phone refused it. With the stale phone record still stored, the pairing screen's "armed" QR could never pair (`TOKEN_MISSING`
+  on the phone), and Settings → *Forget this phone* was unreachable from the pinned pairing screen; recovered by the
+  button's own IPC (`forgetDevice`), the card's own *new code* button, and an **owner-approved re-pair at 14:46:19**
+  (`pairing v2, both sides proved the code`, new Mac identity `a95935bb…`).
+- **My mistake, recorded:** one Return keystroke (14:33:32) reached Sidekick's window with no sheet open — gated only on
+  Sidekick being frontmost, not on a sheet existing; the log shows no action from it. Later presses were gated on both.
+- **Left:** phone `Download/ConnectSuite/drop-me (2)–(5).txt` (synthetic); Mac `~/Downloads/Sidekick/drop-me (5).txt`,
+  `~/.s7-run/drop-me (5).txt`; Brave's windows minimized (restore from the Dock); the Finder `.s7-run` window moved.
+
+### Defect 207 — the Mac identity overwritten by a second build on the same profile (found in stage 7)
+
+See stage 7. Recovered by an owner-approved re-pair at 14:46:19 (new Mac identity `a95935bb…`).
