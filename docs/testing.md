@@ -28689,3 +28689,34 @@ See stage 0. Registered open; nothing changed in code. Fix direction in `docs/de
   decoy was started (12:11:26); the decoy's summary: `connections 0, hellos 0, pair.confirm 0, injected 0`. Nothing about
   the Mac's handling of an impostor was observed. Learned for a retry: the decoy must be listening **before** the Mac
   arms the QR, and bounded below the 8-failure retirement (each refused pass counts one; backoff 1-2-4-8-16-30 s).
+
+### Stage 3, attempt 2 — impostor answers first (owner-approved second re-pair, 12:15–12:21) · **hardware-verified**
+
+- **Order:** owner Forget on the phone and opened the scanner pointed away → decoy started 12:17:14 (`--seconds 45
+  --inject`, decoy `01:BE:94:10…`) → Mac Forget. The first Forget run was **refused by its own gate** (premise read
+  `phase reconnecting` — the phone had forgotten the Mac — so *connected + paired* was false; nothing clicked); the
+  premise was narrowed to *paired* (the approved action) and the second run landed at **12:17:30.540** → `QR armed`.
+- **The impostor answered first and was refused, every time.** Mac log, first pass, 12:17:30.564: `Dropped a
+  notif.posted before authentication`, `Dropped a clip.push before authentication`, `A device at 127.0.0.1 was not
+  trusted: it answered without proving the pairing code (1 of 8 failed)`. Decoy summary (its own count, bounds printed:
+  127.0.0.1:42611, 45 s): **6** connections, **6** hellos all carrying `pair`, **6** acks sent, **12** messages injected
+  before the ack, **`pair.confirm received: 0`** — the Mac never sent the impostor its proof (the fixture shows a confirm
+  reaching the decoy is counted, so 0 is a reading). **Marker `SIDEKICK-DECOY-INJECT-7f3a`:** 0 in the Mac log (`.1`
+  included; control: 2 *both sides proved the code* lines); absent from the page text, the notification list and the
+  clipboard history (`probe.mjs`, control: 30 notifications listed and the nav present — an earlier control, *Forget this
+  phone* in the page text, **failed** after the pane redrew and that reading was not taken).
+- **Retirement observed:** the impostor's refusals and the phone's (below) reached **`8 of 8 failed — code retired`** at
+  12:17:39.861; the Mac armed a fresh code (counter `1 of 8` from 12:17:42); the owner scanned it → `10.51.59.236 proved
+  the pairing code — sending this Mac's proof` 12:17:46.033 → `Paired … pairing v2, both sides proved the code`
+  12:17:46.070, `Connected … via gateway` .086. The real phone paired **while the impostor was still listening** (it was
+  tried first on that pass too: `3 of 8 failed` at 12:17:45.968).
+- **Unexplained observation (not a defect yet):** while the Mac was still paired (12:15:30, 12:16:07, 12:16:24) the phone
+  logged `Pairing armed` three times — its scanner read a QR — and then proved a secret the new code did not hold (`could
+  not prove it scanned this code`, 4 of the 8 failures). After the second pairing no QR image was visible on the Mac.
+  Where the phone read a QR at 12:15–12:16 is **not established**; the cost was measured: a dead secret consumes the next
+  code's failure budget.
+- **Not reachable on hardware, stated:** a replayed proof and a right-token/wrong-peer side-channel claim need the live
+  session's secret; they remain loopback/JVM-tested (`pairingV2Link.test.ts`, `SideChannelAuthTest`, `pinnedTls.test.ts`).
+- **Restored:** quit by name 12:20:45 (`[quit] nothing to wait for … will-quit reached 15 ms`), relaunched **without**
+  the switch (PID 12755, 0 `CONNECTSUITE_*` variables, no `[debug]` line), `pairing: v2` via last-known 12:20:46;
+  `link-up.sh` 3 OKs.
