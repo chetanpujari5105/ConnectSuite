@@ -28954,3 +28954,18 @@ foreground before the start.
   after 30000ms` 17:41:49.035 → both sides *"Screen sharing was not approved within 30 seconds, so the request ended."*;
   `media_projection` `null`; nothing captured.
 - **Left:** Sidekick's accessibility service **on** (the owner's choice; undo in Settings → Accessibility).
+
+### Stage 9 — reconnect (17:43–17:47) · Mac Wi-Fi cases **hardware-verified**; hotspot and USB **not run**
+
+Topology read first: the Mac's default gateway is the phone (`10.51.59.236`, Wi-Fi `en0`, Mac `10.51.59.160`) — the Mac is
+on the phone's hotspot, so *phone Wi-Fi off/on* tests nothing here.
+
+| Case | Outage | Mac saw | Back | After |
+|---|---|---|---|---|
+| Mac Wi-Fi off 10 s (`networksetup -setairportpower en0`) | 17:43:36–17:43:46 | `Heartbeat lost: no pong in 15s` 17:43:56.329 (after Wi-Fi was already back) | `Connected … via last-known` 17:43:56.586 — **0.26 s** after detection, **10.6 s** after Wi-Fi returned | `pairing: v2` (no pairing request); `link-up.sh` **1** control session |
+| Mac Wi-Fi off 40 s | 17:46:00–17:46:40 | `Heartbeat lost` 17:46:16.616 while offline; backoff 1 → 2 → 4 → 8 → 16 s | `Connected … via last-known` 17:46:50.545 — **10.5 s** after Wi-Fi returned, ahead of the 16 s retry | same; **1** session |
+
+**Not run:** phone hotspot off/on (the same outage from the other side; a phone-settings toggle not scripted remotely);
+USB (a USB link needs the phone's USB function changed to tethering, which would drop the `adb` connection this run
+depends on). **What the recovery time is made of:** detection is the heartbeat (≤ 15 s + one interval); the reconnect
+itself is sub-second on the last-known address.
