@@ -271,6 +271,7 @@ which has no ML Kit; it stands.)
 |---|---|---|
 | 0 soak end | **hardware-verified (endurance), with limits** | phone off USB 00:26→11:45 (monitor held no phone reading); the old process ran T0 → 10:31:30 with 0 claim/timeout/restart lines and no new exit record, then the **battery reached 0 %** and the phone rebooted (`reboot,lpm`, 11:23). Window passed on the process's own log; 199 stays open (F7). New: **205** — `ConnectSuite:link` wake lock 8 h 54 min, 176 mAh, largest app |
 | 1 baseline | **hardware-verified** | builds `c05efcc`/`bf096e1` as deployed; grants 14/0; pairing 2; watcher off; no transfer; rollback intact; phone `/data` 2.8 GB free (100 %) |
+| 2 deploy | **hardware-verified** | phone `fbb1de42…` installed, grants/bindings/pairing unchanged, reconnect 1.11 s; Mac `dist` `68173c63…` (from `7507217`), 0 E, no switches, no rewrite. **Defect 200 recurred** on the old build: first named Quit stalled 109 s, second exited |
 
 ## 6. Phase 3 — report
 

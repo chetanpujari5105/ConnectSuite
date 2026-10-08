@@ -28633,3 +28633,33 @@ fingerprint `2F:97:0F:EC…`; `pull-resume/` 0 records; receive folder 67 entrie
 ### Defect 205 — the link's wake lock, measured (stage 0's batterystats read)
 
 See stage 0. Registered open; nothing changed in code. Fix direction in `docs/defects.md` → 205.
+
+### Stage 2 — deploy (11:55–12:02) · **hardware-verified**; defect 200 **recurred on the old build**
+
+- **Phone:** prepared APK re-hashed `fbb1de42…` (match) immediately before `install -r --user 0` (11:55:49 → `Success`
+  11:56:03). Installed `base.apk` pulled after: `fbb1de42…`. Runtime grants user 0 **14**, user 95 **0**; listener 1,
+  accessibility 0 — unchanged. Exit record `11:56:03.811` for the replaced process (PID 8214, expected). Automatic restart
+  with no Activity: `PACKAGE_REPLACED` and `LISTENER_REBIND` 11:56:04.64, both claims `types=0x10`, `Listening on
+  42501/42502/42503`, `[trust] pairing … v2 (both sides proved the code)`. Mac: `ECONNRESET` 11:56:03.784 → `Connected …
+  via last-known` 11:56:04.894 (**1.11 s**), `pairing: v2`, no pairing request. `am start` **not** used (already listening).
+- **Instrument fault caught:** a time filter `$1 >= "2026-10-08T11:55:40"` over `link.log` printed four `caused by …
+  This Mac is not paired` lines — untimestamped stack continuations, which pass a lexical time comparison whatever their
+  age (defect 78's shape). Attributed to their timestamped heads: **2026-10-06 23:56:41–57** (the H4 re-pair's refusals).
+  Not a finding.
+- **Defect 200, second sighting (old `bf096e1` build, no coordinator):** *Quit Sidekick* clicked by name at
+  **11:58:17** (PID 88287 re-checked; menu read by name). `Disconnected: app quit` and the disconnect clears logged, then
+  nothing; after 30 s the process was alive, **0 windows**, holding 9222; `sample`: main thread idle in the run loop. The
+  same named item clicked again at **12:00:07** → exited at 12:00:08. **Stall 109 s** — the first sighting's shape
+  (2026-10-07 10:30, > 3 min). The coordinator that addresses it was deployed in this stage; its own quit is stage 3's
+  reading.
+- **Mac:** live `dist` `0c074f7d…` (312 files) **moved, not deleted**, to `~/.connectsuite-evidence-private/rollback-
+  2026-10-06/mac-live-dist-moved-at-2026-10-08/dist` (0700) and re-verified; `ditto` of the prepared `dist` (from
+  `7507217`) → `68173c63…`, 316 files, 0 specials. Launch **12:01:32** from `desktop/`: `electron . --force-renderer-
+  accessibility --remote-debugging-port=9222` (the verification session's CDP access, not release configuration), **0**
+  `CONNECTSUITE_*` variables (read from the running process's environment). PID **45174**, owner of 9222.
+- **After:** 111 log lines since launch — I 109, **W 2** (the `share.ask` notice; `contacts.get refused: NOT_FOUND`, both
+  as at every launch since A3), **E 0**; `Activity log: 2000 event(s) read / 0 unreadable` and **no `Rewrote`** line;
+  `resume records: 0 expired`; `pairing: v2`, `Connected … via last-known` 12:01:33.728; no `[debug]` line. Stored
+  `watchClipboard: false`, `pairing: 2`, same fingerprint; 0 watcher-start lines. `link-up.sh` 3 OKs.
+- **Rollback (not needed):** quit; move the new `dist` aside; `ditto` the moved `0c074f7d…` copy back; relaunch. Phone:
+  `install -r --user 0` of the `c05efcc` APK in the rollback folder (same versionCode, no `-d`).
