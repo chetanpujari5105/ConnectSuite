@@ -96,7 +96,7 @@ file-name content beyond the synthetic files named here. A stage stops at its fi
 absence is not evidence until its control returned a known positive. The owner taps every consent dialog; nothing
 bypasses a consent gate or the Mac's focus/Accept gate.
 
-**Stage 0 — soak end check (≥ 06:04:41), before anything else.** Read-only: newest user-0 exit record (expect
+**Stage 0 — soak end check (≥ 06:04:41), before anything else.** *(Run 11:46 — see §4d.)* Read-only: newest user-0 exit record (expect
 13:56:08.525 `PACKAGE UPDATED`), crash buffer package lines (expect 2, the 07:14 crash), app PID (expect 23946),
 `LinkService` createTime older than T0 and `types=0x00000010`, `link-up.sh` three OKs, every claim since T0 `0x10`
 (expect none), coverage gaps named (log rotation, monitor checks missed). Pass is about **endurance of the installed
@@ -264,6 +264,13 @@ which has no ML Kit; it stands.)
 |---|---|---|
 | **A. Disclose** (no code beyond strings) | Trust column: *"No cloud, no account. Your files and messages stay on your network."* Scan screen, under the viewfinder: *"The QR scanner is Google ML Kit. It sends Google anonymous usage statistics — never the camera image or the code."* Privacy policy and Data safety say the same | the product's headline promise gets an asterisk |
 | **B. Replace the scanner** (recommended) | Keep *"nothing leaves your network"* — then true for the phone app | a new dependency (e.g. ZXing core, Apache-2.0, pure Java, no network) fed by the existing CameraX `ImageAnalysis`; removes ML Kit, Play services and `datatransport` from the APK. **Needs approval** (not in the offline Gradle cache) and a hardware scan test |
+
+## 4d. Phase 2 results (evidence: `docs/testing.md` → *Release-verification run, Phase 2*)
+
+| Stage | Label | One line |
+|---|---|---|
+| 0 soak end | **hardware-verified (endurance), with limits** | phone off USB 00:26→11:45 (monitor held no phone reading); the old process ran T0 → 10:31:30 with 0 claim/timeout/restart lines and no new exit record, then the **battery reached 0 %** and the phone rebooted (`reboot,lpm`, 11:23). Window passed on the process's own log; 199 stays open (F7). New: **205** — `ConnectSuite:link` wake lock 8 h 54 min, 176 mAh, largest app |
+| 1 baseline | **hardware-verified** | builds `c05efcc`/`bf096e1` as deployed; grants 14/0; pairing 2; watcher off; no transfer; rollback intact; phone `/data` 2.8 GB free (100 %) |
 
 ## 6. Phase 3 — report
 

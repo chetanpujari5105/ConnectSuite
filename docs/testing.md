@@ -28577,3 +28577,59 @@ The run brief listed *"the irreversible Activity-history rewrite (455 call rows)
 2026-10-06 23:13 (`docs/supervised-verification-plan-2026-10-06.md` §9.5: 294 call rows brought under the rule, 4,915
 lines kept, backup `3bf3ce35…` kept); 455 was the **synthetic** dry run's count; later launches log `Rewrote 0`.
 Nothing is pending.
+
+## Release-verification run, Phase 2 — 2026-10-08 from 11:45 IST (owner present, phone on USB)
+
+Instrument for every phone write: `scripts/adb-pinned.sh samsung …` (pin `RZCY12330DT`, SM-S938B, sdk 36). Reads print
+sizes, hashes, counts and fixed fields only.
+
+### Stage 0 — defect 199 soak end check (taken 11:46:05, 5 h 41 min after it was due) · **hardware-verified, with stated limits**
+
+**The monitor did not run to a valid end.** It ran every check on time (23:55 start, then every 30 min, END-CHECK
+06:04:41, `monitor finished 06:04:41`), but the phone **left USB between 00:26 and 00:56**, so every check from 00:55
+through the END-CHECK holds **no phone reading** (`0 device line(s) for the pinned serial`). Gap: 00:26 → 11:45.
+
+**Then the phone rebooted, after the window:** uptime 1,407 s at 11:46:26 → boot ≈ **11:22:59**; boot reason
+**`reboot,lpm`** (power-off charging). Cause read from the phone's own log, which covers the whole window in one file
+(`link.log`, no rotation since 23:13): `battery.state` 67 % charging at 23:57 → 47 % not charging at 04:15 → **0 % at
+10:31:30** (charging restored at 10:31:10, too late); last line of the old process 10:31:30.875; Mac `Heartbeat lost`
+10:32:01. **The battery drained; the phone powered off.** So the end check's "same PID" cannot be read — the readings
+below establish the window instead:
+
+| Criterion (as pre-registered) | Reading | Holds? |
+|---|---|---|
+| no new user-0 exit record | newest user 0 still **2026-10-07 13:56:08.525 `PACKAGE UPDATED`** (exit-info persists across reboot; a battery shutdown leaves none) | yes |
+| nothing new in the crash buffer | `0 / 0` — **not evidence**: the crash buffer does not survive a reboot | **no reading** |
+| same process, `LinkService` older than T0 | old process logged continuously T0 → 10:31:30 (129 lines, all `I`); **0** `[service]`/`[autostart]`/`Foreground … claimed`/timeout/stop lines in the window — every `LinkService` start logs a claim | yes (by the process's own log) |
+| `types=0x00000010` | not readable for the window; no claim line → no type change since the 23:54 baseline's `0x10` | inferred, not read |
+| every claim since T0 `0x10` | the only claims since T0 are after the reboot: `LISTENER_REBIND, types=0x10` 11:24:15 | yes |
+| `link-up.sh` | three OKs at 11:46 (new process, PID 8214, `createTime −21m`) | yes (after reboot) |
+
+Mac side: the same control TCP connection `…:65322 → 10.225.215.199:42501` from 23:35:18 until **10:32:01**, 0 link
+down/up lines in between. **Verdict:** the installed `c05efcc` build's `LinkService` stayed up, unrestarted and
+un-killed, for the whole 6 h 10 min window and on to **10 h 36 min** after T0 — about 9 h 54 min of it **on battery,
+screen off** (batterystats) — and ended only because the battery reached 0 %. Per audit F7 this is endurance of the
+installed build, **not** proof that defect 199's cause is removed (the static discriminator from install B stands; the
+emulator control is still not run). **Defect 199: not closed** — endurance hardware-verified.
+
+**New finding (registered as 205): the link's wake lock is the largest app consumer overnight.** `dumpsys
+batterystats --charged` (9 h 54 min on battery, 9 h 6 min screen off, computed drain 3,663 mAh): Sidekick `u0a1011`
+**177 mAh, the largest single UID**, of which `wakelock=176` — **`ConnectSuite:link` partial, 8 h 54 min**; CPU
+u 11 min / s 29 min; its own mobile radio 0.5 mAh. The device's biggest drain was the mobile radio (1,009 mAh, not
+attributed to Sidekick — consistent with the Mac on the phone's hotspot). The wake lock is defect 61's deliberate
+design; its cost had never been measured.
+
+### Stage 1 — baseline (read-only, 11:46–11:50) · **hardware-verified**
+
+Phone: installed `base.apk` pulled and hashed `0d42e27d…` (= `c05efcc`); v2 signer `d3a505d2…7d26`; runtime grants
+user 0 **14**, user 95 **0**; notification listener names the package once, accessibility 0 (as at install B);
+`LinkService` `types=0x00000010`; `link-up.sh` 3 OKs; `Download/ConnectSuite` **185** entries;
+`sidekick-pass-stop-200mb.bin` `bf375859…` (expected), `sidekick-t5-source-change-200mb.bin` `b38a9052…` (H1, as left on
+2026-10-01); `/data` **2.8 GB free, 100 % used** (constraint: keep pushes small). Mac: live `dist` `0c074f7d…` (=
+`bf096e1`), PID 88287 since 2026-10-07 10:39:53; stored `watchClipboard: false`, paired record present, `pairing: 2`,
+fingerprint `2F:97:0F:EC…`; `pull-resume/` 0 records; receive folder 67 entries, 0 partials; 10 GiB free; no `[files]`/
+`[bulk]` activity in the log's last 40 lines; rollback APKs: all four `SHA256SUMS*` OK.
+
+### Defect 205 — the link's wake lock, measured (stage 0's batterystats read)
+
+See stage 0. Registered open; nothing changed in code. Fix direction in `docs/defects.md` → 205.

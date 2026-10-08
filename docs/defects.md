@@ -671,6 +671,7 @@ someone who had already read the rule against it.
 | **37** (rejected) | re-read the secure setting on a delay | A timer instead of a fact. The bound service *is* the fact, and it is available at the moment of the callback. |
 | **39** (open — do not) | delay the composer's re-fetch | Identical shape to both of the above, on the SMS send path. |
 | **34** (rejected) | make the Mac lenient about the shape it accepts | The two sides would disagree about the contract forever while appearing to work. The phone was fixed instead. |
+| **205** | **The link holds a partial wake lock all night, and it is the largest app battery consumer.** `dumpsys batterystats --charged` after the 2026-10-07/08 soak: 9 h 54 min on battery (9 h 6 min screen off), computed drain 3,663 mAh; Sidekick `u0a1011` **177 mAh, the largest single UID**, of which **176 mAh is `ConnectSuite:link` held 8 h 54 min** — the CPU kept awake (no deep Doze for the device) for an idle link with one connected Mac. Defect 61's re-armed lock is the design; its cost was never measured | **open — measured once, single device, one night** (the device's own largest drain was the mobile radio, 1,009 mAh, consistent with the hotspot, and is not Sidekick's) | — | `docs/testing.md` → Defect 205 |
 
 The family resemblance: **each substitutes a plausible value for a known one.** The test is whether
 the code can name the fact it is waiting for. If it can, wait for that fact; if it cannot, the fix is
@@ -4112,3 +4113,15 @@ size as the receive folder would make it reachable without touching the owner's 
 Fix and evidence in the row. **Fix direction for the hardware re-test:** one ≥ 64 MiB pull (the 200 MiB synthetic source)
 shows the bar advancing with the phone's `sending` reports; a resume shows *re-checking* first. **Wrong fix:** a bar from
 the Mac's own write count labelled as delivery, or an indeterminate bar (a small file emits no progress at all).
+
+### 205 — the link's wake lock is the largest app consumer overnight · **open**
+
+Reading and its limits: `docs/testing.md` → Defect 205 and Phase 2 stage 0. One night, one phone, the Mac on the phone's
+hotspot, Sidekick otherwise idle.
+
+**Fix direction:** first measure what the lock buys — whether a connected link still delivers (a message crossing
+at `deep=IDLE`, Phase 6's method) **without** it, on battery, screen off, for one hour; then decide between holding it
+only while a session is connected and a transfer or mirror is active, or keeping it and stating the cost (≈ 3.5 % of a
+5,000 mAh battery per night here, plus the lost device-wide Doze). **Wrong fixes:** removing the lock on this reading
+alone (defect 61 shows a lapsed lock opens a real gap); a shorter timeout that is re-armed anyway (same cost, more
+churn); calling the battery drain of 2026-10-08 Sidekick's (the radio, not the lock, was the largest drain).
