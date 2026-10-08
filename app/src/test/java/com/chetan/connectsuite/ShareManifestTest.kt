@@ -71,4 +71,28 @@ class ShareManifestTest {
             share.single().mimes,
         )
     }
+
+    /**
+     * Every activity another app's moment launches — a share or the selection toolbar — carries an empty
+     * `taskAffinity`, so a `FLAG_ACTIVITY_NEW_TASK` launch cannot put it in Sidekick's task and bring
+     * `MainActivity` forward, whose focus would start an unasked clipboard sync (release-verification
+     * report §6.3, the `SendSelectionActivity` new-task hazard). Absent and empty are different here:
+     * absent means the package's affinity, which is exactly Sidekick's task.
+     */
+    @Test fun `every activity reached from another app's share or selection has an empty taskAffinity`() {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(manifest("main"))
+        val activities = doc.getElementsByTagName("activity")
+        val entryActions = setOf(send, sendMultiple, "android.intent.action.PROCESS_TEXT")
+        val reached = (0 until activities.length).map { activities.item(it) as Element }.filter { a ->
+            val actions = a.getElementsByTagName("action")
+            (0 until actions.length).any { (actions.item(it) as Element).getAttributeNS(androidNs, "name") in entryActions }
+        }
+        val names = reached.map { it.getAttributeNS(androidNs, "name") }
+        assertTrue("control: the share and selection activities were found — $names",
+            ".SendSelectionActivity" in names && ".ShareToMacActivity" in names)
+        val wrong = reached.filter { it.getAttributeNodeNS(androidNs, "taskAffinity")?.value != "" }
+            .map { it.getAttributeNS(androidNs, "name") }
+        assertEquals("activities that would join Sidekick's task", emptyList<String>(), wrong)
+    }
 }

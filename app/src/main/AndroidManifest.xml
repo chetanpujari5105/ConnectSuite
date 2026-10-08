@@ -144,12 +144,17 @@
 
           The label is what the user reads in the toolbar, where there is room for two or three
           words and the app's own name is already the icon's job.
+
+          An empty `taskAffinity`, as its share neighbours have (2026-10-08): without it a caller's
+          `FLAG_ACTIVITY_NEW_TASK` launch lands in Sidekick's own task and brings `MainActivity`
+          forward, and its focus starts a clipboard sync nobody asked for. `ShareManifestTest` holds it.
         -->
         <activity
             android:name=".SendSelectionActivity"
             android:exported="true"
             android:label="@string/send_selection_label"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
