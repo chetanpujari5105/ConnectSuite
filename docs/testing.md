@@ -28663,3 +28663,29 @@ See stage 0. Registered open; nothing changed in code. Fix direction in `docs/de
   `watchClipboard: false`, `pairing: 2`, same fingerprint; 0 watcher-start lines. `link-up.sh` 3 OKs.
 - **Rollback (not needed):** quit; move the new `dist` aside; `ditto` the moved `0c074f7d…` copy back; relaunch. Phone:
   `install -r --user 0` of the `c05efcc` APK in the rollback folder (same versionCode, no `-d`).
+
+### Stage 3 — secure re-pair (12:05–12:12) · re-pair **hardware-verified**; impostor-first **no reading (attempt 1)**
+
+- **Quit of the new build (the coordinator's first real quit), 12:05:16:** `[quit] quit requested; nothing to wait for
+  (2 checked) — proceeding`, `[quit] will-quit reached 8 ms after quit was requested`, exited within 2 s. One clean quit
+  is not proof for defect 200 (one sighting in many quits before); the lines are what would place a recurrence.
+- **Relaunch 12:05:57 with `CONNECTSUITE_DEBUG_SWITCHES=pairDecoyFirst`** (PID 65557): `[debug] pairDecoyFirst: while
+  pairing is armed, 127.0.0.1:42611 is tried before every real candidate`; while still paired it reconnected via
+  last-known and never tried the decoy (control for "only while armed").
+- **Mac Forget 12:09:04**, by name through `probe.mjs` (`Settings` nav row → `Connection` tab → *Forget this phone*,
+  each `act` landed; premise *connected + paired* re-checked inside the click; after: `phase connecting`, `pairing
+  unpaired`, 1 QR image). Log: `Forgot the paired phone`, `QR armed … scannable=true`. **Instrument note:** the first
+  run passed an `act` result to `format()`; `probe.mjs` refused it (its guard) after the Settings navigation only —
+  nothing was forgotten by that run.
+- **Candidate order on hardware:** every pass after Forget tried `127.0.0.1:42611 (manual)` **first**, then the phone
+  (9 passes, 12:09:05–12:10:30, each decoy try `ECONNREFUSED` — the decoy was not yet listening). The phone refused the
+  Mac each time with `UNAUTHORIZED: This phone is not waiting to pair` until it was armed.
+- **Phone Forget (owner) 12:10:16:** `[trust] Forgot … and closed 0 live session(s)`. **Scan:** phone `Pairing armed for
+  Chetans-MacBook-Pro … waiting for it to prove the code` 12:10:28.330 → Mac `10.51.59.236 proved the pairing code —
+  sending this Mac's proof` 12:10:30.455 → Mac `Paired with Samsung SM-S938B … pairing v2, both sides proved the code`
+  12:10:30.483; phone `Paired with Chetans-MacBook-Pro … pairing v2, both sides proved the code` 12:10:30.513. Stored
+  `pairing: 2`, the same phone fingerprint prefix; `link-up.sh` 3 OKs.
+- **Impostor-first: NO READING.** The phone's scanner read the QR as soon as the scan screen opened, ~56 s before the
+  decoy was started (12:11:26); the decoy's summary: `connections 0, hellos 0, pair.confirm 0, injected 0`. Nothing about
+  the Mac's handling of an impostor was observed. Learned for a retry: the decoy must be listening **before** the Mac
+  arms the QR, and bounded below the 8-failure retirement (each refused pass counts one; backoff 1-2-4-8-16-30 s).
