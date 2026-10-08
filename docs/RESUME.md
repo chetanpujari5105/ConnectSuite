@@ -1,3 +1,45 @@
+# RELEASE-FIX BATCH — 2026-10-09: items 1–7 built, tested and committed; hardware NOT run (phone off USB) — beta NOT YET, four steps away
+
+**Read first:** `docs/release-verification-2026-10-08.md` §7 (items table and verdict), then
+`docs/beta-hardware-plan-2026-10-09.md` (what runs next, step by step). Evidence: `docs/testing.md` →
+*Release-fix batch 2026-10-09*; `docs/evidence/release-candidate-2026-10-09/`.
+
+1. **Built and proven (tests, mutations, isolated runs — no hardware):**
+   - **207:** a stored identity this build cannot open is never overwritten (Quit / Show folder / Start over,
+     old key kept); development builds use `sidekick-desktop-dev` (seeded once by copy); one process per
+     profile; the pairing screen offers *Forget <phone>* and arms no code while a phone is stored; migration
+     design in `docs/protocol.md`. Isolated Electron run with real `safeStorage`: files byte-identical, second
+     instance refused, 0 network lines.
+   - **208:** a listing race (old root's page landing in the new root's list) fixed; queued batches dropped;
+     the phone refuses a foreign id before the provider (`BAD_REQUEST`, *refused*, never *gone*).
+   - **Item 3:** `SendSelectionActivity` `taskAffinity=""`, guarded for every share/selection entry.
+   - **Item 4:** ML Kit → ZXing 3.5.3 (Apache-2.0, no deps, no network code). Release classpath Google
+     artifacts 16 → 0; manifest components 26 → 20; APK 25 → 5.1 MB. *"Nothing leaves your network"* kept, now
+     true of the phone app.
+   - **Item 5:** clipboard arrival card worded by route; "ConnectSuite" → "Sidekick" in clipboard copy; a
+     Mac-closed stream logged at I as *stopped*; test-file typecheck ratchet (new defect **209**: 14 mis-shaped
+     test calls, listed); log privacy re-read.
+   - **Fresh:** Mac **2,014 / 0**, both typechecks + test ratchet clean; phone **1,470 / 0** (six modules,
+     `--rerun-tasks`, 0 stale result files); Swift **140 / 0**; scripts **290 / 0**; every guard and hook fixture
+     exit 0. ~42 mutations red. One unidentified Mac failure in one run (2,007/1), not seen in 7 runs since.
+2. **Committed** (local, not pushed): `cdee313` `0745cd6` `12ce28e` `2114c0f` `34362e1` `a4cc38f`, and the commit
+   carrying this entry.
+3. **Ready, not installed or launched** (session scratch `rc-34362e1/`): Mac `Sidekick-2.0.0-arm64.dmg`
+   `d9d3a456…`, Intel `.dmg` `f08492d6…`, zips; unsigned release APK `c0814f50…`. Hashes and static checks:
+   `docs/release-candidate-2026-10-09.md`. Tester guide: `docs/beta-tester-guide.md`.
+4. **Needs your decision or hands:** sign the APK (your act); publisher name, address, email, effective date;
+   **205** (measure vs accept — left blank in the brief); **the drop sheet's Escape** (accept vs custom sheet —
+   left blank); phone on USB for §A–B of the hardware plan; a new macOS user for the fresh-user test; a
+   consenting number (30) and caller (camera 6/8/9, banner); licence-report and OSV-audit approvals.
+5. **Next:** phone on USB → A1–A6 (install, relaunch, read `seed: copied`) → B1 real ZXing scan (one re-pair
+   approved) → B2, B4, B9, B10.
+6. **Left changed on your devices:** **nothing on the phone** (never connected). Mac: no Sidekick relaunched,
+   `desktop/dist` **not** rebuilt (builds were in scratch); one development Electron ran for ~5 s on a temporary
+   profile in `/var/folders/…/sidekick-207-profile-*` (left there; nothing in your profiles or Keychain changed —
+   its prompt appeared on screen briefly); one attributes-only Keychain read of two item names (no secrets, no
+   prompt); `com.google.zxing:core:3.5.3` downloaded into `~/.gradle`. Your uncommitted edits untouched; this
+   entry and the register/testing sections were staged without them.
+
 # RELEASE-VERIFICATION RUN — 2026-10-08 (owner present): Phase 1 code + Phase 2 hardware stages 0–13 — **NO-SHIP**; two release-relevant defects found and fixed on hardware
 
 **Read first:** `docs/release-verification-2026-10-08.md` §6 (report, ranked blockers, decisions owed, verdict); evidence

@@ -366,3 +366,45 @@ input, reconnect and the camera. It is still not shippable: **there is no signed
 first signed build would silently destroy existing pairings (207)**; **the phone's privacy claim is false while ML Kit
 ships (P3)**; and **there is no privacy policy or publisher (RB5)**. Two release-relevant defects (206, 201) were found
 and fixed only because this run used real hardware — the suite was green over both.
+
+## 7. Release-fix batch — 2026-10-09 (owner's brief; phone off USB throughout)
+
+Evidence: `docs/testing.md` → *Release-fix batch 2026-10-09*; artifacts `docs/release-candidate-2026-10-09.md`;
+plans `docs/beta-hardware-plan-2026-10-09.md`; drafts `docs/privacy-policy-draft-2026-10-09.md`,
+`docs/beta-tester-guide.md`.
+
+### 7.1 Items
+
+| # | Item | Commit | Label | Evidence |
+|---|---|---|---|---|
+| 1 | Defect 207 a–e | `cdee313` | tests + **isolated Electron**; hardware owed (A6, B2) | `docs/evidence/release-candidate-2026-10-09/tests/207-*` |
+| 2 | Defect 208 | `0745cd6` | tests-only; hardware owed (B9) | `tests/208-*` |
+| 3 | `SendSelectionActivity` `taskAffinity=""` | `12ce28e` | tests-only; hardware owed (B4) | `tests/item3-*` |
+| 4 | ML Kit → ZXing; privacy sentence true | `2114c0f` | tests + graph/manifest/dex; **real scan owed (B1)** | `mlkit-replacement/` |
+| 5 | arrival card, names, I-level stops, test typecheck ratchet, log re-check | `34362e1` | tests-only | `tests/item5-*` |
+| 6 | release candidate, static | — | static only; nothing launched or installed | `release-candidate-2026-10-09.md` |
+| 7 | privacy policy + Data safety drafts | `a4cc38f` | drafts; publisher blank | `privacy-policy-draft-2026-10-09.md` |
+| 8 | hardware checks | — | **not run** (phone off USB; owner's word needed) | `beta-hardware-plan-2026-10-09.md` §A–C |
+| 9 | fresh-user test | — | **not run**; plan written; Mac half waits for a new macOS user | same, §D |
+| 10 | defect 30 / 137 | — | **blocked** (consenting number) / open, not reproduced, reopen criteria written | `defects.md` |
+
+### 7.2 Verdict for a limited beta with named testers: **NOT YET — four steps away**
+
+Every code blocker from §6.5 that is in the code is fixed in source: 207 (before any signed build), P3 (the
+privacy sentence is now true of the phone), 208, the new-task hazard. What stands between this and a beta is not
+code:
+
+1. **The ZXing scanner has never read a real camera frame.** Pairing depends on it. B1, ten minutes.
+2. **The development Mac app has not been relaunched on the new profile** (A6) — the first real run of 207's
+   seed-and-load path.
+3. **There is no installable APK.** The release APK is unsigned; signing is the owner's act. After signing,
+   one install and pair on the **release** build (R8 on) — the debug build on the phone does not run R8.
+4. **Publisher name, address, support email and effective date** for the policy testers will be pointed at.
+
+With those four, a beta to named testers who accept Gatekeeper's *Open Anyway* is reasonable.
+
+**Still missing for a public release:** Developer ID signing and notarization (and removing
+`disable-library-validation` / `allow-dyld-environment-variables`, measured by a launch); Android developer
+verification for direct distribution; a notices screen and licence evidence for the 152 Android artifacts not read
+from POMs; a dependency-advisory audit; a decision and measurement for defect 205; VoiceOver and TalkBack passes;
+the fresh-user test on both platforms; more than one phone and one Mac; defect 209's 14 test calls.
