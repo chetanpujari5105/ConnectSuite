@@ -42,6 +42,7 @@ declare function describeClipPhone(facts: {
   advertised: boolean;
   unavailableReason: string | null;
   lastArrivedAtMs: number | null;
+  lastArrivalHow?: 'applied' | 'copied' | 'offered' | null;
   nowMs: number;
 }): {
   id: string;
@@ -54,6 +55,9 @@ declare function describeClipPhone(facts: {
 declare function lastArrivalFromPhone(
   entries: readonly { source?: string; receivedAtMs?: number }[],
 ): number | null;
+declare function lastArrivalHow(
+  entries: readonly { source?: string; receivedAtMs?: number; applied?: boolean; offerId?: string; copiedByPerson?: boolean }[],
+): 'applied' | 'copied' | 'offered' | null;
 
 interface ClipEntryRow {
   kind: 'text' | 'empty' | 'sensitive' | 'displaced' | string;
@@ -386,8 +390,8 @@ class ClipboardView {
     this.phoneWall.textContent =
       'The other direction is Android’s rule, not an unfinished feature. Android forbids every app ' +
       'from reading the clipboard while it is in the background — no Android app can do what an ' +
-      'iPhone does here, and ConnectSuite is not an exception to it. So the phone can only send ' +
-      'its clipboard while ConnectSuite is open on screen: copy on the phone, open ConnectSuite ' +
+      'iPhone does here, and Sidekick is not an exception to it. So the phone can only send ' +
+      'its clipboard while Sidekick is open on screen: copy on the phone, open Sidekick ' +
       'there, and it arrives.';
 
     // **Two clicks, like the dialler**, and for the same reason: there is no undo for this one.
@@ -607,6 +611,7 @@ class ClipboardView {
       advertised: this.advertised,
       unavailableReason: this.unavailableReason,
       lastArrivedAtMs: lastArrivalFromPhone(this.entries),
+      lastArrivalHow: lastArrivalHow(this.entries),
       nowMs: Date.now(),
     });
     this.phoneState.dataset.tone = view.tone;
@@ -674,7 +679,7 @@ class ClipboardView {
       none.className = 'clip-empty';
       none.textContent =
         this.tab === 'phone'
-          ? 'Nothing from the phone yet. Open ConnectSuite on it after copying — that is the only moment Android lets it look.'
+          ? 'Nothing from the phone yet. Open Sidekick on it after copying — that is the only moment Android lets it look.'
           : 'Nothing copied on this Mac yet.';
       this.list.append(none);
     }

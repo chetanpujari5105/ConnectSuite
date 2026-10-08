@@ -422,9 +422,9 @@ object ClipFeature {
             return session.sendError(
                 requestId = request.id,
                 code = ErrorCode.PHONE_NOT_FOREGROUND,
-                message = "The phone can only read its clipboard while ConnectSuite is open on screen.",
+                message = "The phone can only read its clipboard while Sidekick is open on screen.",
                 feature = Capability.CLIPBOARD,
-                fixHint = "Open ConnectSuite on the phone, then ask again.",
+                fixHint = "Open Sidekick on the phone, then ask again.",
             )
         }
         session.ack(request) {
@@ -605,7 +605,7 @@ object ClipFeature {
     private fun applyToClipboard(context: Context, text: String) {
         echo.wroteLocally(text)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("ConnectSuite", text))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Sidekick", text))
     }
 
     // --- the one place that touches ClipboardManager for reading ----------------------------------

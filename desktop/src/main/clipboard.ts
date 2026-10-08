@@ -199,7 +199,7 @@ export class ClipboardClient {
   }
 
   /** The apply half: interlock, displaced capture, write, history. Shared by an arrival and an offer's Copy. */
-  private applyArrival(entry: ClipItem, text: string): void {
+  private applyArrival(entry: ClipItem, text: string, copiedByPerson = false): void {
     this.echo.arrived(text);
     const displaced = this.captureDisplaced(text);
     clipboard.writeText(text);
@@ -208,7 +208,7 @@ export class ClipboardClient {
 
     // `receivedAtMs` is this Mac's clock and `atMs` is the phone's; both are kept because the sync
     // timeline needs to say which machine's clock each of its rows came from. See `ClipItem`.
-    this.history.add({ ...entry, receivedAtMs: Date.now(), applied: true });
+    this.history.add({ ...entry, receivedAtMs: Date.now(), applied: true, ...(copiedByPerson ? { copiedByPerson: true } : {}) });
     this.notify({ ...entry, applied: true });
     log.info(
       'clipboard',
@@ -298,6 +298,7 @@ export class ClipboardClient {
     this.applyArrival(
       { kind: 'text', text: offer.text, atMs: offer.atMs, source: 'phone', package: offer.package, appName: offer.appName },
       offer.text,
+      true,
     );
     return { ok: true, data: { bytes: byteLength(offer.text) } };
   }

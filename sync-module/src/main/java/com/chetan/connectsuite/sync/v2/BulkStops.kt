@@ -57,6 +57,25 @@ object BulkStops {
      * handed to a session that could still send it.
      */
     fun sentInFull(allBytesSent: Boolean, verdictQueued: Boolean): Boolean = allBytesSent && verdictQueued
+
+    /** How a pull that ended in an exception is reported: an expected stop, or a failure. */
+    data class Failure(val expected: Boolean, val words: String)
+
+    /**
+     * A pull whose socket broke is usually not a fault (release run 2026-10-08, T3): the person pressed
+     * Pause or Disconnect, the Mac closed the stream, and the write threw. That was logged at **E** as
+     * `block pull failed`. A stop reason already flagged (the session ended, or the Mac cancelled), or an
+     * I/O error on the stream, is an expected stop and is worded as one; the phone cannot tell a Pause
+     * from a Disconnect from a dropped link, so the sentence names all three. Anything else stays a failure.
+     */
+    fun classifyFailure(stopReason: String?, error: Throwable): Failure = when {
+        stopReason != null -> Failure(true, describe(stopReason))
+        error is java.io.IOException -> Failure(
+            true,
+            "stopped: the Mac closed the stream (a Pause, a Disconnect or a dropped link — this end cannot tell which)",
+        )
+        else -> Failure(false, "failed: ${error.javaClass.simpleName}")
+    }
 }
 
 /** The live streams asked to stop, each with its reason. A stream polls [take] between chunks. */

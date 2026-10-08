@@ -423,7 +423,7 @@ test('defect 85 — the left column says the feature is working before anything 
   assert.equal(pane.phoneState.dataset.state, 'waiting');
   assert.equal(pane.phoneState.dataset.tone, 'ready');
   // The recipe, in the column the user reads. It was 828px down the other one.
-  assert.match(pane.phoneDetail.textContent, /open ConnectSuite there/);
+  assert.match(pane.phoneDetail.textContent, /open Sidekick there/);
   assert.match(pane.phoneDetail.textContent, /Android/);
   // Nothing to do, because nothing is wrong.
   assert.equal(pane.phoneAction.hidden, true);

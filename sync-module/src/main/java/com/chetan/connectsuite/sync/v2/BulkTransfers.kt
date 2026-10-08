@@ -172,8 +172,10 @@ object BulkTransfers {
 
     private val completed = AtomicLong(0)
     private val failed = AtomicLong(0)
+    /** Pulls that ended because the stream was closed or stopped — not completed, and not a fault. */
+    private val stopped = AtomicLong(0)
 
-    private fun tally(): String = "${completed.get()} completed / ${failed.get()} failed since start"
+    private fun tally(): String = "${completed.get()} completed / ${stopped.get()} stopped / ${failed.get()} failed since start"
 
     /**
      * Registers a `media.original` pull and returns its id, or null when the item is gone.
@@ -1289,9 +1291,16 @@ object BulkTransfers {
                 } + " — ${tally()}; ${framing.tally.summary()}"
             if (sentInFull) LinkLog.i("bulk", line) else LinkLog.w("bulk", line)
         } catch (e: Exception) {
-            failed.incrementAndGet()
             val elapsed = System.currentTimeMillis() - startedAt
-            LinkLog.e("bulk", "${entry.transferId} block pull failed in ${elapsed}ms — ${tally()}; ${framing.tally.summary()}", e)
+            val how = BulkStops.classifyFailure(stopWhy, e)
+            if (how.expected) {
+                // Not completed, and not a fault either: a normal-level line with no stack trace.
+                stopped.incrementAndGet()
+                LinkLog.i("bulk", "${entry.transferId} block pull ${how.words} after ${elapsed}ms (${e.javaClass.simpleName}) — ${tally()}; ${framing.tally.summary()}")
+            } else {
+                failed.incrementAndGet()
+                LinkLog.e("bulk", "${entry.transferId} block pull ${how.words} in ${elapsed}ms — ${tally()}; ${framing.tally.summary()}", e)
+            }
             runCatching {
                 channel.session.send(
                     Envelope(

@@ -155,4 +155,24 @@ class BulkStopsTest {
         assertTrue("the oldest fell out", ended.firstEnd("a"))
         assertFalse("a recent one is still remembered", ended.firstEnd("d"))
     }
+
+    // ---- 2026-10-09: a stop the person caused was logged at E as a failure (release run, stage 4 T3) ----
+
+    @Test
+    fun `a stream the Mac closed is an expected stop, worded as one`() {
+        val reset = BulkStops.classifyFailure(null, java.net.SocketException("Connection reset"))
+        assertTrue("a Mac-side close logged as a failure", reset.expected)
+        assertTrue(reset.words, reset.words.startsWith("stopped: the Mac closed the stream"))
+        val ended = BulkStops.classifyFailure(BulkStops.SESSION_ENDED, java.net.SocketException("Broken pipe"))
+        assertTrue(ended.expected)
+        assertEquals(BulkStops.describe(BulkStops.SESSION_ENDED), ended.words)
+        assertTrue(BulkStops.classifyFailure("user", java.io.EOFException()).expected)
+    }
+
+    @Test
+    fun `control - a fault that is not a stop stays a failure`() {
+        val bug = BulkStops.classifyFailure(null, IllegalStateException("boom"))
+        assertFalse(bug.expected)
+        assertTrue(bug.words, bug.words.startsWith("failed"))
+    }
 }

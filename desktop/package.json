@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && node scripts/typecheck-tests.mjs",
     "test": "node scripts/run-tests.mjs \"src/**/*.test.ts\"",
     "dist": "npm run build && electron-builder --mac --publish never",
     "dist:dir": "npm run build && electron-builder --mac --dir --publish never"

@@ -216,3 +216,23 @@ test('F1: an empty disconnect clear is silent on every tick; one that drops hist
   const held = lines(() => { c.clear(); c.clear(); });
   assert.equal(held.length, 1, `control: the clear that removed the offer is logged: ${held.join(' | ')}`);
 });
+
+/*
+ * 2026-10-09 (release report, stage 6 copy fault): after a person pressed Copy on an offer, the pane's
+ * arrival line read "It went straight onto this Mac's clipboard". The pane reads `lastArrivalHow` over
+ * `entries()`; this reaches the write that makes the two kinds differ — the Copy path — through the real
+ * client, and the real rule the pane calls.
+ */
+test('a Copy on an offer is recorded as copied by the person, and an automatic arrival is not', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { lastArrivalHow } = require('../shared/clipPhoneState.ts') as { lastArrivalHow: (e: unknown[]) => string | null };
+  const { c, offer } = offering();
+  const id = offer('offered text');
+  assert.equal(lastArrivalHow(c.entries()), 'offered', 'control: a pending offer reads as offered');
+  assert.equal(c.copyOffer(id).ok, true);
+  assert.equal(lastArrivalHow(c.entries()), 'copied', 'a person-initiated Copy reads as automatic');
+
+  const auto = client();
+  auto.c.onPush(push({ origin: 'clipboard' }));
+  assert.equal(lastArrivalHow(auto.c.entries()), 'applied');
+});

@@ -1,0 +1,14 @@
+{
+  "//": [
+    "Every source file including tests, for scripts/typecheck-tests.mjs only (2026-10-09).",
+    "tsconfig.test.json checks the harness and explains why the tests are not in it: tsx runs them in a",
+    "different module mode, so a plain check reports how they execute rather than whether they are right.",
+    "That noise is real (TS1343, TS2306) and the script does not gate on it. What it gates on is narrower and",
+    "is not noise: a test calling the code it tests with the wrong arity, a property that does not exist,",
+    "or an unknown field — a test that passes while exercising something other than what it names."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "allowImportingTsExtensions": true },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

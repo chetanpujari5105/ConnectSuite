@@ -87,6 +87,13 @@ interface ClipPhoneFacts {
    * their own memory is measured against somebody else's clock.
    */
   lastArrivedAtMs: number | null;
+  /**
+   * How that arrival reached this Mac (2026-10-09): put on the clipboard automatically (`applied`, the
+   * phone's own clipboard sync), put there by the person pressing **Copy** on an offer (`copied`), or
+   * still waiting for Copy (`offered`). The card said *"It went straight onto this Mac's clipboard"*
+   * for all three. Optional — absent reads as `applied`, the only kind there was before offers.
+   */
+  lastArrivalHow?: 'applied' | 'copied' | 'offered' | null;
   /** Now, on the same clock as [lastArrivedAtMs]. Injected so the age is testable. */
   nowMs: number;
 }
@@ -153,7 +160,7 @@ function ago(ms: number): string {
  * mention is a promise, and this feature cannot keep it by itself.
  */
 const RECIPE =
-  'Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read ' +
+  'Copy on the phone and open Sidekick there, and it arrives. Android only lets an app read ' +
   'the clipboard while it is on screen — a rule for every app, not a missing piece of this one. ' +
   'There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.';
 
@@ -206,13 +213,42 @@ function describeClipPhone(facts: ClipPhoneFacts): ClipPhoneView {
   return {
     id: RECEIVED,
     headline: `Arrived from the phone ${ago(facts.nowMs - facts.lastArrivedAtMs)}`,
-    detail:
-      'It went straight onto this Mac’s clipboard, so ⌘V pastes it. ' +
-      'The next one needs ConnectSuite open on the phone again.',
+    detail: RECEIVED_DETAIL[facts.lastArrivalHow ?? 'applied'],
     tone: 'done',
     icon: 'check',
     action: null,
   };
+}
+
+/**
+ * The received line's sentence, by how the clip arrived. Only the automatic route — the phone reading its
+ * own clipboard when Sidekick comes to the front — needs the app opened again for the next one; *Send to
+ * Mac* on selected text does not, so a copied offer makes no claim about the next one.
+ */
+const RECEIVED_DETAIL: Record<'applied' | 'copied' | 'offered', string> = {
+  applied:
+    'It went straight onto this Mac’s clipboard, so ⌘V pastes it. ' +
+    'The next one needs Sidekick open on the phone again.',
+  copied: 'You copied it onto this Mac’s clipboard with Copy, so ⌘V pastes it.',
+  offered: 'It is waiting below and this Mac’s clipboard is unchanged — press Copy to put it there.',
+};
+
+/**
+ * How the newest phone arrival reached this Mac (see [ClipPhoneFacts.lastArrivalHow]), or `null`.
+ * Newest by this Mac's clock, like [lastArrivalFromPhone], so the two always describe the same entry.
+ */
+function lastArrivalHow(
+  entries: readonly { source?: string; receivedAtMs?: number; applied?: boolean; offerId?: string; copiedByPerson?: boolean }[],
+): 'applied' | 'copied' | 'offered' | null {
+  let newest: (typeof entries)[number] | null = null;
+  for (const entry of entries) {
+    if (entry.source !== 'phone' || typeof entry.receivedAtMs !== 'number') continue;
+    if (newest === null || entry.receivedAtMs > (newest.receivedAtMs as number)) newest = entry;
+  }
+  if (newest === null) return null;
+  if (newest.copiedByPerson) return 'copied';
+  if (newest.applied === false && newest.offerId !== undefined) return 'offered';
+  return 'applied';
 }
 
 /**
@@ -244,8 +280,9 @@ function lastArrivalFromPhone(
   const g = globalThis as Record<string, unknown>;
   g.describeClipPhone = describeClipPhone;
   g.lastArrivalFromPhone = lastArrivalFromPhone;
+  g.lastArrivalHow = lastArrivalHow;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { describeClipPhone, lastArrivalFromPhone, WAITING, RECEIVED, OFFLINE, UNAVAILABLE };
+  module.exports = { describeClipPhone, lastArrivalFromPhone, lastArrivalHow, WAITING, RECEIVED, OFFLINE, UNAVAILABLE };
 }

@@ -60,6 +60,8 @@ export interface ClipItem {
   id?: string;
   /** Set when the arrival was **offered** rather than applied (S7). **Local; never on the wire.** */
   offerId?: string;
+  /** Set when the person pressed **Copy** on an offer and it was applied. **Local; never on the wire.** */
+  copiedByPerson?: boolean;
   /** Whether that offer still waits for Copy — computed when the history is read. **Local.** */
   offerPending?: boolean;
 }
