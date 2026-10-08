@@ -1,0 +1,1 @@
+<failure message="java.lang.AssertionError: expected:&lt;[]&gt; but was:&lt;[The phone can only read its clipboard while ConnectSuite is open on screen., Open ConnectSuite on the phone, then ask again., ConnectSuite]&g

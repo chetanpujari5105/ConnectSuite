@@ -1,0 +1,48 @@
+{
+  "app": "<scratch>/rc-34362e1/out-mac/mac/Sidekick.app",
+  "bundle": {
+    "id": "com.chetan.sidekick.desktop",
+    "version": "2.0.0",
+    "build": "2.0.0",
+    "LSFileQuarantineEnabled": true,
+    "NSLocalNetworkUsageDescription": "Sidekick connects to your phone on this network. Nothing leaves your local network and there is no server involved."
+  },
+  "asarIntegrity": {
+    "declared": "cb59ec83be874e8c07bf5fa1686ec5641c60afdb49bdef9b4b985bbfe9a781cf",
+    "headerSha256": "cb59ec83be874e8c07bf5fa1686ec5641c60afdb49bdef9b4b985bbfe9a781cf",
+    "match": true
+  },
+  "asarSha256": "07b414c6bb29cc0f113283656eef507fc2e4c5f7f91da983aa44cc6be6734c53",
+  "fuseWire": "000011011",
+  "codesign": [],
+  "entitlements": [
+    "<key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>",
+    "<key>com.apple.security.cs.allow-jit</key><true/>",
+    "<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>",
+    "<key>com.apple.security.cs.disable-library-validation</key><true/>",
+    "<key>com.apple.security.files.downloads.read-write</key><true/>",
+    "<key>com.apple.security.files.user-selected.read-write</key><true/>",
+    "<key>com.apple.security.network.client</key><true/>"
+  ],
+  "spctl": "<scratch>/rc-34362e1/out-mac/mac/Sidekick.app: rejected",
+  "asarFiles": 1070,
+  "testOrMapFiles": [],
+  "entryRequiresProfile": true,
+  "gates": {
+    "SHARE_V3_RELEASE": "false (/dist/main/shareActivation.js)",
+    "SHARE_WAIT_RELEASE": "false (/dist/main/shareActivation.js)",
+    "FS_BLOCKS_RELEASE": "false (/dist/shared/extensions.js)",
+    "WEBCAM_RELEASE": "false (/dist/shared/webcamWire.js)"
+  },
+  "fixes": {
+    "207a never overwrite": true,
+    "207b dev profile": true,
+    "207c single instance": true,
+    "207d no code beside a stored phone": true,
+    "208 listing generation": true,
+    "208 queued batches dropped": true,
+    "item 5 arrival by route": true
+  },
+  "fixesControl": true,
+  "connectSuiteInRendererCopy": 2
+}

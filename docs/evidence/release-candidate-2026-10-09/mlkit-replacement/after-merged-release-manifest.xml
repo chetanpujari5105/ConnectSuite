@@ -1,0 +1,512 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.chetan.connectsuite"
+    android:versionCode="1"
+    android:versionName="2.0.0" >
+
+    <uses-sdk
+        android:minSdkVersion="29"
+        android:targetSdkVersion="36" />
+
+    <!-- ==== Networking / Wi-Fi Direct discovery (Module 1: Sync) ==== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!--
+      Wi-Fi P2P peer discovery requires location up to API 32. Both precisions are declared
+      because the system may grant only the coarse one, and no location is ever read or stored.
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
+    <!-- API 33+ replaces the location requirement for P2P/scan use cases. -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <!-- ==== Foreground services ==== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- ==== QR pairing ==== -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <!-- ==== Optional, requested at runtime (Phase 4: notifications, SMS, calls, contacts) ==== -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!--
+      Phase 4 additions. Each one is required by a message the `sms` or `calls` capability contract
+      makes mandatory, and without it that capability could never be honestly advertised:
+
+        SEND_SMS           sms.send
+        CALL_PHONE         call.dial
+        ANSWER_PHONE_CALLS call.answer, call.reject
+
+      SEND_SMS in particular was the reason `sms` was permanently grey: Capabilities.kt has always
+      required it, and it was declared nowhere in the repo, so no amount of tapping in Settings
+      could turn the capability on.
+
+      These are Play "sensitive permission" declarations. See docs/permissions.md for the position
+      we are taking on distribution before anyone tries to publish this.
+    -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!--
+      ==== Storage, and the photo browser ====
+
+      Two grants on Android 13+ and one below it, which is why CapabilityContract models photos as
+      permission *alternatives* rather than a flat any-of: READ_MEDIA_IMAGES alone satisfies a flat
+      any-of and leaves every video in `media.list` unreadable behind a green capability chip.
+
+      READ_EXTERNAL_STORAGE keeps its maxSdkVersion="32". The cap is not what was stopping photos —
+      the undeclared READ_MEDIA_* permissions were — and removing it would make
+      CapabilityPermissionTest.grantableToday() report this permission as grantable on Android 16,
+      where the system ignores it entirely. That would put the false reading inside the check that
+      exists to catch false readings.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!--
+      Defect 139. Declared so Android 14+ treats "Allow limited access" as a real, lasting grant of
+      the photos the person picked. Undeclared, Android ran the app in compatibility mode: a limited
+      pick handed out READ_MEDIA_IMAGES/VIDEO as a one-time grant (REVOKED_COMPAT|ONE_TIME) that the
+      checklist read as full access and lost on the next process start. Requested with the two above
+      — see MediaAccess.requestFor — and asking again is Android's own change-selection flow.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+    <uses-feature
+        android:name="android.hardware.wifi.direct"
+        android:required="false" />
+    <!--
+      SMS mirroring is an optional extra, so a tablet or Wi-Fi-only device with no telephony
+      radio must still be able to install the app.
+    -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+    <!--
+        Defect 28. Without this, Android 11+ package visibility hides almost every other app from
+        `getApplicationInfo`, so the notification and media-remote panes labelled rows with a raw
+        package name — `com.google.android.apps.messaging` where `Messages` belonged.
+
+        Matching the launcher intent rather than declaring `QUERY_ALL_PACKAGES`: the permission
+        would also work and is flagged by Play policy for anything that is not a launcher or a
+        security tool. An app with a launcher icon is exactly the set that posts notifications and
+        holds media sessions, so this is the right set and not a lesser one. See AppLabels.kt.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <permission
+        android:name="com.chetan.connectsuite.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="com.chetan.connectsuite.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+
+    <application
+        android:name="com.chetan.connectsuite.ConnectSuiteApp"
+        android:allowBackup="false"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:extractNativeLibs="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ConnectSuite" >
+
+        <!--
+          singleTop so the "start mirroring" notification reaches onNewIntent when the app is
+          already running. Without it the launcher Intent only brings the task forward and the
+          tab-to-open extra is dropped, which lands the user on whatever tab they left.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ConnectSuite" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          **Send selected text to the Mac** — the only cheap trigger Android permits, measured in
+          `docs/testing.md` → Phase 7 Slice 17. `ACTION_PROCESS_TEXT` puts this in the text-selection
+          toolbar beside Copy; `ACTION_SEND` puts it in the share sheet. **Neither reads the
+          clipboard** — the text arrives in the Intent — which is why they are not subject to the
+          background-read rule that makes the phone→Mac direction need the app on screen.
+
+          Translucent and `noHistory`: it has no UI, finishes in `onCreate`, and must never be
+          something the back gesture returns to. `excludeFromRecents` for the same reason — a
+          recents card for an activity that lives 40ms is litter.
+
+          The label is what the user reads in the toolbar, where there is room for two or three
+          words and the app's own name is already the icon's job.
+
+          An empty `taskAffinity`, as its share neighbours have (2026-10-08): without it a caller's
+          `FLAG_ACTIVITY_NEW_TASK` launch lands in Sidekick's own task and brings `MainActivity`
+          forward, and its focus starts a clipboard sync nobody asked for. `ShareManifestTest` holds it.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.SendSelectionActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/send_selection_label"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" >
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!--
+              `text/*`, not only `text/plain`: a text **file** shared from My Files (`.txt`, `.csv`,
+              `.json`, `.md`, `.vcf`…) arrives as SEND with its own text type and an EXTRA_STREAM. The
+              activity forwards anything carrying a stream to ShareToMacActivity (ShareTextRoute), so
+              a file is sent as a file and a selection of text still goes to clip.push.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Feature A, slice 1 (`docs/phase-7-share-plan.md`): one file from any app's share sheet,
+          copied privately while this activity holds the grant. It sends nothing in this slice.
+
+          The filter claims no `text/*` and no `*/*`, so a plain-text share never lists it and keeps
+          going to SendSelectionActivity → clip.push. The recorded trade-off: a text *file*
+          (`text/plain` with a stream) does not list it either in v1. No SEND_MULTIPLE: one file only.
+          `ShareManifestTest` holds all three.
+
+          `excludeFromRecents` and an empty `taskAffinity`: it belongs to the sharing app's moment,
+          not to Sidekick's task. Leaving it discards the prepared copy (see the class comment).
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.ShareToMacActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/share_to_mac_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ConnectSuite" >
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="application/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="font/*" />
+                <data android:mimeType="model/*" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Several files from one Gallery or My Files multi-select (docs/protocol.md → Share → Version 3;
+          docs/feature-a-multi-offer-proposal.md rev 4 §3, §11-§15). Same types as the single-file filter
+          above, no text, SEND_MULTIPLE only; one file selected is handled as the single-file sheet.
+          Enabled by @bool/share_many_enabled: true in debuggable builds, and in release only once the
+          owner flips Extensions.MULTI_FILE_RELEASE (the two are held equal by ShareManyManifestTest).
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.ShareManyToMacActivity"
+            android:enabled="@bool/share_many_enabled"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/share_to_mac_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ConnectSuite" >
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <!--
+                  `text/*` too (2026-09-29): a My Files selection of .txt/.csv/.json files is sent as
+                  text/plain or text/*, and without this Sidekick was not in the share sheet at all.
+                  Plain text is never a SEND_MULTIPLE, so this takes nothing from clip.push.
+                -->
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="font/*" />
+                <data android:mimeType="model/*" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.chetan.connectsuite.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" >
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <service
+            android:name="com.chetan.connectsuite.sync.notifications.NotificationMirrorService"
+            android:exported="false"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" >
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!--
+          Not exported: its extra carries the user's clipboard text, and an exported receiver
+          accepting arbitrary text from any app on the device would be a way to write somebody's
+          clipboard from outside. The only sender is our own immutable PendingIntent.
+        -->
+        <receiver
+            android:name="com.chetan.connectsuite.sync.v2.ClipApplyReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.chetan.connectsuite.sync.sms.SmsMirrorReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS" >
+            <intent-filter android:priority="500" >
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        <!--
+          Transparent, no-history shim that carries the system consent prompt's result back to
+          MirrorEngine. excludeFromRecents so a mirror prompt never leaves a card behind, and
+          noHistory so a stale instance cannot answer a later request.
+
+          configChanges is load-bearing, not tidiness. Without it, rotating the phone while the
+          consent prompt is up destroys and recreates this activity: onDestroy runs with no result
+          delivered, reports ConsentDismissed, and consumes the pending callback — so the real
+          result that arrives moments later has nowhere to go and is dropped. That was observed on
+          2026-08-25 (see docs/testing.md): a spurious "prompt closed before it was answered"
+          followed 2s later by a denied and a granted result 5ms apart, both discarded, and the
+          user had to start over. Handling these configs ourselves keeps the one instance alive
+          across a turn, which matters because the activity is transparent and has no layout to
+          re-lay-out anyway.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.mirror.v2.MirrorConsentActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!--
+          From Android 14 a MediaProjection is granted to a running mediaProjection-typed
+          foreground service, not to the process, so this must be in the foreground before
+          getMediaProjection() is called. Separate from LinkService on purpose: it lives only
+          while pixels are being captured and carries its own "your screen is being recorded"
+          notification.
+        -->
+        <service
+            android:name="com.chetan.connectsuite.mirror.v2.MirrorService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"
+            android:stopWithTask="false" />
+        <!--
+          The one component that can touch the phone's screen on the Mac's behalf.
+
+          BIND_ACCESSIBILITY_SERVICE is held by the *system*, not by us: declaring it here is how
+          Android knows only it may bind this service. There is no runtime permission to request
+          and no way to enable this from code — the user does it by hand in Settings, once, and
+          can revoke it there at any time. That is the whole onboarding cost of Phase 3 and it is
+          a platform wall, not a gap (see CLAUDE.md).
+
+          The service is enabled but not exported: it is reachable only through the accessibility
+          framework.
+        -->
+        <service
+            android:name="com.chetan.connectsuite.input.ConnectSuiteInputService"
+            android:exported="false"
+            android:label="@string/input_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+        <!--
+          The request screen and, once approved, the live preview. The camera is bound to THIS
+          activity's lifecycle and to nothing else, which is what makes Camera v1 foreground-only:
+          when it stops being visible (Home, another app, the screen locking) the stream stops.
+
+          configChanges is load-bearing for the same reason it is on MirrorConsentActivity: a turn
+          that recreated this activity would run onStop and end an approved stream because the
+          phone was rotated. uiMode and density are included so a theme or display-size change
+          does not either.
+
+          Not exported. The request notification reaches it through this app's own PendingIntent,
+          and nothing outside the app may open a camera screen.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.camera.CameraActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="" />
+        <!--
+          Camera v2 (docs/protocol.md → Webcam): the webcam request screen and, once approved, the
+          capture. Its own screen, sharing no state with CameraActivity. The capture is bound to THIS
+          activity: when it stops being visible the session ends (left-screen), so the webcam is
+          foreground-only. Not exported, and opened only by this app — the webcam feature's own
+          notification and resume hook — which exist only once WebcamFeature.install has run, which
+          ConnectSuiteApp does in a debuggable build only. The same configChanges, for the same reason.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.camera.webcam.WebcamActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="" /> <!-- v1 link. Kept until the v1 ADB mirror path is removed; sync-module still uses it. -->
+        <service
+            android:name="com.chetan.connectsuite.core.service.ConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
+        <!--
+          v2 link: the three TLS listeners. connectedDevice only (defect 199). dataSync used to be
+          declared beside it for bulk transfers, but it carries a six-hour budget per 24 hours on
+          Android 15+ and this service runs all day; a transfer always has a Mac connected, which is
+          what connectedDevice describes. Not declaring dataSync makes claiming it impossible: a type
+          outside this attribute throws rather than quietly starting a six-hour clock.
+        -->
+        <service
+            android:name="com.chetan.connectsuite.core.link.LinkService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
+        <!--
+          Not exported. Both actions it listens for are protected broadcasts the system alone can
+          send, so exporting it would add an attack surface and no capability - and it is worth
+          saying that the protection is what makes this receiver untestable from adb: on this
+          handset `am broadcast -a android.intent.action.BOOT_COMPLETED` is refused outright
+          (uid=2000) and `adb root` is unavailable on a production build. MY_PACKAGE_REPLACED is
+          the half that a plain `adb install -r` does fire for real.
+
+          directBootAware is deliberately absent: everything this receiver reads before deciding -
+          the Room trust store - lives in credential-encrypted storage, so there is nothing useful
+          it could do before the first unlock. See the class comment.
+        -->
+        <receiver
+            android:name="com.chetan.connectsuite.core.link.LinkBootReceiver"
+            android:enabled="true"
+            android:exported="false" >
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!--
+                  Samsung's fast-restart broadcast. Measured on this handset rather than inherited:
+                  unlike BOOT_COMPLETED it is *not* a protected broadcast here - `am broadcast` from
+                  the shell returns `result=0` instead of a SecurityException - which is exactly why
+                  this receiver is not exported. Whether One UI actually sends it in place of
+                  BOOT_COMPLETED is unverified and needs a reboot; listening costs nothing and a
+                  duplicate delivery is a no-op start on a live service.
+                -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name="androidx.camera.core.impl.MetadataHolderService"
+            android:enabled="false"
+            android:exported="false" >
+            <meta-data
+                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
+                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
+        </service>
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="com.chetan.connectsuite.androidx-startup"
+            android:exported="false" >
+            <meta-data
+                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+                android:value="androidx.startup" />
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                android:value="androidx.startup" />
+        </provider>
+
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            android:directBootAware="true"
+            android:exported="false" />
+
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            android:directBootAware="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.DUMP" >
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

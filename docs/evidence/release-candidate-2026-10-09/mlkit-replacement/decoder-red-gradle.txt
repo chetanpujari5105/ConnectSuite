@@ -1,0 +1,30 @@
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:38:19 Unresolved reference 'mlkit'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:39:19 Unresolved reference 'mlkit'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:61:19 Unresolved reference 'mlkit'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:256:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:256:30 Unresolved reference 'BarcodeScanning'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:261:21 Unresolved reference 'close'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:301:25 Unresolved reference 'mlkit'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:309:17 Unresolved reference 'InputImage'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:310:13 Unresolved reference 'process'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:311:33 Cannot infer type for value parameter 'barcodes'. Specify it explicitly.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:312:36 Unresolved reference 'it'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:312:49 Unresolved reference 'Barcode'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:313:19 Unresolved reference 'rawValue'.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:314:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///Users/chetan/Desktop/ConnectSuite/app/src/main/java/com/chetan/connectsuite/link/QrScanScreen.kt:314:19 Cannot infer type for type parameter 'R'. Specify it explicitly.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 32s

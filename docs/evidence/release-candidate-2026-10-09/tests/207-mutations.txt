@@ -1,0 +1,13 @@
+M1: RED rc=1 pass=5 fail=3 — blocked falls through to create (the 207 overwrite)
+M2: RED rc=1 pass=16 fail=2 — undecryptable key treated as empty
+M3: GREEN (survived) rc=0 pass=8 fail=0 — encryption-unavailable case no longer blocks
+M4: RED rc=1 pass=7 fail=2 — a code armed beside a stored phone
+M5: RED rc=1 pass=7 fail=2 — the one home of the rule says always ask
+M6: RED rc=1 pass=9 fail=2 — remembered phone drawn as a code
+M7: RED rc=1 pass=4 fail=2 — development shares the packaged folder
+M8: GREEN (survived) rc=0 pass=6 fail=0 — another process's Singleton lock copied
+M9: RED rc=1 pass=5 fail=1 — seed repeated over an existing dev folder
+M10: RED rc=1 pass=9 fail=1 — no single-instance lock
+M11: RED rc=1 pass=7 fail=1 — start over discards instead of keeping the old key
+M3: RED rc=1 pass=7 fail=1 — encryption-unavailable case no longer blocks
+M8: RED rc=1 pass=5 fail=1 — another process's Singleton lock copied

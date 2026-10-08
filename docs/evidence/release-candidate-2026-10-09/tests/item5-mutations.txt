@@ -1,0 +1,5 @@
+R1: RED rc=1 pass=33 fail=1 — Copy path no longer marks copiedByPerson ||   }
+R2: RED rc=1 pass=32 fail=2 — copied read as applied ||   }
+R3: RED rc=1 pass=32 fail=2 — one sentence for every route again ||   }
+R4: RED rc=1 pass=? fail=? — a Mac-side close is a failure again || age=1s failures="1" gradle rc=1
+R5: RED rc=1 pass=? fail=? — a flagged stop is a failure || age=0s failures="1" gradle rc=1

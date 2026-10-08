@@ -1,0 +1,101 @@
+✔ a packaged build keeps the folder every packaged build has used (0.315208ms)
+✖ defect 207: a development build never shares the packaged build’s folder (0.327958ms)
+✖ a development override is honoured only when absolute, and never by a packaged build (0.239708ms)
+✖ the first development launch copies the shared folder once, leaving the original untouched (0.90575ms)
+✔ nothing to seed from: an empty development folder, said as such (0.303792ms)
+✖ the second-instance prompt names the folder and says nothing was changed (0.120833ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 2
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 72.557625
+
+✖ failing tests:
+
+test at src/main/profile.test.ts:22:1
+✖ defect 207: a development build never shares the packaged build’s folder (0.327958ms)
+  AssertionError [ERR_ASSERTION]: the development build and a packaged copy share one profile
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/profile.test.ts:25:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '/Users/x/Library/Application Support/sidekick-desktop',
+    expected: '/Users/x/Library/Application Support/sidekick-desktop',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/profile.test.ts:30:1
+✖ a development override is honoured only when absolute, and never by a packaged build (0.239708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + '/Users/x/Library/Application Support/sidekick-desktop'
+  - '/tmp/p1'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/profile.test.ts:31:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '/Users/x/Library/Application Support/sidekick-desktop',
+    expected: '/tmp/p1',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/profile.test.ts:37:1
+✖ the first development launch copies the shared folder once, leaving the original untouched (0.90575ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'nothing-to-copy'
+  - 'copied'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/profile.test.ts:46:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'nothing-to-copy',
+    expected: 'copied',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/profile.test.ts:62:1
+✖ the second-instance prompt names the folder and says nothing was changed (0.120833ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /already open/. Input:
+  
+  ''
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/profile.test.ts:64:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: /already open/,
+    operator: 'match',
+    diff: 'simple'
+  }

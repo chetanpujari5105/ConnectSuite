@@ -1,0 +1,2 @@
+P1: RED rc=1 pass=? fail=? — a non-empty affinity equal to the package || gradle rc=1 file-age=0s tests="4" skipped="0" failures="1"
+P2: RED rc=1 pass=? fail=? — a neighbour loses its empty affinity || gradle rc=1 file-age=0s tests="4" skipped="0" failures="1"

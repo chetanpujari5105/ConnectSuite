@@ -1,0 +1,64 @@
+{
+  "started": "2026-10-08T17:48:53.110Z",
+  "bounds": {
+    "waitMs": 60000
+  },
+  "steps": [
+    {
+      "at": "0.0s",
+      "profile": "<tmp>/sidekick-207-profile-kwZzN1"
+    },
+    {
+      "at": "0.0s",
+      "identityBefore": {
+        "cert.pem": "70ae90c9eb5e442dbac63da821c72625f17c3c306abea4db8368f84873d1f9cd",
+        "key.enc": "582e035102623cb9f8e56d5dce7ace2c9ff2d9024d1c9a6af2d750d11b62f00b"
+      }
+    },
+    {
+      "at": "1.0s",
+      "blockedLine": [
+        "2026-10-08T23:18:53.770+05:30 I [app] Profile <tmp>/sidekick-207-profile-kwZzN1 (development; seed: not-applicable; single-instance lock held)",
+        "2026-10-08T23:18:53.962+05:30 W [identity] Stored identity NOT usable by this build, and left untouched (nothing written): this copy of Sidekick cannot open the stored private key — it was sealed by a different build — key: Error: Error while decrypting the ciphertext provided to safeStorage.decryptString."
+      ]
+    },
+    {
+      "at": "2.1s",
+      "instance2Stderr": [
+        "Sidekick: another copy is already using <tmp>/sidekick-207-profile-kwZzN1; exiting without changes."
+      ]
+    },
+    {
+      "at": "5.1s",
+      "instance2-exit": {
+        "code": 0,
+        "sig": null
+      }
+    },
+    {
+      "at": "5.1s",
+      "instance1-exit": {
+        "code": 0,
+        "sig": null
+      }
+    }
+  ],
+  "blockedSeen": true,
+  "identityWhileRunning": {
+    "cert.pem": "70ae90c9eb5e442dbac63da821c72625f17c3c306abea4db8368f84873d1f9cd",
+    "key.enc": "582e035102623cb9f8e56d5dce7ace2c9ff2d9024d1c9a6af2d750d11b62f00b"
+  },
+  "secondRefused": true,
+  "startingLines": 1,
+  "secondInstanceSeenByFirst": true,
+  "networkLines": [],
+  "identityAfter": {
+    "cert.pem": "70ae90c9eb5e442dbac63da821c72625f17c3c306abea4db8368f84873d1f9cd",
+    "key.enc": "582e035102623cb9f8e56d5dce7ace2c9ff2d9024d1c9a6af2d750d11b62f00b"
+  },
+  "unchanged": true,
+  "identityFiles": [
+    "cert.pem",
+    "key.enc"
+  ]
+}

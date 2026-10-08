@@ -1,0 +1,10 @@
+N1: RED rc=1 pass=0 fail=1 — a superseded page is applied
+N2: RED rc=1 pass=0 fail=1 — the new root waits behind the old listing
+N3: RED rc=1 pass=2 fail=1 — queued batches of the old root still sent
+N4: RED rc=1 pass=2 fail=1 — refused counted as none
+N5: RED rc=1 pass=? fail=? — provider asked about a foreign id; counted gone
+N6: RED rc=1 pass=? fail=? — prefix without the slash admits a sibling folder
+N7: RED rc=1 pass=? fail=? — opaque providers judged by a prefix rule
+N5: RED rc=1 pass=? fail=? — provider asked about a foreign id; counted gone || gradle rc=1 file-age=1s tests="4" skipped="0" failures="1"
+N6: RED rc=1 pass=? fail=? — prefix without the slash admits a sibling folder || gradle rc=1 file-age=0s tests="4" skipped="0" failures="1"
+N7: RED rc=1 pass=? fail=? — opaque providers judged by a prefix rule || gradle rc=1 file-age=0s tests="4" skipped="0" failures="1"

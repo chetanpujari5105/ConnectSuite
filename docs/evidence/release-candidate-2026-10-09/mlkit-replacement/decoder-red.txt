@@ -1,0 +1,3 @@
+<failure message="java.lang.AssertionError: expected:&lt;{&quot;v&quot;:2,&quot;host&quot;:&quot;192.168.1.5&quot;,&qu
+<failure message="java.lang.AssertionError: rotated 1 quarter turn(s) expected:&lt;{&quot;v&quot;:2,&quot;host&quot;:&
+<failure message="java.lang.NullPointerException

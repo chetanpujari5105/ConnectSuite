@@ -1,0 +1,5 @@
+testcase name="control - an id inside the tree reaches the provider and makes a thumbnail"
+testcase name="an undecidable id is still asked, and a missing one is gone"
+testcase name="a MediaStore id against a DCIM tree is refused without asking the provider"
+<failure message="java.lang.AssertionError: expected:&lt;NotInRoot&gt; but was:&lt;Gone&gt;
+testcase name="the tree rule - inside, the tree itself, a sibling with a shared prefix, a storage root, other providers"

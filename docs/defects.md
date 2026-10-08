@@ -510,6 +510,8 @@ what makes that the tempting place to stop.
 
 ### 30 — the Mac cannot start a new SMS conversation · **open, on one half only**
 
+**2026-10-09:** still blocked on a consenting number named by the owner; nothing changed.
+
 The SMS pane could reply into a thread the phone already knew about and could not address a number
 that had none. `SmsClient.sendNew`, the compose surface (`#sms-new`, `#sms-new-to`,
 `#sms-new-body`, `#sms-new-send`) and the phone-side recipient check shipped on 2026-08-31, and
@@ -671,10 +673,11 @@ someone who had already read the rule against it.
 | **37** (rejected) | re-read the secure setting on a delay | A timer instead of a fact. The bound service *is* the fact, and it is available at the moment of the callback. |
 | **39** (open — do not) | delay the composer's re-fetch | Identical shape to both of the above, on the SMS send path. |
 | **34** (rejected) | make the Mac lenient about the shape it accepts | The two sides would disagree about the contract forever while appearing to work. The phone was fixed instead. |
-| **205** | **The link holds a partial wake lock all night, and it is the largest app battery consumer.** `dumpsys batterystats --charged` after the 2026-10-07/08 soak: 9 h 54 min on battery (9 h 6 min screen off), computed drain 3,663 mAh; Sidekick `u0a1011` **177 mAh, the largest single UID**, of which **176 mAh is `ConnectSuite:link` held 8 h 54 min** — the CPU kept awake (no deep Doze for the device) for an idle link with one connected Mac. Defect 61's re-armed lock is the design; its cost was never measured | **open — measured once, single device, one night** (the device's own largest drain was the mobile radio, 1,009 mAh, consistent with the hotspot, and is not Sidekick's) | — | `docs/testing.md` → Defect 205 |
+| **205** | **The link holds a partial wake lock all night, and it is the largest app battery consumer.** `dumpsys batterystats --charged` after the 2026-10-07/08 soak: 9 h 54 min on battery (9 h 6 min screen off), computed drain 3,663 mAh; Sidekick `u0a1011` **177 mAh, the largest single UID**, of which **176 mAh is `ConnectSuite:link` held 8 h 54 min** — the CPU kept awake (no deep Doze for the device) for an idle link with one connected Mac. Defect 61's re-armed lock is the design; its cost was never measured | **open — measured once, single device, one night** (the device's own largest drain was the mobile radio, 1,009 mAh, consistent with the hotspot, and is not Sidekick's); **2026-10-09: owner's decision still owed, lock unchanged** | — | `docs/testing.md` → Defect 205 |
 | **206** | **Every Accept and Decline in the receive window was refused** — *"refused: that offer is not on this window"*, logged nowhere. `share-decide` sends `{offerId, decision}`; the S4 window check (`8f2a483`, 2026-10-06) parsed it with `parseOfferRequest`, which accepts exactly `{offerId}`, so the parse failed for every decision. Found on hardware 2026-10-08 12:47 with the owner's real clicks; the decision tests called `handleShareDecision` directly and never crossed main's check | **fixed 2026-10-08 (`97193bf`); hardware-verified 13:14** (Accept → saved, SHA equal; Decline → declined; Cancel → cancelled; on the fixed build). `handleShareDecision` takes the window check as a required parameter and asks it with the id its own parser read | `shareDecision.test.ts` +2 (red first); 2 mutations red; Mac 1,981/0 | `docs/testing.md` → Defect 206 |
-| **207** | **A build that cannot decrypt the stored Mac identity silently mints a new one and overwrites the old — every paired phone is lost.** 2026-10-08: an old packaged `Sidekick.app` (from `desktop/release/`, 2026-09-19, same bundle id, **same profile folder `sidekick-desktop`** as the development build) started at 13:39:58, could not decrypt the development build's key (`safeStorage` is bound to the app's code signature), logged *"Regenerating identity … New identity 87:2A:47:C3… stored"* and **overwrote** the stored key; the development identity `B5:9F:4B:BA…` that the phone pinned was destroyed on disk. The next development launch (14:32:34) regenerated again (`A9:59:35:BB…`); the phone refused it (`CERTIFICATE_UNKNOWN`). Then a second trap: with the stale phone record still stored, the pairing screen showed a QR described as armed, but the Mac connected **without** the code (`TOKEN_MISSING`) — and the pairing screen's pinned navigation keeps the person away from Settings → *Forget this phone*, the only way out | **open** — measured on hardware once; recovered by a re-pair (owner-approved, 14:46:19) | — | `docs/testing.md` → Defect 207 |
-| **208** | **Thumbnail requests carry the previous root's ids after a root switch.** 2026-10-08 17:57:31: choosing DCIM right after *Received files*, Sidekick sent `fs.thumb` for `saf:primary%3ADCIM` with 10-character ids (the shape of the MediaStore ids *Received files* uses); `ExternalStorageProvider` threw `StringIndexOutOfBoundsException: begin 0, end -1, length 10` in `getRootFromDocId` (four times, logcat) and the phone counted them `3 gone` | **open** — one sighting; no file is affected (a thumbnail is not drawn), but the phone reports *gone* for ids that never belonged to that root, and the provider logs an uncaught remote exception per request | — | `docs/testing.md` → Defect 208 |
+| **207** | **A build that cannot decrypt the stored Mac identity silently mints a new one and overwrites the old — every paired phone is lost.** 2026-10-08: an old packaged `Sidekick.app` (from `desktop/release/`, 2026-09-19, same bundle id, **same profile folder `sidekick-desktop`** as the development build) started at 13:39:58, could not decrypt the development build's key (`safeStorage` is bound to the app's code signature), logged *"Regenerating identity … New identity 87:2A:47:C3… stored"* and **overwrote** the stored key; the development identity `B5:9F:4B:BA…` that the phone pinned was destroyed on disk. The next development launch (14:32:34) regenerated again (`A9:59:35:BB…`); the phone refused it (`CERTIFICATE_UNKNOWN`). Then a second trap: with the stale phone record still stored, the pairing screen showed a QR described as armed, but the Mac connected **without** the code (`TOKEN_MISSING`) — and the pairing screen's pinned navigation keeps the person away from Settings → *Forget this phone*, the only way out | **fixed in source 2026-10-09 (`cdee313`)** — (a) never overwritten, (b) dev profile, (c) single instance, (d) Forget on the pairing screen; isolated Electron run on a temp profile with a foreign-sealed key passed; **the development relaunch (profile seed) and the pairing-screen Forget are not yet run on hardware** | isolated Electron 2026-10-09 | `docs/testing.md` → Defect 207 |
+| **208** | **Thumbnail requests carry the previous root's ids after a root switch.** 2026-10-08 17:57:31: choosing DCIM right after *Received files*, Sidekick sent `fs.thumb` for `saf:primary%3ADCIM` with 10-character ids (the shape of the MediaStore ids *Received files* uses); `ExternalStorageProvider` threw `StringIndexOutOfBoundsException: begin 0, end -1, length 10` in `getRootFromDocId` (four times, logcat) and the phone counted them `3 gone` | **fixed in source 2026-10-09 (`0745cd6`)** — Mac drops a superseded listing and queued batches; phone refuses a foreign id before the provider (`BAD_REQUEST`, counted *refused*); **tests only**, not yet on hardware | tests | `docs/testing.md` → Defect 208 |
+| **209** | **Fourteen Mac test calls do not match the code they test** — wrong arity (`remoteView.test.ts` passes three arguments to a one-argument function; `bulkBlockPull.test.ts` one to a two-to-three-argument one), properties that do not exist, an unknown field. They pass because `tsx` runs tests without typechecking and the typecheck configs exclude test files by design. Found 2026-10-09 by `desktop/scripts/typecheck-tests.mjs` | **open** — new ones are refused by the ratchet (baseline 14, may only go down); the 14 are listed, not fixed | — | `docs/testing.md` → Defect 209 |
 
 The family resemblance: **each substitutes a plausible value for a known one.** The test is whether
 the code can name the fact it is waiting for. If it can, wait for that fact; if it cannot, the fix is
@@ -3201,6 +3204,8 @@ providers return a thumbnail at least as large as requested. A JVM test can hold
 
 ### 137 — the phone lists 0 entries for every granted SAF tree · **open, boundary: the provider**
 
+**2026-10-09: stays open as not reproduced** (2026-10-08: old grants and a fresh synthetic grant both listed). The probe stays. **What would reopen it:** a granted tree listing 0 entries while `ExternalStorageProvider`'s own `query` for that tree returns rows in logcat, or Sidekick and the system picker disagreeing about one tree's contents at the same moment. Defect 208's provider exception was a different mechanism and does not count.
+
 Persisted grants (`persisted=0x3`) for DCIM, Documents and Pictures; `SafTreeStore` reads 0 children
 for each, while `fs.stat` reads the same trees as directories and `media.*` serves DCIM/Camera. It
 flipped inside one process, 00:47:44 (DCIM 29) → 00:53:27 (Documents 0), on 2026-09-23.
@@ -4138,7 +4143,9 @@ window check asks with the parsed id. **Wrong fixes:** widening `parseOfferReque
 receive-window channel relies on it being exactly `{offerId}`); dropping the window check (S4's binding of actions to
 what a window was shown).
 
-### 207 — an undecryptable identity is overwritten, and the way back is hidden · **open**
+### 207 — an undecryptable identity is overwritten, and the way back is hidden · **fixed in source 2026-10-09 (`cdee313`)**
+
+**2026-10-09:** all four parts of the fix direction landed, plus (e) the migration design in `docs/protocol.md` → *The Mac's identity across builds and signing changes* (M1 honest re-pair implemented; M2 Keychain consent expected, needs a Developer ID build to measure; M3 rejected). Evidence: `docs/testing.md` → *Release-fix batch 2026-10-09* → Defect 207. **Still owed on hardware:** the development relaunch reading `seed: copied` and `Stored identity … loaded`, and the pairing screen's *Forget <phone>* with a stale record (`docs/beta-hardware-plan-2026-10-09.md` A6, B2).
 
 Evidence: `docs/testing.md` → Phase 2 stage 7 and Defect 207. **Why it matters for release:** any update that changes
 how the app is signed (ad-hoc → Developer ID, a new certificate, a bundle change) gets a different `safeStorage` key, so
@@ -4153,10 +4160,23 @@ development build its own profile folder so a packaged copy can never share it. 
 (the keychain item belongs to a different signature); copying the private key out of `safeStorage` into plain storage;
 silently re-pairing.
 
-### 208 — thumbnails asked of the wrong root after a switch · **open**
+### 208 — thumbnails asked of the wrong root after a switch · **fixed in source 2026-10-09 (`0745cd6`), tests only**
+
+**2026-10-09:** the mechanism was a listing race, not the thumbnail queue alone: a root switch while the previous listing was in flight made the new `loadMore` return early and the old page land in the new root's list. Fixed by a listing generation; plus the two halves of the fix direction below. Hardware check: `docs/beta-hardware-plan-2026-10-09.md` B9.
 
 Evidence: `docs/testing.md` → Phase 2 stage 11. **Fix direction:** on the Mac, drop queued thumbnail requests when the
 selected root changes (key them by root and id); on the phone, refuse an id that does not belong to the requested tree
 **before** calling the provider (`DocumentsContract.isTreeUri`/the tree's document-id prefix) and count it as refused, not
 *gone*. **Wrong fix:** catching the provider's exception and calling the file gone — that is defect 57's shape (an
 exception's name read as a fact about our world).
+
+### 209 — fourteen Mac test calls do not match the code they test · **open**
+
+Evidence: `docs/testing.md` → *Release-fix batch 2026-10-09* → Defect 209 (the list of all 14, file and line).
+**Fix direction:** one file at a time, read what each mis-shaped call was meant to exercise, make the call match the
+real signature, and confirm the test still goes red against its defect (a test passing extra arguments may be
+asserting behaviour the function never took as input); lower `BASELINE` in `desktop/scripts/typecheck-tests.mjs` as
+each goes. **Wrong fixes:** casting the call to `any` to silence it (the test keeps exercising the wrong thing);
+gating on every error the full check reports (the other 148 of the 162 are strictness errors — possibly-undefined values,
+implicit `any` — and the `tsx` execution-mode noise the config warns about; gating them all would get the gate switched
+off); raising the baseline.

@@ -1,0 +1,8 @@
+Q1: RED rc=1 pass=? fail=? — row stride ignored || gradle rc=1
+Q2: GREEN (survived) rc=0 pass=? fail=? — short buffer reaches ZXing and throws || gradle rc=0
+Q3: GREEN (survived) rc=0 pass=? fail=? — no-code frame throws instead of null || gradle rc=0
+Q4: RED rc=1 pass=? fail=? — ML Kit version re-added to the catalog || gradle rc=1
+Q1: RED rc=1 pass=? fail=? — row stride ignored || QrFrameDecoderTest age=0s failures="3"; NoGoogleTelemetryTest age=0s failures="0"; gradle rc=1
+Q2b: RED rc=1 pass=? fail=? — short buffer not padded || QrFrameDecoderTest age=0s failures="1"; NoGoogleTelemetryTest age=0s failures="0"; gradle rc=1
+Q3b: RED rc=1 pass=? fail=? — no-code frame throws instead of null || QrFrameDecoderTest age=0s failures="2"; NoGoogleTelemetryTest age=0s failures="0"; gradle rc=1
+Q4: RED rc=1 pass=? fail=? — ML Kit version re-added to the catalog || QrFrameDecoderTest age=0s failures="0"; NoGoogleTelemetryTest age=0s failures="1"; gradle rc=1

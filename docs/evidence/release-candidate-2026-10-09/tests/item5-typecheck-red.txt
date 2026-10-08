@@ -1,0 +1,17 @@
+typecheck-tests: tsc exit 2, 163 error(s) over every test file in 2.0 s; API-shape (gated) 15 / baseline 14; by code {"TS2554":9,"TS2532":64,"TS2345":10,"TS7016":1,"TS2740":1,"TS2322":2,"TS18047":9,"TS18048":16,"TS2306":4,"TS2353":1,"TS2352":1,"TS2339":5,"TS7006":20,"TS2531":6,"TS1343":14}
+typecheck-tests: NEW API-shape errors in tests (a test calling code with the wrong shape):
+  src/main/bulkBlockPull.test.ts(58,18): error TS2554: Expected 2-3 arguments, but got 1.
+  src/main/bulkBlockPull.test.ts(156,21): error TS2554: Expected 2-3 arguments, but got 1.
+  src/main/bulkBlockPull.test.ts(207,18): error TS2554: Expected 2-3 arguments, but got 1.
+  src/main/bulkBlockPull.test.ts(231,18): error TS2554: Expected 2-3 arguments, but got 1.
+  src/main/bulkPrehashPull.test.ts(48,18): error TS2554: Expected 2-3 arguments, but got 1.
+  src/main/filesResume.test.ts(173,16): error TS2554: Expected 2-3 arguments, but got 1.
+  src/renderer/clipboardView.test.ts(397,44): error TS2353: Object literal may only specify known properties, and 'receivedAtMs' does not exist in type 'Row'.
+  src/renderer/filesView.test.ts(908,50): error TS2339: Property 'tabIndex' does not exist on type 'FakeElement'.
+  src/renderer/filesView.test.ts(910,49): error TS2339: Property 'tabIndex' does not exist on type 'FakeElement'.
+  src/renderer/filesView.test.ts(927,31): error TS2339: Property 'tabIndex' does not exist on type 'FakeElement'.
+  src/renderer/pairCard.test.ts(180,55): error TS2554: Expected 3 arguments, but got 2.
+  src/renderer/remoteView.test.ts(351,36): error TS2554: Expected 1 arguments, but got 3.
+  src/renderer/remoteView.test.ts(362,36): error TS2554: Expected 1 arguments, but got 2.
+  src/renderer/streamStart.test.ts(86,55): error TS2339: Property 'outstandingForMs' does not exist on type '{ ask: false; reason: "in-flight"; outstandingForMs: number; } | { ask: false; reason: "too-soon"; waitMs: number
+  src/renderer/streamStart.test.ts(89,53): error TS2339: Property 'waitMs' does not exist on type '{ ask: false; reason: "in-flight"; outstandingForMs: number; } | { ask: false; reason: "too-soon"; waitMs: number; }'.

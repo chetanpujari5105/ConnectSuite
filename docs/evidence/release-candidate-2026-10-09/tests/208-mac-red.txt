@@ -1,0 +1,25 @@
+✖ 208: a root switch during a listing never asks the new root about the old root’s ids (9.384959ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 89.304792
+
+✖ failing tests:
+
+test at src/renderer/filesRootSwitch.test.ts:64:1
+✖ 208: a root switch during a listing never asks the new root about the old root’s ids (9.384959ms)
+  AssertionError [ERR_ASSERTION]: asked downloads:connectsuite about primary:DCIM/Camera/IMG_1.jpg, which belongs to another root
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/renderer/filesRootSwitch.test.ts:79:14)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

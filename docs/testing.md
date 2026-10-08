@@ -29048,3 +29048,132 @@ needs a fresh macOS user. Android: the unsigned release APK built in Phase 1 fro
 Mac **1,981 / 0** (`.test-run.json` 2026-10-08T09:01:03Z, after `f3c9eec`, the last Mac code change); both Mac typechecks
 clean at that commit; phone **1,455 / 0** (code unchanged since `81ff971`, run at `--rerun-tasks`); Swift **140 / 0**;
 scripts **290 / 0**; every `check-*.mjs`, `check-defects.sh` and both hook fixture suites exit 0.
+
+## Release-fix batch 2026-10-09 — items 1–7 built and tested; hardware steps prepared, not run
+
+Owner's brief: close the NO-SHIP blockers for a limited beta. Decisions given: direct download for both apps;
+ZXing replaces ML Kit; release gates stay off. Decisions left blank by the owner and **not taken here**: defect
+205 (measure vs accept), the drop sheet's Escape trade-off, publisher fields. The phone was **off USB** for the
+whole sitting, so every result below is labelled **tests-only** or **isolated** unless it says otherwise.
+Evidence files: `docs/evidence/release-candidate-2026-10-09/` (`tests/` holds every red-first output and
+mutation run named below).
+
+| Item | Commit | Label |
+|---|---|---|
+| 1 Defect 207 a–e | `cdee313` | tests + **isolated Electron** (temp profile); hardware relaunch owed |
+| 2 Defect 208 | `0745cd6` | tests-only |
+| 3 `SendSelectionActivity` affinity | `12ce28e` | tests-only |
+| 4 ML Kit → ZXing | `2114c0f` | tests + dependency graph + manifest + dex; **hardware scan owed** |
+| 5 small fixes | `34362e1` | tests-only |
+| 6 release candidate | (no code) | static checks only; nothing launched or installed |
+| 7 privacy / Data safety | docs | drafts; publisher fields blank |
+
+#### Defect 207 — never overwrite; dev profile; one instance; Forget on the pairing screen; migration design
+
+- **Red first against the pre-fix algorithm**, ported verbatim into the new module before the fix:
+  `an undecryptable identity was replaced`; the encryption-unavailable case **deleted both files**
+  (`tests/207a-red.txt`). Profile/seed/prompt tests red against a stub modelling today's shared folder
+  (`tests/207bc-red.txt`); pairing-arm and pairing-card tests red on `a code was drawn that this Mac would never
+  ask the phone for` and on the missing Forget.
+- **Mutations: 11 red** (`tests/207-mutations.txt`). Two survived first — both instrument faults in my tests,
+  fixed and re-run red: M3's test checked `blocked` and not *why* (the person would have been told the wrong
+  cause), and M8's `existsSync` followed the copied `SingletonLock` symlink to a target that does not exist, so a
+  copied lock read as absent (now `lstat`, with a control that the lock was there to copy).
+- **Isolated Electron, real `safeStorage`, temp profile** (`tests/207-isolated.json`): a key sealed in Chromium's
+  macOS format under a Keychain password this build does not have. Result: `Stored identity NOT usable by this
+  build, and left untouched (nothing written): … Error while decrypting the ciphertext …`; cert and key
+  **byte-identical** before, during and after; a second instance on the same profile wrote `another copy is
+  already using … exiting without changes` and the first logged `A second copy was started … refused`; **one**
+  start line; **0** link/discovery lines (the prompt blocks before any socket). Bounds: 60 s waits; both
+  processes killed; the prompt appeared on screen for ~5 s. **Not reached:** the *Start Over* path in a real
+  Electron (it would open the link and dial the phone on the hotspot) — covered by `identityStore.test.ts`.
+- **Keychain reading (attributes only, no secrets, no prompt):** `sidekick-desktop Safe Storage` created
+  2026-09-17 and `Sidekick Safe Storage` created 2026-09-20 — consistent with the development and packaged
+  builds sealing under different item names, which is the mechanism of 2026-10-08's overwrite.
+
+#### Defect 208 — a listing race, not only the thumbnail queue
+
+- Mechanism found reading the pane: a root switch while the previous listing is in flight makes the new
+  `loadMore` return (`loading` is true); the old page lands in the **new** root's list; the grid then asks the
+  new root about old ids — and the new root is never listed. Red: `asked downloads:connectsuite about
+  primary:DCIM/Camera/IMG_1.jpg, which belongs to another root`. Main process red: `the old root's queued batches
+  were still sent`. Phone red: `expected NotInRoot but was Gone` (results file 0 s old, gradle rc 1).
+- **7 mutations red**; the phone ones read from result files 0–1 s old with `failures="1"`, so none is a
+  compile failure read as a test failure (`tests/208-mutations.txt`).
+
+#### Item 3 — `taskAffinity=""` on `SendSelectionActivity`
+
+Red: `activities that would join Sidekick's task expected [] but was [.SendSelectionActivity]`. The guard now
+covers every activity reached by `SEND`, `SEND_MULTIPLE` or `PROCESS_TEXT`; 2 mutations red (an affinity equal
+to the package; a neighbour losing its empty affinity).
+
+#### Item 4 — ML Kit replaced by ZXing core 3.5.3
+
+- Licence Apache-2.0 (read from `zxing-parent-3.5.3.pom`); no runtime dependencies; 291 classes, none
+  referencing Android, sockets, `URLConnection`, processes or file writes; `java.net` appears only as
+  `URI.create`/`URLDecoder.decode` in result parsers the scanner never calls.
+- **The decode test's input comes from outside the instrument:** a code drawn by the Mac's own `qrcode` encoder
+  with the app's `QR_OPTIONS`, converted to luminance bytes with `pngjs`, placed in a 640×480 frame with a
+  704-byte stride, in four orientations. Red first against a stub (3 of 5). 6 mutations red; 2 equivalent mutants
+  (a dead length guard; a catch of a subclass the next clause already caught) removed as dead code.
+- **Before → after, release:** runtime classpath Google artifacts **16 → 0**; merged manifest components
+  **26 → 20** (ML Kit init provider and discovery service, `GoogleApiActivity`, `datatransport`'s discovery
+  service, job service and alarm receiver removed); permission list identical. APK **25 MB → 5.1 MB**.
+- **Instrument faults caught here:** a `stat`/`grep` on an empty variable read stdin and hung a shell for
+  10 minutes (the Gradle run itself had finished in 32 s); a component diff by regex compared **0 with 0**
+  because the tags span lines — re-read with an XML parser; an APK unzip stopped on a case-insensitive filename
+  collision and extracted no dex, so every count *including the positive controls* read 0; `strings` could not
+  read the dex at all (the manifest-guaranteed `MainActivity` read 0) — replaced by a byte search whose control
+  read 1. None of these was written down as a finding.
+- **Claim kept and now true:** *"No cloud, no account, nothing leaves your network"* — phone main sources hold
+  **0** `http` strings across all six modules (control: 6 socket files found by the same search).
+
+#### Item 5 — small fixes
+
+- Clipboard arrival card: red on 7 assertions; now worded by route — automatic (needs Sidekick open again),
+  copied by the person with Copy (no claim about the next one), waiting for Copy (clipboard unchanged). The Copy
+  path marks its history entry; a test reaches that write through the real `ClipboardClient`. Every user-facing
+  "ConnectSuite" in the clipboard copy is now "Sidekick" (phone refusal sentence, clip label, Mac pane).
+- Phone: a block pull whose stream the Mac closed is logged at **I** as `stopped: …` with a `stopped` count; red
+  `a Mac-side close logged as a failure`. The first fix added a fourth `LiveStops.take` call site and the
+  existing guard went red (`expected 3 but was 4`); per the counting-guard rule the count was not raised — the
+  catch uses the `stopWhy` the loop already consumed.
+- Test typecheck: tests are not typechecked by design. Measured: **162 errors in 44 of 153 test files** if
+  they were; 14 are API-shape (defect 209), the rest strictness and execution-mode. `scripts/typecheck-tests.mjs`
+  (2 s, in `npm run typecheck`) gates the 14 as a ratchet; shown red on a new wrong-arity call (15 > 14, the line
+  named) and green when restored.
+- Log privacy: every log line added in this batch re-read — no caller number, contact name or clipboard text;
+  the pairing lines say *the paired phone* rather than its name.
+- 5 mutations red (`tests/item5-mutations.txt`).
+
+### Defect 209 — fourteen Mac test calls do not match the code they test
+
+Found by `desktop/scripts/typecheck-tests.mjs` on 2026-10-09 (`tsc` over every test file, API-shape codes only):
+
+| File:line | Code | What |
+|---|---|---|
+| `src/main/bulkBlockPull.test.ts` 58, 156, 207, 231 | TS2554 | one argument to a two-to-three-argument call |
+| `src/main/bulkPrehashPull.test.ts` 48 | TS2554 | same |
+| `src/main/filesResume.test.ts` 173 | TS2554 | same |
+| `src/renderer/remoteView.test.ts` 351, 362 | TS2554 | three and two arguments to a one-argument call — the extra arguments test nothing |
+| `src/renderer/filesView.test.ts` 908, 910, 927 | TS2339 | `tabIndex` on the DOM double, which does not declare it — a read of an undeclared field |
+| `src/renderer/clipboardView.test.ts` 397 | TS2353 | `receivedAtMs` on a row type that does not have it |
+| `src/renderer/streamStart.test.ts` 86, 89 | TS2339 | a union read without narrowing (runtime-harmless; listed for completeness) |
+
+Not fixed in this batch; each needs reading for what it was meant to exercise. New ones are refused.
+
+#### Item 6 — release candidate (`34362e1`), static only
+
+`docs/release-candidate-2026-10-09.md`. Mac (both architectures): fuses `000011011`, ASAR integrity hash equals
+the header's, quarantine key on, ad-hoc + hardened runtime, Gatekeeper `rejected`, 0 test/map files of 1,070,
+four release gates `false`, call banner packaged-off, 7 of 7 fixes present. Android: `versionCode 1`/`2.0.0`, not
+debuggable (control: the debug APK shows the flag), **unsigned (`DOES NOT VERIFY`)**, no `dataSync`, no probes,
+four exported activities (launcher and share/selection entry points) and two permission-protected receivers.
+
+#### Fresh totals at the end of the batch
+
+Recorded in the RESUME entry for this batch, from runs after the last code change.
+
+**One Mac-suite failure was not identified:** after item 2, one full run read `2,007 / 1`; four runs since read
+`2,008 / 0` and later runs `2,014 / 0`. The failing run's output was not kept (the command filtered it), so the
+test cannot be named. Every full run after that kept its whole output.

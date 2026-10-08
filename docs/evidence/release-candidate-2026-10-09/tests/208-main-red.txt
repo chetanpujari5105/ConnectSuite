@@ -1,0 +1,39 @@
+2026-10-08T23:31:13.038+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.039+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.039+05:30 I [files] fs.thumb saf:primary%3ADCIM → 0 made / 35 without one / 0 gone / 0 from cache, since start
+2026-10-08T23:31:13.039+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.039+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.039+05:30 I [files] fs.thumb downloads:connectsuite → 0 made / 99 without one / 0 gone / 0 from cache, since start
+2026-10-08T23:31:13.041+05:30 I [files] fs.thumb ok
+✖ 208: batches still queued for a root are dropped once another root is asked about (4.016709ms)
+2026-10-08T23:31:13.042+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.042+05:30 I [files] fs.thumb ok
+2026-10-08T23:31:13.042+05:30 I [files] fs.thumb downloads:connectsuite → 0 made / 96 without one / 0 gone / 0 from cache, since start
+✔ control: with no other root asked, every batch of one request is sent (2.201208ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 148.291542
+
+✖ failing tests:
+
+test at src/main/filesThumbRoot.test.ts:32:1
+✖ 208: batches still queued for a root are dropped once another root is asked about (4.016709ms)
+  AssertionError [ERR_ASSERTION]: the old root's queued batches were still sent: [{"rootId":"downloads:connectsuite","n":32},{"rootId":"saf:primary%3ADCIM","n":3},{"rootId":"downloads:connectsuite","n":32},{"rootId":"downloads:connectsuite","n":32}]
+  
+  3 !== 1
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/filesThumbRoot.test.ts:40:10)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

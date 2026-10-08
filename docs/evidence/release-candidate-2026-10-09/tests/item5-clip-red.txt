@@ -1,0 +1,162 @@
+✔ connected, advertised, nothing yet — the resting state of a working feature (0.427666ms)
+✖ the waiting state carries the recipe, which was 828px below the fold (0.397292ms)
+✖ every route the product has is named in the copy a waiting user reads (0.091083ms)
+✔ the toolbar route is never promised unqualified — defect 86 (0.097583ms)
+✔ the route that always works is stated before the one that needs setting up (0.0485ms)
+✔ the received state does not send people to a toolbar entry that may be off (0.044375ms)
+✔ an arrival is dated on THIS Mac's clock (0.044125ms)
+✔ a fresh arrival reads "just now" rather than "0 minutes ago" (0.038708ms)
+✔ disconnected wins over every other question (0.063333ms)
+✔ a connected phone that is not offering clipboard says so in its own words (0.080333ms)
+✔ and falls back to our own sentence when the phone did not give one (0.048625ms)
+✔ every state is reachable — the control, before any claim about them differing (0.066458ms)
+✔ no two states share an icon, or a headline verb (0.062208ms)
+✔ working and broken differ in tone AND in whether an action exists (0.060334ms)
+✔ waiting and offline — the exact pair that drew one picture — differ four ways (0.06625ms)
+✔ lastArrivalFromPhone takes this Mac's clock and skips what it did not witness (0.054042ms)
+✖ an arrival copied by the person from an offer is not described as automatic (0.096042ms)
+✖ an arrival still waiting for Copy says so, and says the clipboard is untouched (0.108167ms)
+✖ control: an automatic arrival still says it went straight onto the clipboard (0.081375ms)
+✖ no state of the phone line names the old app (0.084958ms)
+✖ lastArrivalHow reads the newest phone entry: applied, copied from an offer, or offered (0.051542ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 14
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 75.766709
+
+✖ failing tests:
+
+test at src/shared/clipPhoneState.test.ts:37:1
+✖ the waiting state carries the recipe, which was 828px below the fold (0.397292ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /open Sidekick there/. Input:
+  
+  'Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read the clipboard while it is on screen — a rule for every app, not a missing piece of this one. There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:42:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read the clipboard while it is on screen — a rule for every app, not a missing piece of this one. There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.',
+    expected: /open Sidekick there/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:48:1
+✖ every route the product has is named in the copy a waiting user reads (0.091083ms)
+  AssertionError [ERR_ASSERTION]: the copy does not mention open Sidekick there
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:53:38)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:185:1
+✖ an arrival copied by the person from an offer is not described as automatic (0.096042ms)
+  AssertionError [ERR_ASSERTION]: a person-initiated Copy described as automatic
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:188:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'It went straight onto this Mac’s clipboard, so ⌘V pastes it. The next one needs ConnectSuite open on the phone again.',
+    expected: /straight onto|automatic/i,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:194:1
+✖ an arrival still waiting for Copy says so, and says the clipboard is untouched (0.108167ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /⌘V pastes it/. Input:
+  
+  'It went straight onto this Mac’s clipboard, so ⌘V pastes it. The next one needs ConnectSuite open on the phone again.'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:196:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'It went straight onto this Mac’s clipboard, so ⌘V pastes it. The next one needs ConnectSuite open on the phone again.',
+    expected: /⌘V pastes it/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:200:1
+✖ control: an automatic arrival still says it went straight onto the clipboard (0.081375ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Sidekick open on the phone again/. Input:
+  
+  'It went straight onto this Mac’s clipboard, so ⌘V pastes it. The next one needs ConnectSuite open on the phone again.'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:203:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'It went straight onto this Mac’s clipboard, so ⌘V pastes it. The next one needs ConnectSuite open on the phone again.',
+    expected: /Sidekick open on the phone again/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:206:1
+✖ no state of the phone line names the old app (0.084958ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /ConnectSuite/. Input:
+  
+  'Ready for anything you copy on the phone Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read the clipboard while it is on screen — a rule for every app, not a missing piece of this one. There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:212:34)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Ready for anything you copy on the phone Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read the clipboard while it is on screen — a rule for every app, not a missing piece of this one. There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.',
+    expected: /ConnectSuite/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at src/shared/clipPhoneState.test.ts:215:1
+✖ lastArrivalHow reads the newest phone entry: applied, copied from an offer, or offered (0.051542ms)
+  TypeError: lastArrivalHow is not a function
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/clipPhoneState.test.ts:216:16)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7)

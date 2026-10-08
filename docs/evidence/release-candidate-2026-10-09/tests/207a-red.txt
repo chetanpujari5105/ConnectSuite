@@ -1,0 +1,86 @@
+✔ a stored identity this build can open is used, and nothing is written (control) (2.271542ms)
+✖ defect 207: a key sealed by another build is kept byte for byte, and no identity is minted (11.214833ms)
+✖ a key on disk with encryption unavailable is kept — the old path deleted both files (10.902041ms)
+✖ a mismatched pair and a lone half are kept and reported, never replaced (21.532791ms)
+✔ nothing stored: an identity is created and sealed (the first launch) (10.933208ms)
+✔ nothing stored and no encryption: created in memory, nothing written (7.865417ms)
+✔ start over is the person’s act: the old files move aside intact, a new identity is sealed (11.467416ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 4
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 206.972208
+
+✖ failing tests:
+
+test at src/main/identityStore.test.ts:68:1
+✖ defect 207: a key sealed by another build is kept byte for byte, and no identity is minted (11.214833ms)
+  AssertionError [ERR_ASSERTION]: an undecryptable identity was replaced
+  + actual - expected
+  
+  + 'created'
+  - 'blocked'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/identityStore.test.ts:73:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'created',
+    expected: 'blocked',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/identityStore.test.ts:80:1
+✖ a key on disk with encryption unavailable is kept — the old path deleted both files (10.902041ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'created'
+  - 'blocked'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/identityStore.test.ts:84:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'created',
+    expected: 'blocked',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at src/main/identityStore.test.ts:89:1
+✖ a mismatched pair and a lone half are kept and reported, never replaced (21.532791ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'created'
+  - 'blocked'
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/identityStore.test.ts:93:10)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+      at Test.postRun (node:internal/test_runner/test:1247:19)
+      at Test.run (node:internal/test_runner/test:1175:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'created',
+    expected: 'blocked',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
