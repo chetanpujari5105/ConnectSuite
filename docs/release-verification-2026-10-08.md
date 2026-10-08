@@ -281,7 +281,88 @@ which has no ML Kit; it stands.)
 | 9 reconnect | Mac Wi-Fi off/on **hardware-verified**; hotspot, USB **not run** | 10 s and 40 s outages: one session after each, no pairing request, ~10.5 s from Wi-Fi back to connected (heartbeat-bound); hotspot equivalent and not scripted; USB would drop adb |
 | 10 camera v1 | steps 2/4/5/7 **hardware-verified**; 6/8/9, call banner **not run** | request alone expires at 30 s without opening the camera; one tap → live 960×720; switch without a new request; Mac Stop → released, 1224 sent / 1224 received / 1223 drawn. Call banner: no consenting caller named |
 | 11 defect 137 / 30 | 137 **not reproduced** (hardware); 30 **not run** | provider holds its permissions; a fresh synthetic grant lists 3/3 and the old grants list (DCIM 30, Documents 3) — every listing since 10-06 23:13 returned entries; an early 0 was my probe reading a pane drawn before the listing. **208** found: thumbnail ids of the previous root sent after a switch. 30: no consenting number |
+| 12 accessibility | Mac names **verified (CDP)**; VoiceOver/TalkBack **not run**; phone **no reading** | 212 controls / 12 panes / 0 unnamed; screen readers left for the owner; the phone left USB |
+| 13 packaged | **static pass**; launch **not done** | `6285001` packaged ad-hoc: fuses, quarantine key, ASAR integrity, gates off, fixes present; not launched (207); unsigned release APK from `7507217`, not installed |
 
-## 6. Phase 3 — report
+## 6. Phase 3 — report (written 2026-10-08 ~18:50 IST)
 
-*(Written at the end of the run; see the section below once Phase 2 completes.)*
+### 6.1 Builds and commits
+
+| | Commit | Identity | Deployed? |
+|---|---|---|---|
+| Phone | `81ff971` (phone code identical through HEAD) | debug APK `fbb1de42…`, signer `d3a505d2…7d26` | **yes**, 11:56, user 0 |
+| Mac | `f3c9eec` (Mac code identical through HEAD) | dev `dist` `0c269edb…` | **yes**, 14:32 (PID 14347, no switches) |
+| Mac packaged | `6285001` | ad-hoc `.app`, static checks only | no (not launched — 207) |
+| Android release candidate | `7507217` | unsigned APK `8803cfcd…` | no |
+| Code commits today | `a178bfa` 201 · `79b8c5b` 202 · `acc119d` 203/204 · `219cb76` F2 · `81ff971` F1 · `7507217` H7 tooling · `97193bf` 206 · `f3c9eec` 201 refix | | local, not pushed |
+| Pairing | v2, Mac identity `a95935bb…` (re-paired 14:46 after 207) | | |
+
+Fresh totals: Mac **1,981/0**, phone **1,455/0**, Swift **140/0**, scripts **290/0**, typechecks clean, all guards and hook fixtures green.
+
+### 6.2 T1–T5 and the stages
+
+T1–T4 hardware-verified on older build pairs (§1); **today on the deployed builds: T2, T3, T4-A and T5-B
+hardware-verified** — T5-B for the first time ever. Stages: see §4d (0 soak — endurance verified, 199 still open; 1–11
+as tabled; 12 partial; 13 static). Earlier "stages D–G" of the 2026-10-06 plan: D (clipboard) now covered by stage 6,
+E (drop) by stage 7, F (push/pull/mirror) by stages 4, 7, 8; G (packaged launch, banner) **not run** — needs a fresh
+macOS user and, for banners, a signed build.
+
+### 6.3 Security — fixed today / open
+
+Fixed and hardware-verified: **206** (receive-window decisions refused since S4), **201** (drop sheet: Return reached Send
+on real sheets — now Return cancels). Hardware-verified today: S1/S2b impostor-first (refused 6/6, 0 proofs, injection
+dropped), S2 pinned bulk/video sockets in use (pushes, pulls, mirror). Fixed in source (Phase 1): F2 (link host in
+Activity), F1 (log flooding). **Open:** **207** (identity overwritten by a build that cannot decrypt it — release-blocking
+for any signing change), **208** (stale thumbnail ids, low), F6 (low), S5's entitlement half (Developer ID), U-2 dependency
+audit (not run), the `SendSelectionActivity` new-task focus-sync hazard (hardening proposed).
+
+### 6.4 Honest limitations (unchanged by today)
+
+Pre-hash ceiling **64 MiB**: larger pulls in a release build are **unverified** and say so (`fs.blocks` stays
+development-only). **No size limit is claimed; 500 GB is unsupported and untested** (largest file moved: 256 MiB).
+Camera v1 debug-only; phone-as-webcam deferred; incoming-call banner deferred and unrun; **call audio on the Mac is a
+platform wall**; macOS notification banners need a signed build; the Keep selection toolbar cannot offer *Send to Mac* on
+this One UI build; every reading is from one SM-S938B and one Mac.
+
+### 6.5 Remaining blockers, ranked
+
+1. **RB1 — no signed build** of either app (owner: Apple Developer Program + Developer ID; release keystore use).
+2. **207 — identity overwrite on a signing change** — code fix required *before* the first signed build, or every
+   tester who ran an ad-hoc build loses their pairing silently on update.
+3. **P3 — "nothing leaves your network"** is false while ML Kit ships (decision below).
+4. **RB5 — privacy policy and publisher identity** missing (skeleton ready).
+5. **205 — the link's wake lock** is the largest app battery consumer overnight; decide keep-and-state or measure-and-change.
+6. **R-199** — endurance verified; the emulator control that would discriminate the fix is unrun.
+7. **U-2** dependency advisories unknown; **U-3** single device; **notices screen** missing.
+8. Not run and owed before claims: defect 30 (needs a consenting number), call banner, camera steps 6/8/9, VoiceOver and
+   TalkBack passes, a packaged launch on a fresh macOS user, phone-hotspot/USB reconnect, T4-B.
+
+### 6.6 Decisions the owner owes (exact)
+
+1. **Distribution route:** direct download for both apps (recommended) and/or Play for the phone.
+2. **ML Kit:** Option A (disclose — strings in §5) or **Option B (replace with an offline decoder — recommended)**.
+3. **Publisher details:** legal name, postal address, support email, policy effective date.
+4. **Policy values:** keep `FS_BLOCKS_RELEASE`, `SHARE_V3_RELEASE`, `WEBCAM_RELEASE`, the camera and call-banner gates
+   **off** for v1 (recommended); whether the phone's diagnostic logs may move in a device-to-device backup; whether
+   existing Activity history (which may hold clipboard link hosts) is rewritten.
+5. **205:** accept the measured ≈ 3.5 %/night cost and say so, or approve the measure-without-the-lock experiment.
+6. **201's trade-off:** Escape does nothing on the drop sheet (Return cancels) — accept, or ask for a custom sheet.
+7. **Approvals:** Apple Developer Program enrolment; signing with the release keystore (your act); an offline OSV audit.
+
+### 6.7 Personal acceptance walkthrough (≈ 10 minutes)
+
+1. Open Sidekick on the Mac → it shows *Connected* to your phone. 2. Files → *Received files*: drag a small file in →
+the sheet asks; press **Return** — nothing is sent; drag again → click **Send** → the file is on the phone in
+`Download/ConnectSuite`. 3. Copy a large file to the Mac → the bar shows *"The phone has sent X of Y"*. 4. Share two
+files from My Files → the Mac's small window: **Accept** one, **Decline** the other. 5. Mirror → tap *Start* on the
+phone → the screen appears; press **Back** on the Mac. 6. Turn the Mac's Wi-Fi off and on → it reconnects by itself
+in ~10 s. 7. Camera → *Start camera* on the phone → live picture; Stop on the Mac.
+
+### 6.8 Verdict: **NO-SHIP**
+
+The core product works on this phone and this Mac — today's run hardware-verified pairing v2 including an impostor,
+large-file pause/resume/disconnect/corruption/source-change, sharing, the clipboard's consent rules, mirroring with
+input, reconnect and the camera. It is still not shippable: **there is no signed build to give anyone (RB1)**; **the
+first signed build would silently destroy existing pairings (207)**; **the phone's privacy claim is false while ML Kit
+ships (P3)**; and **there is no privacy policy or publisher (RB5)**. Two release-relevant defects (206, 201) were found
+and fixed only because this run used real hardware — the suite was green over both.

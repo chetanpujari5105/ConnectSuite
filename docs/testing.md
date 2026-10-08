@@ -29021,3 +29021,30 @@ event log instead.
 ### Defect 208 — thumbnails asked of the wrong root (found in stage 11)
 
 See stage 11.
+
+### Stage 12 — accessibility (18:40) · VoiceOver/TalkBack **not run** (prepared); Mac names **verified by CDP**; phone **no reading**
+
+Running a screen reader takes over the owner's screen and speech, which the owner asked to keep for later; the checklists
+are in `docs/release-verification-2026-10-08.md` → Stage 12. What was read silently: every Mac pane opened through its nav
+row and every visible `button`, link, field, tab, switch and checkbox checked for an accessible name (aria-label,
+labelledby, text, title, placeholder or label): **212 controls across 12 panes, 0 unnamed** (Photos read 0 controls and
+Apps 1 — probably still loading; a name can exist without being meaningful, which only the VoiceOver pass can judge).
+**Phone: no reading** — the first dump returned 0 Sidekick nodes (not on screen), and when Sidekick was to be resumed the
+phone had **left USB again** (`adb devices` empty, no Samsung in the USB tree); not chased.
+
+### Stage 13 — packaged builds (18:46) · **static checks pass**; launch **deliberately not done**
+
+Mac: `electron-builder --mac dir --arm64` from `git archive` of **`6285001`** in the scratchpad (identity discovery off):
+fuses `101100011 → 000011011`; ad-hoc deep signature verifies; `LSFileQuarantineEnabled` true; `ElectronAsarIntegrity`
+present; `FS_BLOCKS_RELEASE`, `SHARE_V3_RELEASE`, `WEBCAM_RELEASE` false; the 201 refix (`defaultId: 0, cancelId: -1`) and
+the 206 fix (`parseShareDecision`) present; `pairDecoyFirst` compiled behind `!app.isPackaged`; `entry.js` runs
+`refusedSwitch(process.argv, true)` before `main.js`; 0 test or map files. **Not launched:** defect 207 showed on this run
+that a packaged copy started on this macOS account shares the development profile and overwrites its identity; a launch
+needs a fresh macOS user. Android: the unsigned release APK built in Phase 1 from `7507217` (phone code identical to HEAD)
+— unsigned, not debuggable, 0 probe components, not installed, never signed.
+
+### Final fresh totals (end of Phase 2)
+
+Mac **1,981 / 0** (`.test-run.json` 2026-10-08T09:01:03Z, after `f3c9eec`, the last Mac code change); both Mac typechecks
+clean at that commit; phone **1,455 / 0** (code unchanged since `81ff971`, run at `--rerun-tasks`); Swift **140 / 0**;
+scripts **290 / 0**; every `check-*.mjs`, `check-defects.sh` and both hook fixture suites exit 0.

@@ -1,3 +1,42 @@
+# RELEASE-VERIFICATION RUN — 2026-10-08 (owner present): Phase 1 code + Phase 2 hardware stages 0–13 — **NO-SHIP**; two release-relevant defects found and fixed on hardware
+
+**Read first:** `docs/release-verification-2026-10-08.md` §6 (report, ranked blockers, decisions owed, verdict); evidence
+in `docs/testing.md` → *Release-verification run, Phase 1* and *Phase 2*.
+
+1. **Built and proven:**
+   - **Hardware-verified on the deployed builds:** pairing v2 re-pair + **impostor answers first** (refused 6/6, 0 proofs,
+     injection dropped); **T2, T3, T4-A, T5-B** (T5-B for the first time; defect 166 verified); phone → Mac sharing
+     (Accept/Decline/Cancel); clipboard S7 (offer, Copy once, duplicate refused, Restore-over-newer refused, Dismiss);
+     drop sheet, collision-safe push, drag-out; mirror start/frames/input/stop and the 30 s consent timeout; reconnect
+     after Mac Wi-Fi outages (~10.5 s, one session); camera v1 request/approve/switch/stop (1224 sent = received).
+   - **Found and fixed on hardware:** **206** — every receive-window Accept/Decline refused since S4 (`97193bf`);
+     **201** — Phase 1's drop-sheet fix let Return reach *Send* on real sheets; refixed so Return cancels (`f3c9eec`).
+   - **Found, open:** **207** — a build that cannot decrypt the stored Mac identity overwrites it (an old packaged copy on
+     the shared profile destroyed the pairing; re-paired with approval) — release-blocking for any signing change;
+     **205** — the link's wake lock is the largest app battery consumer overnight; **208** — stale thumbnail ids after a
+     root switch. **137 not reproduced** (fresh and old grants list). **199**: endurance verified (battery died at 10:31,
+     after the window), still open.
+   - **Phase 1 (code):** 202 root names, 203 space/resume, 204 pull progress, F1/F2, H7 tooling, policy addendum.
+   - **Fresh:** Mac 1,981/0, phone 1,455/0, Swift 140/0, scripts 290/0, typechecks and every guard green.
+2. **Committed** (local, not pushed): `a178bfa` `79b8c5b` `acc119d` `219cb76` `81ff971` `00e84ab` `7507217` `d2b58f2`
+   `424d080` `9d30318` `e609538` `3d875cd` `933e576` `26c055f` `97193bf` `e43ce18` `0f5c8c1` `f3c9eec` `e7ba1d9` `697a58d`
+   `3e018c2` `f7633f8` `6285001`, and the commit carrying this entry.
+3. **Ready, not installed or launched:** packaged `.app` of `6285001` (static checks pass); unsigned release APK of
+   `7507217`.
+4. **Needs your decision:** distribution route; ML Kit (A disclose / B replace — recommended); publisher details; policy
+   values (gates stay off); 205; 201's Escape trade-off; signing/enrolment; OSV audit. Exact list: report §6.6.
+5. **Next:** fix 207 before any signed build; then the unrun items in §6.5 (defect 30 with a consenting number, call
+   banner, camera 6/8/9, screen-reader passes, packaged launch on a fresh macOS user).
+6. **Left changed on your devices:** phone — `fbb1de42…` installed; Sidekick's **accessibility service on** (you turned it
+   on); pairing v2 to the Mac's new identity `a95935bb…`; synthetic files in `Download/ConnectSuite` (`drop-me (2)–(5).txt`,
+   `Download/SidekickS5/`, `Documents/Sidekick137/` and its grant; the T5 source is
+   now H2; **the phone is off USB**. Mac — `dist` `0c269edb…` running (PID 14347); old `dist`s moved (not deleted) to
+   `~/.connectsuite-evidence-private/rollback-2026-10-06/mac-live-dist-moved-at-2026-10-08/`; the old packaged copy quit
+   (not deleted); **the development identity `B5:9F:4B:BA…` is gone** (207); `~/Downloads/Sidekick` gained `(7)`, `(8)`,
+   `(9).bin.failed`, `t5 (2).bin`, `sidekick-s5-a/b.txt`, `drop-me (5).txt`; **T4-A's 2026-10-01 `.failed` marker was
+   removed by the product** when `(7).bin` published; `~/.s7-run/drop-me (5).txt`; Brave's windows minimized (Dock);
+   Mac clipboard holds a synthetic marker. Nothing pushed, signed or published.
+
 # OVERNIGHT 2026-10-07 (unattended): clipboard gaps, S5/S8/S9, UI sweep, privacy drafts — 10 commits; NOTHING installed or relaunched
 
 **Read first:** `docs/morning-plan-2026-10-07.md` (what to do, in order, with the approvals each step needs),
