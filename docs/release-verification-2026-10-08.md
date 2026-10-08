@@ -236,6 +236,22 @@ delivered a notification update over it at **01:32:21**, and the Mac logged no d
 **on battery** since it left USB (the soak began charging), so the remaining interval is closer to real use. The end
 check needs USB back; it is stage 0.
 
+## 4c. Stage 0 — the soak's end (2026-10-08 06:04:41)
+
+**End check: NOT RUN.** The phone never returned to USB after leaving it between 00:26 and 00:56 (`adb devices`
+polled every 30 s until 06:05:11: no line for the pinned serial; every monitor check from 00:55 through END-CHECK
+06:04:41 reads `0 device line(s)` and holds no phone reading). No exit-info, PID, `types=` or claim-line reading exists
+for the interval, so **defect 199's soak is not passed and not failed.**
+
+**Indirect evidence, Mac side only (read-only):** one control connection, `10.225.215.160:65322 →
+10.225.215.199:42501`, the same TCP 4-tuple at 01:3x and at 06:05 (opened by the 23:35:18 `Connected`); **0** `[link]`
+Connected / Disconnected / Heartbeat lines since T0 across `sidekick.log` and `.1`; phone-originated traffic still
+arriving at 05:27:35. A `LinkService` restart or a process death would have closed that socket, so this strongly
+suggests the service stayed up for ≥ 5 h 33 min of the interval, about 5 h of it on battery — but it is a reading of a
+socket, not of the service's type or exit records. **To close:** USB back, then the stage-0 reads (exit-info newest
+user 0 still 13:56:08.525; PID 23946; `LinkService` createTime older than T0; `types=0x00000010`; claim lines since
+T0) — they remain valid after the fact as long as nothing is installed or started first.
+
 ## 5. ML Kit — the copy, and the two honest options
 
 The phone shows, on *Link your Mac*: *"No cloud, no account, nothing leaves your network"* (`ConnectMacScreen.kt:262`)
