@@ -28926,3 +28926,31 @@ window moved to the built-in display.
 ### Defect 207 — the Mac identity overwritten by a second build on the same profile (found in stage 7)
 
 See stage 7. Recovered by an owner-approved re-pair at 14:46:19 (new Mac identity `a95935bb…`).
+
+### Stage 8 — mirror and input (17:22–17:42) · **hardware-verified** (start, frames, input, stop, consent timeout)
+
+Mac `dist` `0c269edb…` (`f3c9eec`), phone `fbb1de42…`. The Mac's controls pressed by id through `probe.mjs`. Consent
+window measured from the code first: `MirrorEngine.CONSENT_TIMEOUT_MS = 30_000`, so the owner had Sidekick in the
+foreground before the start.
+
+- **Start + consent:** `#mirror-start` 17:22:42 → phone `mirror.start …; app is foreground` → Mac `requesting-consent` →
+  owner tapped Android's dialog → `Screen capture consent granted` 17:23:01.619 (18.9 s) → `Encoding 1080x2340 @450dpi
+  60fps 8Mbps`, `Video channel attached`, first keyframe emitted 11 ms after it was asked for; Mac `Mirroring started:
+  1080x2340 … 19113ms after asking`, `Video socket open to …:42502`.
+- **Frames (the running-thing line, not `Mirror session started`):** `Encoded +N frames` every 2 s, 17:23:35–17:24:05:
+  mostly 1–2 frames/s with bytes beside each tick (a static screen), never stalled; the Mac's canvas decoded at
+  **1080×2340**, the phone's capture size.
+- **Input:** first, with Sidekick's accessibility service **off** (as since 2026-09-30), the phone advertised `input`
+  unavailable — *"missing Accessibility"* — and the Mac disabled the input buttons (a click on `#input-back` did nothing;
+  the disabled buttons carry no tooltip saying why — UX gap, not filed). The owner turned the service on in Settings;
+  the Mac re-enabled the buttons on its own. `#input-back` 17:39:06 → phone `input.global delivered — 1 delivered / 0
+  refused`; the next encoder tick jumped from 1 to **57 frames (28.5/s)** as the screen changed.
+- **Stop from the Mac:** `#mirror-stop` 17:39:50 → phone `Mirror stopped: stopped-by-mac`; Mac `Video socket closed:
+  stopped by the user`, state *"Mirroring was stopped from the Mac."*; `media_projection` `null`; `MirrorService` not
+  running. Logging nit (not filed): 6 ms later the phone also logged `Projection stopped by Android: android-revoked` —
+  the projection's own stop callback after our stop; the reason reported to the Mac was the first, correct one.
+- **Consent timeout:** start at 17:41:18 with Sidekick in the background and no tap → Mac *"Waiting for the phone.
+  Sidekick is in the background there, and Android only shows its screen-sharing dialog …"* → phone `Consent unanswered
+  after 30000ms` 17:41:49.035 → both sides *"Screen sharing was not approved within 30 seconds, so the request ended."*;
+  `media_projection` `null`; nothing captured.
+- **Left:** Sidekick's accessibility service **on** (the owner's choice; undo in Settings → Accessibility).
