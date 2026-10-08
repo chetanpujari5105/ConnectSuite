@@ -28992,3 +28992,32 @@ event log instead.
   and **"1224 frames sent by the phone, 0 dropped there; 1224 received here, 1223 drawn."**
 - **Not run:** step 6 (Home on the phone), step 8 (Disconnect during a live stream), step 9 (busy — needs a second
   mirror consent), the pane-exit half of 7; **incoming-call banner** — no consenting caller was named.
+
+### Stage 11 — defect 137 (17:57–18:39) · **not reproduced** (hardware); defect 30 **not run**; defect 208 found
+
+- **(a) Provider, read-only:** `com.android.externalstorage` is the system build (`/system/priv-app/ExternalStorageProvider`,
+  versionName 16, never updated) and holds `MANAGE_EXTERNAL_STORAGE` and `WRITE_MEDIA_STORAGE` granted (its storage
+  app-ops read `ignore`, ordinary for a privileged provider). Not short of its own permissions.
+- **A false reading caught and withdrawn:** at 17:57 the Mac pane showed DCIM as *"0 items loaded"* and I first read that
+  as 137 reproducing. The phone's log for that moment holds a roots listing and a *Received files* listing and **no
+  `fs.list` of DCIM at all** — the pane was drawn before the listing was requested, and the probe's landing condition
+  (*"items loaded"*) matched that transient. Not counted.
+- **(b) Logcat during the DCIM selection:** no denial and no error for the children query. Found instead (17:57:31):
+  `ExternalStorageProvider` threw `StringIndexOutOfBoundsException: begin 0, end -1, length 10` in `getRootFromDocId` under
+  `DocumentsProvider.enforceTree` on a `query` from Sidekick (uid 11011), four times — a 10-character document id with no
+  `root:` prefix, the shape of a MediaStore id, sent against the DCIM tree; Sidekick logged `fs.thumb saf:primary%3ADCIM →
+  … 3 gone`. → **defect 208** (thumbnail ids of the previous root sent after a root switch, counted as *gone*).
+- **(c) The control the 2026-09-23 probe lacked — a fresh grant:** synthetic `Documents/Sidekick137` (three files, pushed
+  over `adb`); owner granted it in Sidekick → Sync → Folders (`granted tree saf:primary%3ADocuments%2FSidekick137; 4
+  folder(s) now shared`); the phone listed **3 of 3**; the pane drew `sk137-1/2/3.txt`, *"3 items loaded"*.
+- **The old grants list too:** DCIM **30 of 30** (18:35:55, 18:38:16, 18:38:52; `snapshot of primary:DCIM … 30 entries`).
+  **Every granted-tree listing in the phone's logs since 2026-10-06 23:13 returned entries** (Documents 3 of 3 eleven
+  times, DCIM 30 of 30 three times, Sidekick137 3 of 3); the 2026-09-23 empty cursor has not recurred in that window.
+  **Defect 137: not reproduced; what cleared it is not established** (reinstalls and re-pairs since 09-23 are candidates,
+  none shown to be the cause).
+- **Defect 30 (new conversation to a number with no thread): not run** — no consenting number was named.
+- **Left:** phone `Documents/Sidekick137/` (synthetic) and its grant (the owner can remove it in Sync → Folders).
+
+### Defect 208 — thumbnails asked of the wrong root (found in stage 11)
+
+See stage 11.

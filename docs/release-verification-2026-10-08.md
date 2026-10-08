@@ -78,7 +78,7 @@ Gate = what a **release** build from HEAD does. "HW latest" names the build pair
 | 3 | **RB5** | No privacy policy, publisher identity or contact | **blocked — owner** | the addendum's skeleton filled in by the owner |
 | 4 | **R-199** | `LinkService` killed by the `dataSync` limit | fixed `c05efcc`, installed; **soak running** (end ≥ 06:04:41); static discriminator recorded at install B; dynamic discriminator (emulator) **not run** | end check (stage 0); emulator control |
 | 5 | **S1/182 + S2b/189** | pairing authentication; side channels bound to the owning session | **hardware-verified (partial)** — a v2 pair exists; impostor-first **tooling built 2026-10-08, not run**; replay and wrong-peer side channel are loopback/JVM-only by construction | stage 3 |
-| 6 | **137** | granted SAF trees list 0 entries | **open** — provider returns an empty cursor; no Sidekick defect found | stage 11 (fresh-grant control) |
+| 6 | **137** | granted SAF trees list 0 entries | **not reproduced 2026-10-08** (old grants and a fresh grant list); cause unknown, stays open | — |
 | 7 | **30** | new conversation to a number with no thread | **open** | stage 11, consenting number only |
 | 8 | **201–204** | drop-sheet keys; root names; space resume; pull progress | **tests-only** (fixed in source, not deployed) | stages 2, 4, 7 |
 | 9 | **200** | windowless process after the first Quit | **tests-only**, not deployed; cause not established | stage 2 (the quit itself is the reading) |
@@ -280,6 +280,7 @@ which has no ML Kit; it stands.)
 | 8 mirror + input | **hardware-verified** | consent tap → capture 1080×2340, encoder ticking for 30 s, Mac decodes at the same size; input refused with a reason while accessibility was off, delivered once it was on (Back → the screen changed); Stop from the Mac → projection null; an untapped start timed out at 30 s with the sentence on both sides |
 | 9 reconnect | Mac Wi-Fi off/on **hardware-verified**; hotspot, USB **not run** | 10 s and 40 s outages: one session after each, no pairing request, ~10.5 s from Wi-Fi back to connected (heartbeat-bound); hotspot equivalent and not scripted; USB would drop adb |
 | 10 camera v1 | steps 2/4/5/7 **hardware-verified**; 6/8/9, call banner **not run** | request alone expires at 30 s without opening the camera; one tap → live 960×720; switch without a new request; Mac Stop → released, 1224 sent / 1224 received / 1223 drawn. Call banner: no consenting caller named |
+| 11 defect 137 / 30 | 137 **not reproduced** (hardware); 30 **not run** | provider holds its permissions; a fresh synthetic grant lists 3/3 and the old grants list (DCIM 30, Documents 3) — every listing since 10-06 23:13 returned entries; an early 0 was my probe reading a pane drawn before the listing. **208** found: thumbnail ids of the previous root sent after a switch. 30: no consenting number |
 
 ## 6. Phase 3 — report
 
