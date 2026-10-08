@@ -28720,3 +28720,86 @@ See stage 0. Registered open; nothing changed in code. Fix direction in `docs/de
 - **Restored:** quit by name 12:20:45 (`[quit] nothing to wait for … will-quit reached 15 ms`), relaunched **without**
   the switch (PID 12755, 0 `CONNECTSUITE_*` variables, no `[debug]` line), `pairing: v2` via last-known 12:20:46;
   `link-up.sh` 3 OKs.
+
+### Stage 4 — T2 Pause → Resume on the deployed builds (12:25:23–12:26:30) · **hardware-verified**; 202 and 204 seen
+
+Source `sidekick-pass-stop-200mb.bin` (`_id` 1000308768, phone SHA-256 `bf375859…` at baseline). Driven through the real
+pane by `probe.mjs` (each step an `act` with its landing condition; selectors by name/id). Driver faults caught and not
+counted: a click before the rail had loaded (`roots: 0`), and selectors written for list rows while the pane was in grid
+view (tiles carry the same `data-id` and accessible name) — both stopped before any transfer.
+
+- **202 on hardware:** the rail read *Received files* — *Download/ConnectSuite on the phone · read and write · 2.5 GB
+  free* and *Sidekick private storage* — *Private to Sidekick — not shown in My Files · …* (the installed phone still
+  sends `label` by the new build's rule; the Mac names both by kind).
+- **Pull + 204 on hardware:** *Copy to Mac* pressed by id; the pane drew *"The phone has sent 10 MB of 200 MB (5%)"*,
+  *"… 49 MB … (24%)"*, *"… 83 MB … (41%)"* (sampled every 100 ms). The one-shot watcher pressed the real `#files-pull-pause`
+  at the phone's `sending` report of **87,293,952 B (41.6 %)**, with exactly one Pause button.
+- **Pause:** phone `fs.transfer.cancel (reason=pause)` 12:25:25.944, `Cancelled: 92,798,976 of 209,715,200`; Mac
+  `interrupted after 89,915,392`, *"paused by the person at 686 verified blocks of 1600 … it resumes only on Resume"*.
+  Pane: *"Paused: 86 MB of 200 MB is on this Mac, checked block by block."*, button **Resume**.
+- **No automatic resume for 60 s:** the partial `.sidekick-pass-stop-200mb (7).bin.sidekick-pull.part` held
+  89,915,392 B with an unchanged mtime from 12:25:26 to 12:26:26; the pane still offered Resume; no `begin` in between.
+- **Resume** pressed by id 12:26:26: Mac *"resumes at 89915392 … (686 blocks verified on this Mac; the phone accepted
+  provisionally and re-hashes them)"*, claimed at offset 89,915,392; phone *"resume accepted provisionally"*, `Sent:
+  209,715,200 (119,799,808 sent this time, resumed at 89,915,392)`, 1,600 blocks; Mac 3,602 ms, 465.8 Mbit/s. Pane:
+  *"… is on this Mac … Verified block by block … It continued from where it had paused."* **The *re-checking* text
+  was not sampled** (the recorder saw no progress text in the 3.9 s resumed run) — no reading for 204's verifying phase.
+- **Result:** `~/Downloads/Sidekick/sidekick-pass-stop-200mb (7).bin`, 209,715,200 B, SHA-256 **`bf375859…` = source**;
+  0 partials, 0 resume records; quarantine *absent* (development build, expected).
+- **Evidence removed by the product, and the run should have foreseen it:** publishing `(7).bin` removed T4-A's
+  synthetic marker `sidekick-pass-stop-200mb (7).bin.failed` (430 B, 2026-10-01 16:51) — *"the .failed marker … was an
+  earlier failed attempt's and was removed, now that the file is whole"*, the contract's own rule. The runbook flagged
+  the name collision, not this consequence; deleting evidence is on the owner's confirm-first list. The marker's
+  content is recorded in this file (*L1/L2 T4-A on hardware*); the file is gone.
+
+### Stage 4 — T3 Disconnect → Connect (12:29:13–12:29:30) · **hardware-verified**
+
+Same source and driver style; the pull started in Files, the pane switched to Settings → Connection while it ran, and a
+one-shot watcher pressed the **visible** *Disconnect* button (exactly one) at the phone's `sending` report of
+**88,866,816 B (42.4 %)**.
+
+- **Stop:** Mac `pull … stopped: the session it ran on ended (user disconnected); what has arrived is kept` 12:29:16.250,
+  `Disconnected: user disconnected` .251 (**1 ms**), *"interrupted at 666 verified blocks of 1600; the partial and record
+  are kept"*. Partial **87,293,952 B at +0 s, +2 s and +10 s** — 0 B of growth. Phone: `session ended … stopping 1 live
+  stream(s) it agreed` 12:29:16.340 (90 ms after), the stream counted **failed**, not completed.
+- **Connect** pressed once by name: `Connected … via last-known` 12:29:26.432 and in the same millisecond *"resuming …
+  automatically: interrupted less than 10 minutes ago in this run"*; resumes at 87,293,952 (666 blocks; phone re-hashes);
+  phone `Sent: 209,715,200 (122,421,248 sent this time, resumed at 87,293,952)`; Mac 3,548 ms, 472.9 Mbit/s,
+  `verified=true (block by block …)`.
+- **Result:** `sidekick-pass-stop-200mb (8).bin`, 209,715,200 B, SHA-256 **`bf375859…` = source**; 0 partials, 0 records.
+- **Reporting nit (not filed):** the phone logs the user-caused stop at **E** (`block pull failed … ConnectionReset`,
+  `1 completed / 2 failed since start`) — an expected stop worded and levelled as a failure.
+
+### Stage 4 — T4-A corruption in transit (12:31:36–12:33:47) · **hardware-verified**
+
+Preflight: no `sidekick-pass-stop-200mb (9).bin*` existed. Armed once: `am start -n …/probe.FsProbeActivity --es docId
+1000308768 --el ttlSec 300` (debug manifest only, `DUMP`-gated) → `[fs] PROBE ARMED (T4-A): … byte 104923136, one pull,
+expires in 300s` (12:31:36.872). A first driver run failed to **parse** (a statement cut by my own `sed`) — nothing ran;
+the arm was still live and the fixed run started 12:32:35. One *Copy to Mac* by id: phone `PROBE BOUND (T4-A):
+tf-WDxRBiWDLGfTgJuyiMFweA` = the transfer the Mac claimed; `byte 104923136 deliberately flipped … AFTER the digest took
+the true value`. Mac 12:32:39.109: *"The file arrived damaged (block 800 does not match what the phone read), so the
+partial was deleted"* after 106,954,752 B; pane said the same. **Nothing published at `(9).bin`; `(9).bin.failed`
+(614 B) created and kept; 0 partials and 0 records after 60 s; one claim only (no retry).** Disarmed (`FsProbeActivity:
+DISARMED` 12:33:46.819). Source SHA-256 after: `bf375859…` (unchanged).
+
+### Stage 4 — T5-B source change during a pause (12:34:27–12:36:18) · **hardware-verified (first reading in three attempts)**
+
+Source: the dedicated `sidekick-t5-source-change-200mb.bin` (`_id` 1000313356), H1 `b38a9052…` at preflight; the Mac
+held the H0 copy, so the pull named `(2).bin`.
+- **Pause** by the one-shot watcher at the phone's report of 92,012,544 B (43.9 %); pane *"Paused: 92 MB of 200 MB is on
+  this Mac, checked block by block."*; partial 95,944,704 B.
+- **Stimulus, first try: refused by its own gate.** The driver passed the `dd` as separate `adb shell` arguments, which
+  `adb` re-joined so the pipe ran outside `sh -c`: nothing was written, the read-back was empty, and the gate (*SHA and
+  mtime must both change*) stopped before Resume. The pull stayed paused.
+- **Stimulus, by hand as one command string:** `printf Z | dd of=… bs=1 seek=209000000 count=1 conv=notrunc` — byte
+  209,000,000 (**beyond** the ~92 MB verified prefix, so the prefix re-hash cannot see it). Measured at the file: SHA-256
+  `b38a9052…` → **H2 `8ce38c365fa4abf70395317623d4571aeb5282ae89e50cb5dc9e06474868a123`**, mtime 1790876712 → 1791443127,
+  byte `cc` → `5a`, size unchanged. **MediaStore's row still read `date_modified=1790876712`** (the index the earlier
+  attempts waited on, and which defect 166 stopped trusting).
+- **Resume** pressed by id 12:36:11: phone *"source checked by LIVE_BY_ID — the file's own metadata, from a descriptor
+  opened by id; the index said 209715200 B @ 1790876712…"*, *"resume refused (source-changed …)"*; Mac *"the phone refused
+  the resume (source-changed); starting again from 0; old partial deleted"*; full pull 6,379 ms; pane *"… The file changed
+  on the phone since it paused, so it started again from the beginning."*
+- **Result:** `sidekick-t5-source-change-200mb (2).bin`, 209,715,200 B, SHA-256 **`8ce38c36…` = H2, the changed source** —
+  never a mix; 0 partials, 0 records. **Defect 166 is hardware-verified** by this run. **Left changed:** the phone's T5
+  synthetic source is now H2.
