@@ -25,14 +25,14 @@ class FakeDecider implements Decider {
 
 test('control: an offer id and a word, from a window in front, reaches decide', async () => {
   const d = new FakeDecider('awaiting-decision');
-  assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'accept' }, front, d), { ok: true, state: 'saved' });
+  assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'accept' }, front, d, () => true), { ok: true, state: 'saved' });
   assert.deepEqual(d.calls, [`${id}:accept`]);
 });
 
 test('a renderer-supplied path, name or payload beside a valid id is refused whole — nothing is decided', async () => {
   for (const extra of [{ path: '/Users/x/.ssh' }, { folder: '/tmp' }, { savedAs: 'a' }, { offer: {} }]) {
     const d = new FakeDecider('awaiting-decision');
-    const r = await handleShareDecision({ offerId: id, decision: 'accept', ...extra }, front, d);
+    const r = await handleShareDecision({ offerId: id, decision: 'accept', ...extra }, front, d, () => true);
     assert.equal(r.ok, false, JSON.stringify(extra));
     assert.deepEqual(d.calls, []);
   }
@@ -54,19 +54,19 @@ test('hidden window: an Accept is refused and the offer keeps waiting; a Decline
   ];
   for (const w of hidden) {
     const d = new FakeDecider('awaiting-decision');
-    const r = await handleShareDecision({ offerId: id, decision: 'accept' }, w, d);
+    const r = await handleShareDecision({ offerId: id, decision: 'accept' }, w, d, () => true);
     assert.equal(r.ok, false, JSON.stringify(w));
     assert.match((r as { reason: string }).reason, /still waiting/);
     assert.deepEqual(d.calls, [], 'nothing decided');
     assert.equal(d.current, 'awaiting-decision');
-    assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'decline' }, w, d), { ok: true, state: 'declined' });
+    assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'decline' }, w, d, () => true), { ok: true, state: 'declined' });
   }
 });
 
 test('a decision for an offer that is no longer waiting (expired, stale, already decided) is refused before decide', async () => {
   for (const state of ['expired', 'ended', 'declined', 'saved', undefined] as const) {
     const d = new FakeDecider(state);
-    const r = await handleShareDecision({ offerId: id, decision: 'accept' }, front, d);
+    const r = await handleShareDecision({ offerId: id, decision: 'accept' }, front, d, () => true);
     assert.equal(r.ok, false, String(state));
     assert.deepEqual(d.calls, []);
   }
@@ -168,4 +168,28 @@ test('Open, Show in Finder, Cancel and Try again: receive window only, {offerId}
     assert.match(body, /if \(!file\.ok\)/, `${channel} refuses when the file changed`);
   }
   assert.match(bodyAfter(code, "ipc.handle('share-retry'"), /acceptAllowed\(receiveWindow\.facts\(\)\)/, 'a retry pulls, so it is gated like Accept');
+});
+
+test('defect 206: a decision in the real payload shape {offerId, decision} is honoured from the window that shows the offer, refused from one that does not', async () => {
+  // 2026-10-08 12:47-12:52, hardware: every Accept and Decline from the receive window was refused with
+  // "that offer is not on this window" — main checked the window with parseOfferRequest, which accepts
+  // exactly {offerId}, so the decision's own `decision` key failed the parse every time.
+  const id = 's-HHUCmtUxkRBfBoWHWnCggQ';
+  const decided: string[] = [];
+  const receiver: Decider = { state: () => 'awaiting-decision' as ReceiveState, decide: async (o, d) => { decided.push(`${o}:${d}`); } };
+  const shown = (o: string) => o === id;
+  const declined = await handleShareDecision({ offerId: id, decision: 'decline' }, { exists: true, visible: true, minimized: false, focused: false }, receiver, shown);
+  assert.equal(declined.ok, true, JSON.stringify(declined));
+  assert.deepEqual(decided, [`${id}:decline`]);
+  const elsewhere = await handleShareDecision({ offerId: 's-0yf8h7kOYfxAPwQNGqwn_w', decision: 'decline' }, { exists: true, visible: true, minimized: false, focused: true }, receiver, shown);
+  assert.deepEqual(elsewhere, { ok: false, reason: 'refused: that offer is not on this window' });
+  assert.equal(decided.length, 1, 'an offer this window was never shown authorises nothing');
+});
+
+test('defect 206: main checks the window with the id the decision parser read, never with parseOfferRequest', () => {
+  const code = codeOf(readFileSync(join(__dirname, 'main.ts'), 'utf8'));
+  const decide = bodyAfter(code, "ipc.handle('share-decide'");
+  assert.ok(decide.includes('handleShareDecision('), 'control: the decide handler was read');
+  assert.doesNotMatch(decide, /parseOfferRequest\(/, 'parseOfferRequest refuses the decision payload by design');
+  assert.match(decide, /receiveWindow\.showsOffer\(event\.sender, /);
 });

@@ -1439,10 +1439,9 @@ app.whenReady().then(() => {
     // Only the receive window decides. The main window's card has no Accept to send, and a page
     // that sends one anyway is refused here rather than trusted to have drawn the right thing.
     if (event.sender !== receiveWindow.webContents()) return { ok: false, reason: 'refused: only the receive window decides' };
-    const shown = parseOfferRequest(raw);
-    if (!shown.ok || !receiveWindow.showsOffer(event.sender, shown.offerId)) return { ok: false, reason: 'refused: that offer is not on this window' };
-    const result = await handleShareDecision(raw, receiveWindow.facts(), shareReceiver);
-    log.info('share', `receive window decision for ${shown.offerId} → ${JSON.stringify(result)}`);
+    const result = await handleShareDecision(raw, receiveWindow.facts(), shareReceiver, (offerId) => receiveWindow.showsOffer(event.sender, offerId));
+    const offerId = (raw as { offerId?: unknown } | null)?.offerId;
+    log.info('share', `receive window decision for ${typeof offerId === 'string' ? offerId : '(unparsed)'} → ${JSON.stringify(result)}`);
     return result;
   });
   ipc.handle('share-window-show', (event, raw: unknown) => {

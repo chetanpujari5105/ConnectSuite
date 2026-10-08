@@ -537,7 +537,7 @@ test('card Accept: through the IPC boundary, the destination re-checked, pulled,
     const r = receiver(link, d, [phone], { checkDestination: (f, size) => { checks += 1; return checkDestination(f, size); } });
     await r.onOffer(offer(3000, data.sha256, { name: 'notes.txt', mime: 'text/plain' }));
     assert.equal(checks, 1, 'checked at the offer');
-    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r, () => true);
     assert.deepEqual(res, { ok: true, state: 'saved' });
     assert.equal(checks, 2, 'and again at Accept, before any byte moved');
     assert.deepEqual(link.types(), ['respond:accept', 'fs.transfer.begin', 'saved:true']);
@@ -553,7 +553,7 @@ test('card Decline: decline user, nothing pulled, nothing written', { timeout: 1
   const d = folder();
   const r = receiver(link, d, []);
   await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
-  assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'decline' }, front, r), { ok: true, state: 'declined' });
+  assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'decline' }, front, r, () => true), { ok: true, state: 'declined' });
   assert.deepEqual(link.types(), ['respond:decline']);
   assert.equal(link.sent[0]!.payload.reason, 'user');
   assert.deepEqual(readdirSync(d), []);
@@ -566,11 +566,11 @@ test('card expiry: a late Accept after the Mac’s expiry is Expired — never D
   const r = receiver(link, folder(), [], { now: () => t });
   await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
   t = now + 600_000;
-  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r, () => true);
   assert.equal(r.state(id), 'expired');
   assert.deepEqual(link.sent, [], 'no accept and no decline went to the phone');
   assert.equal(headlineOf(r), 'Expired');
-  const again = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  const again = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r, () => true);
   assert.equal(again.ok, false, 'an expired card cannot be accepted');
 });
 
@@ -579,7 +579,7 @@ test('card stale session: Accept after a reconnect pulls nothing on the new sess
   const r = receiver(link, folder(), []);
   await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
   link.tokenValue = 'token-B';
-  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r, () => true);
   assert.equal(r.state(id), 'ended');
   assert.deepEqual(link.sent, []);
   assert.equal(headlineOf(r), 'Ended with the connection');
@@ -589,7 +589,7 @@ test('card hidden window: an Accept is refused, nothing is sent, and the offer s
   const link = new FakeLink(2, 10, 'a'.repeat(64));
   const r = receiver(link, folder(), []);
   await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
-  const res = await handleShareDecision({ offerId: id, decision: 'accept' }, { ...front, visible: false }, r);
+  const res = await handleShareDecision({ offerId: id, decision: 'accept' }, { ...front, visible: false }, r, () => true);
   assert.equal(res.ok, false);
   assert.deepEqual(link.sent, []);
   assert.equal(r.state(id), 'awaiting-decision');
@@ -603,7 +603,7 @@ test('card saved but unacknowledged: the card says so, never an unqualified succ
   try {
     const r = receiver(link, folder(), [phone]);
     await r.onOffer(offer(500, data.sha256, { name: 'a.bin' }));
-    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r, () => true);
     assert.deepEqual(res, { ok: true, state: 'saved-unacknowledged' });
     const snap = r.snapshots()[0]!;
     const status = shareReceiveStatus({ state: snap.state, wantedName: snap.name, savedAs: snap.savedAs, reason: snap.reason, priorCopy: snap.priorCopy });

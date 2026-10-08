@@ -57,10 +57,21 @@ export interface Decider {
   decide(offerId: string, decision: 'accept' | 'decline'): Promise<void>;
 }
 
-/** The whole `share-decide` handler, less Electron: parse, gate, then [Decider.decide]. */
-export async function handleShareDecision(raw: unknown, w: WindowFacts, receiver: Decider): Promise<DecisionResult> {
+/**
+ * The whole `share-decide` handler, less Electron: parse, check the window was shown this offer, gate,
+ * then [Decider.decide]. [shows] is asked with the id **this** parser read: the window check once ran
+ * `parseOfferRequest`, which accepts exactly `{offerId}`, on the decision payload — so every Accept and
+ * Decline was refused (defect 206).
+ */
+export async function handleShareDecision(
+  raw: unknown,
+  w: WindowFacts,
+  receiver: Decider,
+  shows: (offerId: string) => boolean,
+): Promise<DecisionResult> {
   const parsed = parseShareDecision(raw);
   if (!parsed.ok) return { ok: false, reason: `refused: ${parsed.why}` };
+  if (!shows(parsed.offerId)) return { ok: false, reason: 'refused: that offer is not on this window' };
   if (receiver.state(parsed.offerId) !== 'awaiting-decision') return { ok: false, reason: 'that offer is not waiting for a decision' };
   if (parsed.decision === 'accept') {
     const gate = acceptAllowed(w);
