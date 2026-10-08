@@ -308,39 +308,49 @@ object FsFeature {
         var made = 0
         var none = 0
         var missing = 0
+        var refused = 0
 
         val thumbs = ids.map { id ->
-            val entry = store.statById(id)
-            if (entry == null) {
-                missing++
-                return@map buildJsonObject {
-                    put("id", id)
-                    put("error", "NOT_FOUND")
-                }
+            val item = FsThumbItems.answer(store, id, maxEdge) { entry, error ->
+                LinkLog.w("fs", "fs.thumb $rootId/${entry.name} could not be decoded", error)
             }
-            val thumb =
-                if (entry.dir) null
-                else runCatching { store.thumbnail(id, maxEdge) }.getOrElse {
-                    LinkLog.w("fs", "fs.thumb $rootId/${entry.name} could not be decoded", it)
-                    null
+            when (item) {
+                // Defect 208: an id from another root. Refused before the provider was asked, and never
+                // counted as gone — the file it names may be perfectly present in the root it came from.
+                FsThumbItem.NotInRoot -> {
+                    refused++
+                    buildJsonObject {
+                        put("id", id)
+                        put("error", "BAD_REQUEST")
+                    }
                 }
-            if (thumb == null) {
-                none++
-                // Not an error. Most files are not images, and a directory never will be — a pane
-                // that greyed itself out over a folder of documents would be reporting the ordinary
-                // case as a fault. Kept distinct from NOT_FOUND, which is a different sentence.
-                return@map buildJsonObject {
-                    put("id", id)
-                    put("error", "NO_THUMBNAIL")
+                FsThumbItem.Gone -> {
+                    missing++
+                    buildJsonObject {
+                        put("id", id)
+                        put("error", "NOT_FOUND")
+                    }
                 }
-            }
-            made++
-            buildJsonObject {
-                put("id", id)
-                put("mime", "image/jpeg")
-                put("width", thumb.width)
-                put("height", thumb.height)
-                put("data", Base64.encodeToString(thumb.bytes, Base64.NO_WRAP))
+                // Not an error. Most files are not images, and a directory never will be — a pane that
+                // greyed itself out over a folder of documents would be reporting the ordinary case as a
+                // fault. Kept distinct from NOT_FOUND, which is a different sentence.
+                FsThumbItem.None -> {
+                    none++
+                    buildJsonObject {
+                        put("id", id)
+                        put("error", "NO_THUMBNAIL")
+                    }
+                }
+                is FsThumbItem.Made -> {
+                    made++
+                    buildJsonObject {
+                        put("id", id)
+                        put("mime", "image/jpeg")
+                        put("width", item.thumb.width)
+                        put("height", item.thumb.height)
+                        put("data", Base64.encodeToString(item.thumb.bytes, Base64.NO_WRAP))
+                    }
+                }
             }
         }
 
@@ -350,7 +360,7 @@ object FsFeature {
         // different problems, and a bare "0 thumbs" cannot tell them apart.
         LinkLog.i(
             "fs",
-            "fs.thumb $rootId → $made made / $none without one / $missing gone, " +
+            "fs.thumb $rootId → $made made / $none without one / $missing gone / $refused refused (not in this root), " +
                 "maxEdge=$maxEdge, ${System.currentTimeMillis() - startedAt} ms — ${tally()}",
         )
         session.ack(request) {

@@ -242,6 +242,8 @@ class SafTreeStore(
 
     override fun statById(id: String): FsPaths.Entry? = readRow(id)
 
+    override fun ownsId(id: String): Boolean? = FsIdScope.inTree(treeUri.authority, treeDocumentId, id)
+
     // ---- writes ---------------------------------------------------------------------------------
 
     override fun mkdir(segments: List<String>, name: String): FsPaths.Entry? {

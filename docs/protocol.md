@@ -2294,6 +2294,14 @@ itself out over a folder of documents. It is distinct from `NOT_FOUND` (the id i
 `PERMISSION_DENIED` (the root's grant was revoked), because those three want three different
 sentences on screen. A directory is always `NO_THUMBNAIL`; it is never an error to ask.
 
+**An id that cannot belong to the root asked is `BAD_REQUEST`, per item, and the provider is not asked
+(defect 208).** The phone decides it from the id's structure where the root has one — a `MediaStore`
+row id is a number; an `ExternalStorageProvider` tree's ids are the tree's id plus `/` and a path — and
+otherwise asks the provider as before. It is never `NOT_FOUND`: on 2026-10-08 a *Received files* id sent
+against the DCIM tree made the provider throw inside `enforceTree`, the throw was caught, and three
+files were counted *gone* that were present in the root they came from. The Mac counts these as
+*refused* on its summary line, and drops batches still queued for a root once another root is asked.
+
 **Bytes on the control channel, for the same reason `media.thumb` puts them there.** A listing needs
 many thumbnails within a second of a folder opening; a bulk socket per tile is absurd and a bulk
 socket for the batch is a second transfer state machine serving something that is not a transfer. A

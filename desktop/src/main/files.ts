@@ -222,7 +222,12 @@ export class FilesClient {
   private thumbsMade = 0;
   private thumbsNone = 0;
   private thumbsGone = 0;
+  /** Defect 208: ids the phone refused as not belonging to the root asked (`BAD_REQUEST`). Never "gone". */
+  private thumbsRefused = 0;
   private thumbCacheHits = 0;
+  /** The root the pane asked about most recently. Batches queued for any other root are dropped (208). */
+  private thumbRoot: string | null = null;
+  private thumbBatchesDropped = 0;
 
   private thumbKey(rootId: string, id: string): string {
     return `${rootId}\u0000${id}`;
@@ -238,8 +243,16 @@ export class FilesClient {
       return !this.thumbs.has(key) && !this.noThumb.has(key);
     });
     this.thumbCacheHits += ids.length - wanted.length;
+    this.thumbRoot = rootId;
 
     for (let i = 0; i < wanted.length; i += FS_THUMB_BATCH) {
+      // Defect 208: the pane has moved to another root while this request waited for its previous
+      // batch. The rest belong to a folder no longer on screen; sending them asks a root about ids it
+      // does not hold. Dropped, and counted on the summary line below.
+      if (this.thumbRoot !== rootId) {
+        this.thumbBatchesDropped += Math.ceil((wanted.length - i) / FS_THUMB_BATCH);
+        break;
+      }
       const batch = wanted.slice(i, i + FS_THUMB_BATCH);
       const result = await ask(
         this.link(),
@@ -262,6 +275,7 @@ export class FilesClient {
         } else {
           this.noThumb.add(key);
           if (thumb.error === 'NOT_FOUND') this.thumbsGone += 1;
+          else if (thumb.error === 'BAD_REQUEST') this.thumbsRefused += 1;
           else this.thumbsNone += 1;
         }
       }
@@ -272,7 +286,7 @@ export class FilesClient {
     log.info(
       'files',
       `fs.thumb ${rootId} → ${this.thumbsMade} made / ${this.thumbsNone} without one / ` +
-        `${this.thumbsGone} gone / ${this.thumbCacheHits} from cache, since start`,
+        `${this.thumbsGone} gone / ${this.thumbsRefused} refused (not in that root) / ${this.thumbCacheHits} from cache / ${this.thumbBatchesDropped} batch(es) dropped after a root switch, since start`,
     );
 
     const answer = new Map<string, string>();

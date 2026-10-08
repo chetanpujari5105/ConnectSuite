@@ -48,6 +48,13 @@ interface FsStore {
     /** One entry by the id a listing gave out, or null when it is gone. */
     fun statById(id: String): FsPaths.Entry?
 
+    /**
+     * Whether [id] can belong to this root, decided **without** asking a provider: true, false, or null
+     * when this root's ids have no structure to decide by. Defect 208 — a foreign id sent to a SAF tree
+     * makes `ExternalStorageProvider` throw inside `enforceTree`, and a caught throw reads as *gone*.
+     */
+    fun ownsId(id: String): Boolean? = null
+
     /** Creates one directory under [segments]. Null when the parent does not resolve. */
     fun mkdir(segments: List<String>, name: String): FsPaths.Entry?
 

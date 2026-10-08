@@ -412,6 +412,10 @@ class FilesView {
     if (key !== this.openedKey) this.query = '';
     this.openedKey = key;
     this.path = path;
+    // Defect 208: a new folder supersedes any listing still in flight — its page is dropped when it
+    // lands, and this folder's own listing starts now rather than waiting behind it.
+    this.listGen += 1;
+    this.loading = false;
     this.entries = [];
     this.hasMore = false;
     this.listFailure = null;
@@ -425,9 +429,17 @@ class FilesView {
     await this.loadMore();
   }
 
+  /**
+   * Which listing is current. Bumped by every `openPath`; a page that lands for an older value belongs
+   * to a folder no longer on screen (defect 208: appended to the new root's list, it made the grid ask
+   * the new root about the old root's ids, and the new root was never listed).
+   */
+  private listGen = 0;
+
   private async loadMore(): Promise<void> {
     if (this.loading || this.selectedRoot === null) return;
     if (this.entries.length > 0 && !this.hasMore) return;
+    const gen = this.listGen;
     this.loading = true;
     this.render();
     // The cursor is the last entry received, echoed back untouched — never rebuilt from a name we
@@ -440,6 +452,7 @@ class FilesView {
         limit: FILES_PAGE,
         ...(last ? { afterName: last.name, afterId: last.id } : {}),
       });
+      if (gen !== this.listGen) return;
       if (!result.ok) {
         this.listFailure = {
           reason: result.reason ?? 'The phone did not answer.',
@@ -452,8 +465,11 @@ class FilesView {
       this.entries = this.entries.concat(page.entries.filter((e) => !known.has(e.id)));
       this.hasMore = page.hasMore;
     } finally {
-      this.loading = false;
-      this.render();
+      // A superseded listing leaves the flag and the screen to the one that replaced it.
+      if (gen === this.listGen) {
+        this.loading = false;
+        this.render();
+      }
     }
   }
 
@@ -875,14 +891,14 @@ class FilesView {
     return this.displayed().filter((e) => this.selectedIds.has(e.id) && !e.dir);
   }
 
-  /** Thumbnails that have arrived, keyed by entry id. Cleared when the folder changes. */
+  /** Thumbnails that have arrived, keyed by root and id ([pullKey]). Cleared when the folder changes. */
   private thumbCache = new Map<string, string>();
 
-  /** Ids already asked about, so a redraw does not re-ask. Holds "has none" as well as "arrived". */
+  /** Root + id already asked about, so a redraw does not re-ask. Holds "has none" as well as "arrived". */
   private thumbAsked = new Set<string>();
 
   private thumbFor(entry: FsEntryRow): string | undefined {
-    return this.thumbCache.get(entry.id);
+    return this.thumbCache.get(pullKey(this.selectedRoot ?? '', entry.id));
   }
 
   /**
@@ -898,13 +914,14 @@ class FilesView {
    */
   private async requestThumb(entry: FsEntryRow): Promise<void> {
     if (entry.dir || this.selectedRoot === null) return;
-    if (this.thumbAsked.has(entry.id)) return;
-    this.thumbAsked.add(entry.id);
-    const result = await this.bridge.fsThumbs({ rootId: this.selectedRoot, ids: [entry.id] });
-    if (!result.ok || !result.entries) return;
+    const rootId = this.selectedRoot;
+    if (this.thumbAsked.has(pullKey(rootId, entry.id))) return;
+    this.thumbAsked.add(pullKey(rootId, entry.id));
+    const result = await this.bridge.fsThumbs({ rootId, ids: [entry.id] });
+    if (!result.ok || !result.entries || this.selectedRoot !== rootId) return;
     let arrived = false;
     for (const [id, data] of result.entries) {
-      this.thumbCache.set(id, data);
+      this.thumbCache.set(pullKey(rootId, id), data);
       if (id === entry.id) arrived = true;
     }
     // Redraw only if this entry is still the one on screen and something actually came back. A
@@ -1571,7 +1588,7 @@ class FilesView {
     tile.title = entry.name;
     const art = document.createElement('div');
     art.className = 'files-tile-art';
-    const thumb = this.thumbCache.get(entry.id);
+    const thumb = this.thumbFor(entry);
     if (thumb) {
       const img = document.createElement('img');
       img.className = 'files-tile-thumb';
@@ -1677,14 +1694,14 @@ class FilesView {
   private requestGridThumbs(shown: FsEntryRow[]): void {
     if (this.selectedRoot === null) return;
     const rootId = this.selectedRoot;
-    const wanted = shown.filter((e) => mayHaveThumbnail(e) && !this.thumbAsked.has(e.id)).map((e) => e.id);
+    const wanted = shown.filter((e) => mayHaveThumbnail(e) && !this.thumbAsked.has(pullKey(rootId, e.id))).map((e) => e.id);
     if (wanted.length === 0) return;
-    for (const id of wanted) this.thumbAsked.add(id);
+    for (const id of wanted) this.thumbAsked.add(pullKey(rootId, id));
     void this.bridge.fsThumbs({ rootId, ids: wanted }).then((result) => {
       if (!result.ok || !result.entries || this.selectedRoot !== rootId) return;
       let arrived = 0;
       for (const [id, data] of result.entries) {
-        this.thumbCache.set(id, data);
+        this.thumbCache.set(pullKey(rootId, id), data);
         arrived += 1;
       }
       if (arrived > 0 && this.viewMode === 'grid') this.render();

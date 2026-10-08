@@ -112,6 +112,9 @@ class DownloadsStore(private val context: Context) : FsStore {
      * One row by id, not the whole folder searched: it used to list every entry to find one, which cost
      * ≈ 50 ms on every push's publish at ~110 entries (2026-09-29) and grew with the folder.
      */
+    /** A `MediaStore` row id is a number; anything else was listed by another root (defect 208). */
+    override fun ownsId(id: String): Boolean = id.toLongOrNull() != null
+
     override fun statById(id: String): FsPaths.Entry? {
         val row = id.toLongOrNull() ?: return null
         return runCatching {
