@@ -946,7 +946,6 @@ object BulkTransfers {
                 verified = verified,
             )
         } catch (e: Exception) {
-            failed.incrementAndGet()
             val total = entry.offset + received
             val elapsed = System.currentTimeMillis() - startedAt
             // The partial is KEPT. An interrupted push is a resumable artifact and the record beside
@@ -954,13 +953,16 @@ object BulkTransfers {
             // the difference is the whole reason both exist.
             entry.partial.keep()
             updateRecord(context, entry, total, TransferStatus.PAUSED)
-            LinkLog.e(
-                "bulk",
-                "${entry.transferId} stopped after $received bytes ($total of ${entry.size}) in " +
-                    "${elapsed}ms; the partial is kept and is resumable — ${tally()}; " +
-                    framing.tally.summary(),
-                e,
-            )
+            val how = BulkStops.classifyFailure(null, e)
+            val line = "${entry.transferId} push ${how.words} after $received bytes ($total of ${entry.size}) in " +
+                "${elapsed}ms; the partial is kept and is resumable — ${tally()}; " + framing.tally.summary()
+            if (how.expected) {
+                stopped.incrementAndGet()
+                LinkLog.i("bulk", "$line (${e.javaClass.simpleName})")
+            } else {
+                failed.incrementAndGet()
+                LinkLog.e("bulk", line, e)
+            }
             runCatching {
                 sendDone(channel, entry.transferId) {
                     put("ok", false)
@@ -1193,14 +1195,17 @@ object BulkTransfers {
                     "${tally()}; ${framing.tally.summary()}",
             )
         } catch (e: Exception) {
-            failed.incrementAndGet()
             val elapsed = System.currentTimeMillis() - startedAt
-            LinkLog.e(
-                "bulk",
-                "${entry.transferId} failed after $sent of ${entry.size} bytes in ${elapsed}ms — " +
-                    "${tally()}; ${framing.tally.summary()}",
-                e,
-            )
+            val how = BulkStops.classifyFailure(null, e)
+            val line = "${entry.transferId} pull ${how.words} after $sent of ${entry.size} bytes in ${elapsed}ms — " +
+                "${tally()}; ${framing.tally.summary()}"
+            if (how.expected) {
+                stopped.incrementAndGet()
+                LinkLog.i("bulk", "$line (${e.javaClass.simpleName})")
+            } else {
+                failed.incrementAndGet()
+                LinkLog.e("bulk", line, e)
+            }
             runCatching {
                 channel.session.send(
                     Envelope(
@@ -1279,8 +1284,13 @@ object BulkTransfers {
                 ),
             )
             val sentInFull = BulkStops.sentInFull(outcome is BlockPullSender.Outcome.Sent, verdictQueued)
-            if (sentInFull) completed.incrementAndGet() else failed.incrementAndGet()
-            val line = "${entry.transferId} block pull ${outcome.javaClass.simpleName}: ${from + outcome.bytesSent} of ${entry.size} bytes " +
+            val end = BulkStops.endOf(sentInFull, stoppedByRequest = outcome is BlockPullSender.Outcome.Cancelled)
+            when (end) {
+                BulkStops.End.COMPLETED -> completed.incrementAndGet()
+                BulkStops.End.STOPPED -> stopped.incrementAndGet()
+                BulkStops.End.FAILED -> failed.incrementAndGet()
+            }
+            val line = "${entry.transferId} block pull ${BulkStops.outcomeWord(end == BulkStops.End.STOPPED, outcome.javaClass.simpleName)}: ${from + outcome.bytesSent} of ${entry.size} bytes " +
                 "(${outcome.bytesSent} sent this time${if (from > 0) ", resumed at $from" else ""}) in ${elapsed}ms " +
                 "(${rateOf(outcome.bytesSent, elapsed)})" +
                 when (outcome) {
@@ -1289,7 +1299,7 @@ object BulkTransfers {
                     is BlockPullSender.Outcome.SourceChanged -> " — ${outcome.why}: ${outcome.detail}"
                     is BlockPullSender.Outcome.Cancelled -> " — ${BulkStops.describe(stopWhy ?: "")}"
                 } + " — ${tally()}; ${framing.tally.summary()}"
-            if (sentInFull) LinkLog.i("bulk", line) else LinkLog.w("bulk", line)
+            if (end.warn) LinkLog.w("bulk", line) else LinkLog.i("bulk", line)
         } catch (e: Exception) {
             val elapsed = System.currentTimeMillis() - startedAt
             val how = BulkStops.classifyFailure(stopWhy, e)

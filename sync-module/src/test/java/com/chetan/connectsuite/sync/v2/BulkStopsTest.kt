@@ -112,7 +112,7 @@ class BulkStopsTest {
         val ended = BulkStops.describe(BulkStops.SESSION_ENDED)
         assertFalse("a session ending is not worded as the Mac cancelling: $ended", ended.contains("by the Mac"))
         assertTrue(ended, ended.contains("session"))
-        assertTrue(BulkStops.describe("pause").contains("cancelled by the Mac (reason=pause)"))
+        assertTrue(BulkStops.describe("pause").contains("by the Mac"))
     }
 
     @Test
@@ -174,5 +174,51 @@ class BulkStopsTest {
         val bug = BulkStops.classifyFailure(null, IllegalStateException("boom"))
         assertFalse(bug.expected)
         assertTrue(bug.words, bug.words.startsWith("failed"))
+    }
+
+    /*
+     * Hardware, 2026-10-09 (B10): a Pause pressed on the Mac reaches the phone as `fs.transfer.cancel
+     * reason=pause`, the stream ends as `Cancelled`, and that was logged at W and counted **failed**.
+     */
+    @Test
+    fun `a stream the Mac stopped is counted stopped and logged at I`() {
+        val v = BulkStops.endOf(sentInFull = false, stoppedByRequest = true)
+        assertEquals(BulkStops.End.STOPPED, v)
+        assertFalse("an expected stop logged as a warning", v.warn)
+    }
+
+    @Test
+    fun `control - completed is completed, and an unconfirmed or changed stream is still a failure`() {
+        assertEquals(BulkStops.End.COMPLETED, BulkStops.endOf(sentInFull = true, stoppedByRequest = false))
+        val f = BulkStops.endOf(sentInFull = false, stoppedByRequest = false)
+        assertEquals(BulkStops.End.FAILED, f)
+        assertTrue(f.warn)
+    }
+
+    /**
+     * Every stream loop's `catch` decides "stopped or failed" through [BulkStops.classifyFailure] — the push
+     * and plain-pull loops logged an interrupted stream at E as a failure (found reading them after B10).
+     * Source-held: the loops need sockets and a `Context`.
+     */
+    @Test
+    fun `every stream catch in BulkTransfers classifies the stop`() {
+        val src = listOf("src/main/java/com/chetan/connectsuite/sync/v2/BulkTransfers.kt",
+            "sync-module/src/main/java/com/chetan/connectsuite/sync/v2/BulkTransfers.kt").map { File(it) }.first { it.isFile }.readLines()
+        // A stream catch is one that counts the transfer; the header-read catch counts nothing and is not one.
+        val catches = src.indices.filter { at -> src[at].trim() == "} catch (e: Exception) {" &&
+            src.subList(at, minOf(at + 20, src.size)).any { "failed.incrementAndGet()" in it || "stopped.incrementAndGet()" in it } }
+        assertTrue("control: the stream catches were found (${catches.size})", catches.size >= 3)
+        val unclassified = catches.filter { at -> src.subList(at, minOf(at + 12, src.size)).none { "BulkStops.classifyFailure(" in it } }
+            .map { "line ${it + 1}" }
+        assertEquals("catches that log a stop as a failure without asking", emptyList<String>(), unclassified)
+    }
+
+    /** B10, 2026-10-09: a Pause read "block pull Cancelled … cancelled by the Mac (reason=pause)". */
+    @Test
+    fun `a Pause is worded as a pause, a Cancel as a cancel`() {
+        assertEquals("paused by the Mac — it can resume from here", BulkStops.describe("pause"))
+        assertEquals("cancelled by the Mac (reason=cancel)", BulkStops.describe("cancel"))
+        assertEquals("stopped", BulkStops.outcomeWord(stopped = true))
+        assertEquals("Sent", BulkStops.outcomeWord(stopped = false, name = "Sent"))
     }
 }

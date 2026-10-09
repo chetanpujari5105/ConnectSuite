@@ -1,0 +1,4 @@
+a stream the Mac stopped is counted stopped and logged at I :: java.lang.AssertionError: expected:&lt;STOPPED&gt; but was:&lt;FAILED&gt;
+every stream catch in BulkTransfers classifies the stop :: java.lang.AssertionError: catches that log a stop as a failure without asking expected:&lt;[]&gt; but was:&lt;[line 516, line 948, line 1195]&gt;
+every stream catch in BulkTransfers classifies the stop :: java.lang.AssertionError: catches that log a stop as a failure without asking expected:&lt;[]&gt; but was:&lt;[line 948]&gt;
+a Pause is worded as a pause, a Cancel as a cancel :: org.junit.ComparisonFailure: expected:&lt;[paused by the Mac — it can resume from here]&gt; but was:&lt;[cancelled by the Mac (reason=pause)]&gt;

@@ -1,0 +1,2 @@
+X1: RED rc=1 pass=? fail=? — a Pause counted failed again || age=0s tests="14" skipped="0" failures="1" gradle rc=1
+X2: RED rc=1 pass=? fail=? — push catch logs every stop as a failure || age=0s tests="14" skipped="0" failures="1" gradle rc=1

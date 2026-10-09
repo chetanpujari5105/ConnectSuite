@@ -44,12 +44,12 @@ object BulkStops {
     )
 
     /** How a stop is worded in the log: a session ending is not something the Mac asked for. */
-    fun describe(reason: String): String =
-        if (reason == SESSION_ENDED) {
-            "stopped: the session that agreed it ended, so the Mac could no longer confirm it"
-        } else {
-            "cancelled by the Mac (reason=$reason)"
-        }
+    fun describe(reason: String): String = when (reason) {
+        SESSION_ENDED -> "stopped: the session that agreed it ended, so the Mac could no longer confirm it"
+        // The Mac's Pause keeps what arrived and resumes from it; calling it a cancel was wrong (B10).
+        "pause" -> "paused by the Mac — it can resume from here"
+        else -> "cancelled by the Mac (reason=$reason)"
+    }
 
     /**
      * Whether a pull counts as **sent in full**. The phone never learns whether the Mac saved it — the
@@ -57,6 +57,23 @@ object BulkStops {
      * handed to a session that could still send it.
      */
     fun sentInFull(allBytesSent: Boolean, verdictQueued: Boolean): Boolean = allBytesSent && verdictQueued
+
+    /**
+     * How a pull that ran to an outcome is counted and logged. A stream stopped on request — the Mac's
+     * Pause or Cancel (`fs.transfer.cancel`), or its session ending — is **stopped**: not completed, not a
+     * fault, and logged at I. Hardware, 2026-10-09 (B10): a Pause was logged at W and counted *failed*.
+     * A source that changed, or every byte sent with no session left to confirm it, stays a failure.
+     */
+    /** The log's word for an outcome: a stream stopped on request is *stopped*, not *Cancelled* (B10). */
+    fun outcomeWord(stopped: Boolean, name: String = "Cancelled"): String = if (stopped) "stopped" else name
+
+    enum class End(val warn: Boolean) { COMPLETED(false), STOPPED(false), FAILED(true) }
+
+    fun endOf(sentInFull: Boolean, stoppedByRequest: Boolean): End = when {
+        sentInFull -> End.COMPLETED
+        stoppedByRequest -> End.STOPPED
+        else -> End.FAILED
+    }
 
     /** How a pull that ended in an exception is reported: an expected stop, or a failure. */
     data class Failure(val expected: Boolean, val words: String)
