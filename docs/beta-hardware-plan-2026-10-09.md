@@ -1,5 +1,12 @@
 # Beta hardware plan — 2026-10-09 (prepared; each step runs only on the owner's word)
 
+> **Status after the 2026-10-09 run** (evidence: `docs/testing.md` → *hardware run*): A1–A6, B1 (first scan; the
+> rotated-code rescan not run), B2, B4, B6 **pass**; B9, B10, B8 **pass after a fix each** (`27a6f0d`, `177aab6`,
+> `9ccb1b4` — the last is tests-only on the phone until the next install); B7 **passes on the Mac**, phone log not
+> yet read; B3 stands from the isolated run; B5 not run (Escape accepted; Return needs the owner's windows);
+> B11/B12 blocked on a named consenting caller/number; §C, §D not run. Defect 205: hour B ran but the phone was
+> in use, so it is not a Doze reading — **overnight run without the lock owed**.
+
 Builds under test: **phone** — a debug APK from `34362e1` or later (same signer as the installed one, so no
 uninstall and no grant loss); **Mac** — the development `dist` built from the same commit, relaunched from the
 repo (never the packaged app on this account — defect 207). Every write to the phone goes through

@@ -29177,3 +29177,70 @@ Recorded in the RESUME entry for this batch, from runs after the last code chang
 **One Mac-suite failure was not identified:** after item 2, one full run read `2,007 / 1`; four runs since read
 `2,008 / 0` and later runs `2,014 / 0`. The failing run's output was not kept (the command filtered it), so the
 test cannot be named. Every full run after that kept its whole output.
+
+## Release-fix batch 2026-10-09 — hardware run (SM-S938B `RZCY12330DT`, Mac development app)
+
+Owner's word, 10:00: *install the debug build, relaunch the Mac development app, then the real ZXing scan and
+re-pair; ask for each tap; defect 205: measure first; drop sheet: accept Escape doing nothing for now; publisher
+details: leave the placeholders; do not sign or publish anything.* Every phone write went through
+`scripts/adb-pinned.sh samsung`. Plan: `docs/beta-hardware-plan-2026-10-09.md`.
+
+| Step | Label | Reading |
+|---|---|---|
+| A1–A5 deploy | **hardware-verified** | five `install -r` of the debug APK over the day (`0c0a2204…` → `21570962…`); signer `d3a505d2…7d26` each time; 27 of 27 grants `granted=true` before and after every install; listener and accessibility bindings unchanged; `link-up.sh` 3/3 after each `am start` |
+| A6 Mac relaunch | **hardware-verified** | `Profile …/sidekick-desktop-dev (development; seed: copied; single-instance lock held)`; stored identity `A9:59:35:BB…` loaded (no prompt, no new key); the original `sidekick-desktop` folder untouched; later relaunches `seed: exists` |
+| B2 207 (d) | **hardware-verified** | before forgetting, the pairing screen read *This Mac still remembers a phone* with **Forget Samsung SM-S938B** and drew no code; the Mac logged *No QR armed* |
+| B1 ZXing scan + re-pair | **hardware-verified** | after Forget on both ends: phone `Pairing armed for … a95935bb` 10:13:13, `pairing v2 (both sides proved the code)` 10:13:27; the Mac stores the phone as `2F:97:0F:EC…`. The rotated-code second scan in the plan was **not run** |
+| B4 item 3 | **hardware-verified** | `SendSelectionActivity` launched new-task from the shell: the launcher stayed top-resumed, the selection was sent, the Mac offered it (not applied), **no** `focus sync` line. The Mac's own banner did not show (an unsigned development app; not this item) |
+| B9 208 | **hardware-verified, after a fix** | first run **refused real DCIM thumbnails**: wire ids are percent-encoded (`FsPaths.encodeId`) and the new tree check compared them undecoded; and the Mac **cached the refusal**. Fixed in `27a6f0d` (`wireIdInTree` decodes first; the Mac never caches `BAD_REQUEST`), source guard + tests red first. Re-run: phone `1 made / 0 refused`, 0 `enforceTree` |
+| B10 expected stop | **hardware-verified, after a fix** | first run: a Pause logged at W and counted failed; push and plain-pull stops logged at E. Fixed in `177aab6`. Re-run: Pause → I `stopped … paused by the Mac — it can resume from here`; Disconnect → I `stopped: the Mac closed the stream … (ConnectionResetException)`; 0 E lines; `1 completed / 2 stopped / 0 failed` (block-pull path) |
+| B6 share collision | **hardware-verified** | `sk-b6-collision.bin` (1 MiB, synthetic) shared twice: saved as `sk-b6-collision.bin` then `sk-b6-collision (2).bin`, both SHA-256 `d7a51f37…` = the source; the Mac warned before the second Accept *carries the same bytes as sk-b6-collision.bin*; the phone deleted its staged copy after each save |
+| B8 share Cancel | **hardware-verified, after a fix** | `sk-b8-cancel-300mb.bin` (300 MiB, synthetic); Cancel pressed by `scripts/share-cancel-probe.mjs` (the receive window's Cancel has no focus gate; Accept is the owner's). **Before the first byte** (`--at-fraction 0`): cancelled 50 ms after Accept, phone `had not been claimed by a socket yet`, staged copy deleted, both ends *cancelled*, nothing saved. **Mid-transfer**: cancelled at **101,974,016 of 314,572,800** bytes; the Mac's partial deleted, no new entry in `~/Downloads/Sidekick` (77 listed — control: the folder was read), phone staged copy deleted, `2 cancelled`. Two findings fixed in `9ccb1b4`: the phone's stop line read `4 completed / 0 stopped` for the stop it reported (push and plain-pull catches read the tally before counting — my `177aab6`), and the Mac logged the person's Cancel as `W … failed (cancelled: cancelled)`. The phone fix is **tests-only** until the next install |
+| B7 gallery multi-select | **hardware-verified (Mac half); phone half not read** | three synthetic PNGs selected in Gallery and shared once: **three** offers, each held for its own decision; two accepted and saved (`sk-b7-3.png`, `sk-b7-2.png`, SHA-256 = the sources), one declined (`sk-b7-1.png`, nothing saved). The phone was off the cable when read; its log is owed. **This is the debug-only `share.file 3` path; release keeps multi-file off** |
+| B5 drop sheet | **not run** | Escape-does-nothing accepted by the owner; the Return re-check needs the owner's window arrangement |
+| B3 | **not re-run** | isolated result from the morning stands (`tests/207-isolated.json`) |
+| B11, B12 | **blocked** | need a consenting caller / number named by the owner |
+| Screen readers, fresh user, signed APK | **not run** | ask first / owner's macOS account / owner's signing |
+
+### Defect 205 — hour B, without the link wake lock (debug marker), 10:59–12:06
+
+Debug-only switch from `0aaebb5`: `files/debug-205-no-link-wakelock` skips the partial lock (the phone logged
+`205 measurement: link wake lock NOT held`; `dumpsys power` listed no `ConnectSuite:link` in the current list —
+the 7 matches were history rows, the last acquire at 10:24); `files/debug-205-measure` logs a tick each minute.
+The deviceidle whitelist read **0** rows for the package (the unexempt path). The Mac was on the phone's hotspot.
+
+- **Link:** `scripts/link-crossing-probe.mjs 65 120` — **33 of 33** requests answered (15–580 ms); **0** drops
+  or reconnects on either end (control: the same grep returns 7 lines around the 10:59:03 reconnect); 0 W/E
+  on the Mac in the hour.
+- **Not a Doze reading.** The phone was in use: **6 calls**, screen on **46 of 60 min** (batterystats *screen
+  off 13m58s*; the ticker's `interactive=true` on 53 of 67 ticks — two instruments, one answer), light idle
+  11:12–11:23 only, **deep idle never**. Battery 79 % → 67 %, 527 mAh *computed = actual*; Sidekick's UID
+  **0.318 mAh**. With the screen on for most of the hour a wake lock changes nothing, so this hour cannot
+  separate the two conditions.
+- **Next:** overnight, phone unplugged and untouched, lock still disabled — the owner's choice — to set against
+  the earlier overnight reading taken with the lock held.
+- Evidence: `docs/evidence/release-candidate-2026-10-09/205-hour-B/` (ticks, crossings, a batterystats extract
+  with other apps' rows left out).
+
+### Instrument faults this run, none written down as a finding
+
+- **The cancel probe's first version read only the single-card layout** of the receive window. With more than
+  one offer the window draws a queue (`#sw` reads `queue`, `#sw-one` hidden), so the probe waited while the file
+  it existed to cancel saved in full. It now reads both layouts and targets the card that was not on screen when
+  it attached (two saved cards of the same name were). Control run: 4 existing cards seen, none touched.
+- **Its second version passed at 0 bytes.** `R < N` holds for 0, so a cancel that landed before the bulk socket
+  claimed anything read as *mid-transfer*. It now waits for `--at-fraction` of the bytes and labels the case.
+- `share-accept-probe.mjs` read the **packaged** profile's log (`sidekick-desktop`) — stale since 207 (b) moved
+  the development app to `sidekick-desktop-dev`; caught before use.
+- A 12:40 log window for an event at 12:30 returned nothing; a zsh `UID=` assignment failed (read-only in zsh);
+  a phone-side glob was expanded by the Mac's shell. Each produced an empty read that was re-run, not recorded.
+
+### What changed on the devices
+
+Phone: debug build `21570962…` installed; re-paired to this Mac; **both 205 debug markers still present**
+(overnight); `adb logcat -c` was run once (the logcat buffer, not Sidekick's own log); synthetic files in
+`Download/SidekickBeta/` (1 MiB, 300 MiB) and `Pictures/SidekickBeta/` (3 PNGs). Mac: profile
+`sidekick-desktop-dev` created by copy; `~/Downloads/Sidekick` gained `sk-b6-collision.bin`,
+`sk-b6-collision (2).bin`, `sk-b8-cancel-300mb.bin`, `sk-b8-cancel-300mb (2).bin` (two full saves before the
+cancel probe worked), `sk-b7-2.png`, `sk-b7-3.png`, and `sidekick-pass-stop-200mb (9).bin` from B10. Nothing
+was deleted.
