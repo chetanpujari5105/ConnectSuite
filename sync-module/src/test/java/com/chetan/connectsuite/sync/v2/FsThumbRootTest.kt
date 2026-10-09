@@ -78,4 +78,37 @@ class FsThumbRootTest {
         assertEquals(null, FsIdScope.inTree("com.google.android.apps.docs.storage", "acc=1;doc=x", "acc=1;doc=y"))
         assertEquals(null, FsIdScope.inTree(null, "primary:DCIM", "anything"))
     }
+
+    /*
+     * Hardware, 2026-10-09 (B9): the first version of this rule compared the tree id with the **wire** id,
+     * and wire ids are percent-encoded (`primary%3ADCIM%2F20211130_102644.jpg`), so a genuine DCIM photo was
+     * refused. Every test above built raw ids the product never sends. These build them with the encoder the
+     * listing uses (`FsPaths.encodeId`, as `SafTreeStore` does) and call the rule the store calls.
+     */
+    @Test
+    fun `a wire id the listing produced for a file in the tree is accepted`() {
+        val ext = "com.android.externalstorage.documents"
+        val wire = FsPaths.encodeId("primary:DCIM/20211130_102644.jpg")
+        assertEquals("control: the wire id really is encoded", "primary%3ADCIM%2F20211130_102644.jpg", wire)
+        assertEquals(true, FsIdScope.wireIdInTree(ext, "primary:DCIM", wire))
+        assertEquals(true, FsIdScope.wireIdInTree(ext, "primary:DCIM", FsPaths.encodeId("primary:DCIM/Camera/a b.jpg")))
+        assertEquals(false, FsIdScope.wireIdInTree(ext, "primary:DCIM", "1000308768"))
+        assertEquals(false, FsIdScope.wireIdInTree(ext, "primary:DCIM", FsPaths.encodeId("primary:Documents/x.txt")))
+        assertEquals(false, FsIdScope.wireIdInTree(ext, "primary:DCIM", FsPaths.encodeId("primary:DCIMX/x.jpg")))
+    }
+
+    @Test
+    fun `a wire id that does not decode is not this tree's`() {
+        assertEquals(false, FsIdScope.wireIdInTree("com.android.externalstorage.documents", "primary:DCIM", "primary%3"))
+    }
+
+    /** `SafTreeStore` needs a real `Context`; this holds its one line to the wire-id rule (B9's regression). */
+    @Test
+    fun `SafTreeStore judges the wire id, decoded, not the raw one`() {
+        val src = listOf("src/main/java/com/chetan/connectsuite/sync/v2/SafTreeStore.kt",
+            "sync-module/src/main/java/com/chetan/connectsuite/sync/v2/SafTreeStore.kt").map { java.io.File(it) }.first { it.isFile }.readText()
+        val line = Regex("""override fun ownsId\(id: String\)[^\n]*""").find(src)?.value
+        assertTrue("control: ownsId was found in SafTreeStore", line != null)
+        assertTrue("ownsId does not go through the wire-id rule: $line", line!!.contains("FsIdScope.wireIdInTree("))
+    }
 }

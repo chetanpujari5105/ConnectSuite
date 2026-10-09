@@ -1,0 +1,2 @@
+W1: RED rc=1 pass=? fail=? — the shipped regression: the store compares the encoded id || age=0s tests="7" skipped="0" failures="1" gradle rc=1
+W2: RED rc=1 pass=? fail=? — the rule no longer decodes || age=1s tests="7" skipped="0" failures="1" gradle rc=1

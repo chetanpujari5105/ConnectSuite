@@ -1,0 +1,1 @@
+a wire id the listing produced for a file in the tree is accepted :: java.lang.AssertionError: expected:&lt;true&gt; but was:&lt;false&gt;

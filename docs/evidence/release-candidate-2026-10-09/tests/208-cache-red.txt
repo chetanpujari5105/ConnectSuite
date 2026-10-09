@@ -1,0 +1,51 @@
+2026-10-09T10:26:34.017+05:30 I [files] fs.thumb ok
+2026-10-09T10:26:34.018+05:30 I [files] fs.thumb downloads:connectsuite → 0 made / 32 without one / 0 gone / 0 refused (not in that root) / 0 from cache / 2 batch(es) dropped after a root switch, since start
+2026-10-09T10:26:34.021+05:30 I [files] fs.thumb ok
+2026-10-09T10:26:34.021+05:30 I [files] fs.thumb saf:primary%3ADCIM → 0 made / 35 without one / 0 gone / 0 refused (not in that root) / 0 from cache / 2 batch(es) dropped after a root switch, since start
+2026-10-09T10:26:34.027+05:30 I [files] fs.thumb ok
+✔ 208: batches still queued for a root are dropped once another root is asked about (20.421708ms)
+2026-10-09T10:26:34.028+05:30 I [files] fs.thumb ok
+2026-10-09T10:26:34.028+05:30 I [files] fs.thumb ok
+2026-10-09T10:26:34.028+05:30 I [files] fs.thumb downloads:connectsuite → 0 made / 96 without one / 0 gone / 0 refused (not in that root) / 0 from cache / 0 batch(es) dropped after a root switch, since start
+2026-10-09T10:26:34.031+05:30 I [files] fs.thumb ok
+2026-10-09T10:26:34.031+05:30 I [files] fs.thumb saf:primary%3ADCIM → 0 made / 1 without one / 0 gone / 1 refused (not in that root) / 0 from cache / 0 batch(es) dropped after a root switch, since start
+2026-10-09T10:26:34.031+05:30 I [files] fs.thumb saf:primary%3ADCIM → 0 made / 1 without one / 0 gone / 1 refused (not in that root) / 2 from cache / 0 batch(es) dropped after a root switch, since start
+✔ control: with no other root asked, every batch of one request is sent (2.667959ms)
+✔ 208: a per-item BAD_REQUEST is counted as refused on the summary line, never as gone (0.536166ms)
+✖ 208: a refused id is asked again next time; a NO_THUMBNAIL answer is not (control) (1.437416ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 198.892125
+
+✖ failing tests:
+
+test at src/main/filesThumbRoot.test.ts:79:1
+✖ 208: a refused id is asked again next time; a NO_THUMBNAIL answer is not (control) (1.437416ms)
+  AssertionError [ERR_ASSERTION]: a refusal was cached, or a NO_THUMBNAIL was re-asked
+  + actual - expected
+  
+    [
+      [
+        'img',
+        'doc'
+      ],
+  -   [
+  -     'img'
+  -   ]
+    ]
+  
+      at TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/filesThumbRoot.test.ts:94:10)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ [ 'img', 'doc' ] ],
+    expected: [ [ 'img', 'doc' ], [ 'img' ] ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -272,10 +272,13 @@ export class FilesClient {
         if (thumb.data) {
           this.thumbs.set(key, thumb.data);
           this.thumbsMade += 1;
+        } else if (thumb.error === 'BAD_REQUEST') {
+          // Not cached: a refusal says the request was wrong, not that the file has none. Caching it hid a
+          // real DCIM photo's thumbnail for the rest of the run after a phone-side fix (B9, 2026-10-09).
+          this.thumbsRefused += 1;
         } else {
           this.noThumb.add(key);
           if (thumb.error === 'NOT_FOUND') this.thumbsGone += 1;
-          else if (thumb.error === 'BAD_REQUEST') this.thumbsRefused += 1;
           else this.thumbsNone += 1;
         }
       }

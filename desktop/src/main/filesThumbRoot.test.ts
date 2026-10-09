@@ -70,3 +70,27 @@ test('208: a per-item BAD_REQUEST is counted as refused on the summary line, nev
   assert.ok(summary, `control: the summary line was captured — ${lines.length} lines`);
   assert.match(summary!, / 1 gone \/ 2 refused \(not in that root\)/);
 });
+
+/*
+ * Hardware, 2026-10-09 (B9): the phone wrongly refused a real DCIM photo; once the phone was fixed, the
+ * Mac never asked again, because the refusal had been cached as "has no thumbnail" for the rest of the
+ * run. A refusal says the request was wrong, not that the file has none — it is not cached.
+ */
+test('208: a refused id is asked again next time; a NO_THUMBNAIL answer is not (control)', async () => {
+  const asked: string[][] = [];
+  let refuse = true;
+  const link = {
+    isConnected: () => true,
+    request: async (type: string, payload: Record<string, unknown>) => {
+      const ids = payload.ids as string[];
+      asked.push([...ids]);
+      return { type, payload: { thumbs: ids.map((id) => ({ id, error: id === 'doc' ? 'NO_THUMBNAIL' : refuse ? 'BAD_REQUEST' : undefined, data: id === 'img' && !refuse ? 'AAAA' : undefined })) } };
+    },
+  };
+  const client = new FilesClient(() => link as never, () => null, () => ({ host: null, token: null }));
+  await client.thumbsFor('saf:primary%3ADCIM', ['img', 'doc']);
+  refuse = false;
+  const second = await client.thumbsFor('saf:primary%3ADCIM', ['img', 'doc']);
+  assert.deepEqual(asked, [['img', 'doc'], ['img']], 'a refusal was cached, or a NO_THUMBNAIL was re-asked');
+  assert.equal(second.ok && second.data.get('img'), 'AAAA', 'the thumbnail the fixed phone sends reaches the pane');
+});

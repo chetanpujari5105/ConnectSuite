@@ -242,7 +242,7 @@ class SafTreeStore(
 
     override fun statById(id: String): FsPaths.Entry? = readRow(id)
 
-    override fun ownsId(id: String): Boolean? = FsIdScope.inTree(treeUri.authority, treeDocumentId, id)
+    override fun ownsId(id: String): Boolean? = FsIdScope.wireIdInTree(treeUri.authority, treeDocumentId, id)
 
     // ---- writes ---------------------------------------------------------------------------------
 

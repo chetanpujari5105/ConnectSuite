@@ -18,4 +18,13 @@ object FsIdScope {
         val prefix = if (treeDocumentId.endsWith(":")) treeDocumentId else "$treeDocumentId/"
         return id.startsWith(prefix) && id.length > prefix.length
     }
+
+    /**
+     * The rule as the store must apply it: on the **wire** id, which is percent-encoded
+     * (`primary%3ADCIM%2Fa.jpg`), decoded with the same [FsPaths.decodeId] the store uses to reach the
+     * provider. The first version compared the encoded id with the raw tree id and refused every file in
+     * every granted tree — found on hardware (2026-10-09, B9), invisible to tests that built raw ids.
+     */
+    fun wireIdInTree(authority: String?, treeDocumentId: String, wireId: String): Boolean? =
+        inTree(authority, treeDocumentId, FsPaths.decodeId(wireId))
 }
