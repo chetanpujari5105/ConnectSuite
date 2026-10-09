@@ -1,0 +1,26 @@
+# dumpsys batterystats --charged, read 2026-10-09 12:08 IST right after replug (stats reset at the last charge, so this covers the unplugged hour).
+# Extract only: the header, the global estimated-power block, and Sidekick's (u0a1011) own lines. Other apps' rows omitted.
+Statistics since last charge:
+  Time on battery: 59m 56s 785ms (92.7%) realtime, 59m 28s 58ms (99.2%) uptime
+  Time on battery screen off: 13m 58s 776ms (23.3%) realtime, 13m 30s 49ms (22.5%) uptime
+  Time on battery screen doze: 0ms (0.0%)
+  Estimated power use (mAh):
+    Capacity: 5000, Rated: 4855, Typical: 5000, Computed drain: 527, actual drain: 527
+    Global
+    screen: 102 apps: 102
+    cpu: 105 apps: 105 duration: 1h 4m 9s 461ms 
+    camera: 20.4 apps: 20.3 duration: 3m 3s 636ms 
+    audio: 3.67 apps: 3.67 duration: 15m 31s 317ms 
+    video: 6.74 apps: 6.72 duration: 17m 13s 146ms 
+    mobile_radio: 124 apps: 124
+    sensors: 0.441 apps: 0.441
+    gnss: 0.118 apps: 0.118 duration: 9s 997ms 
+    wakelock: 1.08 apps: 1.08 duration: 3m 17s 322ms 
+  UID u0a1011: 0.318 bg: 0.318
+    Mobile network: 100.16KB received, 100.16KB sent (packets 440 received, 440 sent)
+    Mobile radio active: 8s 39ms (0.2%) 17x @ 9.14 mspp
+    Wi-Fi network: 348.24KB received, 463.03KB sent (packets 3301 received, 2598 sent)
+    WiFi Multicast Wakelock count = 0 time = 59m 56s 785ms
+    Total cpu time: u=5s 262ms s=2s 230ms 
+    Total cpu time per freq:
+    Total screen-off cpu time per freq:
