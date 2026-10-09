@@ -1,0 +1,1 @@
+L1: RED rc=1 pass=? fail=? — a release build reads the marker || age=1s tests="3" skipped="0" failures="1" gradle rc=1

@@ -36,4 +36,20 @@ object LinkLockPolicy {
      * opportunities inside one timeout means two of them can be missed entirely.
      */
     const val MIN_REARMS_PER_TIMEOUT = 3
+
+    /** Defect 205's measurement marker, in the app's private `files/`. Read only by a debuggable build. */
+    const val NO_WAKE_LOCK_MARKER = "debug-205-no-link-wakelock"
+
+    /** Defect 205's measurement ticker marker: while present, a debuggable build logs its Doze state each minute. */
+    const val MEASURE_MARKER = "debug-205-measure"
+
+    /**
+     * Whether the link holds its partial wake lock. Always, except in a **debuggable** build whose private
+     * storage holds [NO_WAKE_LOCK_MARKER] — the switch defect 205's measurement needs ("measure what the lock
+     * buys before changing it"). A release build cannot be switched: the marker is not read there.
+     */
+    fun holdsWakeLock(debuggable: Boolean, markerPresent: Boolean): Boolean = !(debuggable && markerPresent)
+
+    /** The measurement ticker runs only in a debuggable build with [MEASURE_MARKER] present. */
+    fun measures(debuggable: Boolean, markerPresent: Boolean): Boolean = debuggable && markerPresent
 }

@@ -132,6 +132,7 @@ class LinkService : LifecycleService() {
         // backstop that is never re-armed is just a leak with a deadline. This is the only thing in
         // the service that ticks while nothing is happening, which is the state the bug lives in.
         lifecycleScope.launch { rearmTicker() }
+        lifecycleScope.launch { measureTicker() }
 
         lifecycleScope.launch {
             server.state.collect { state ->
@@ -264,7 +265,29 @@ class LinkService : LifecycleService() {
      * what drives it. A quietly healthy connection emits no state changes for hours, which is
      * exactly the case that broke; [rearmTicker] is what actually keeps the lock alive.
      */
+    /** Debuggable, read from the installed package rather than from a module's BuildConfig. */
+    private val debuggable: Boolean by lazy {
+        (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
+
+    private fun marker(name: String): Boolean = runCatching { java.io.File(filesDir, name).exists() }.getOrDefault(false)
+
+    /** Defect 205's measurement: whether the last decision held the lock, so a change is logged once. */
+    private var lastHoldDecision: Boolean? = null
+
     private fun acquireLocks() {
+        val hold = LinkLockPolicy.holdsWakeLock(debuggable, marker(LinkLockPolicy.NO_WAKE_LOCK_MARKER))
+        if (hold != lastHoldDecision) {
+            lastHoldDecision = hold
+            if (!hold) LinkLog.w("service", "205 measurement: link wake lock NOT held (debug marker ${LinkLockPolicy.NO_WAKE_LOCK_MARKER} present); the Wi-Fi lock is unchanged")
+            else LinkLog.i("service", "205 measurement: link wake lock held (no debug marker)")
+        }
+        if (!hold) {
+            wakeLock?.let { if (it.isHeld) it.release() }
+            wakeLock = null
+            acquireWifiLock()
+            return
+        }
         val existing = wakeLock
         when {
             existing == null -> {
@@ -302,6 +325,10 @@ class LinkService : LifecycleService() {
                     }
             }
         }
+        acquireWifiLock()
+    }
+
+    private fun acquireWifiLock() {
         if (wifiLock == null) {
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -314,6 +341,31 @@ class LinkService : LifecycleService() {
                 setReferenceCounted(false)
                 acquire()
             }
+        }
+    }
+
+    /**
+     * Defect 205's measurement ticker (debuggable build, [LinkLockPolicy.MEASURE_MARKER] present): one line a
+     * minute with the device's own Doze state and whether the lock is held. `delay` does not wake a
+     * suspended CPU, so a gap between two lines longer than the interval is a reading too: the CPU slept.
+     */
+    private suspend fun measureTicker() {
+        val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+        var ticks = 0
+        var last = System.currentTimeMillis()
+        while (true) {
+            delay(60_000)
+            if (!LinkLockPolicy.measures(debuggable, marker(LinkLockPolicy.MEASURE_MARKER))) { ticks = 0; continue }
+            val now = System.currentTimeMillis()
+            ticks++
+            val light = if (Build.VERSION.SDK_INT >= 33) power.isDeviceLightIdleMode.toString() else "n/a"
+            LinkLog.i(
+                "service",
+                "205 tick $ticks: deep=${power.isDeviceIdleMode} light=$light interactive=${power.isInteractive} " +
+                    "connected=${server.state.value.isConnected} wakeLockHeld=${wakeLock?.isHeld == true} " +
+                    "gap=${(now - last) / 1000}s",
+            )
+            last = now
         }
     }
 

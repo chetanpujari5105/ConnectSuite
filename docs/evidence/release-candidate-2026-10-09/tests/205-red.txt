@@ -1,0 +1,1 @@
+a debuggable build with the marker runs without the wake lock :: java.lang.AssertionError: expected:&lt;false&gt; but was:&lt;true&gt;
