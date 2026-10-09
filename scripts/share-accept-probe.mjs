@@ -14,7 +14,7 @@
  * The predicate is evaluated again **in the same evaluation as the click** (CLAUDE.md: a check that
  * does not gate the action is decoration), so a card that changed underneath is not clicked.
  *
- * Usage: node scripts/share-accept-probe.mjs <name> <bytes> <phone> <folder> [--sha <hex>] [--deadline-ms N]
+ * Usage: node scripts/share-accept-probe.mjs <name> <bytes> <phone> <folder> [--sha <hex>] [--deadline-ms N] [--log <path>]
  */
 import { openProbe, format } from './probe.mjs';
 import { createHash } from 'node:crypto';
@@ -25,13 +25,15 @@ import { join } from 'node:path';
 const [name, bytesArg, phone, folder, ...rest] = process.argv.slice(2);
 const bytes = Number(bytesArg);
 if (!name || !Number.isFinite(bytes) || !phone || !folder) {
-  console.error('usage: share-accept-probe.mjs <name> <bytes> <phone> <folder> [--sha <hex>] [--deadline-ms N]');
+  console.error('usage: share-accept-probe.mjs <name> <bytes> <phone> <folder> [--sha <hex>] [--deadline-ms N] [--log <path>]');
   process.exit(2);
 }
 const opt = (flag) => { const i = rest.indexOf(flag); return i >= 0 ? rest[i + 1] : undefined; };
 const expectSha = opt('--sha') ?? null;
 const DEADLINE = Number(opt('--deadline-ms') ?? 120000);
-const LOG = join(homedir(), 'Library/Application Support/sidekick-desktop/logs/sidekick.log');
+// The development app's profile since 2026-10-09 (defect 207 b); the packaged profile's log is not this app's.
+const LOG = opt('--log') ?? join(homedir(), 'Library/Application Support/sidekick-desktop-dev/logs/sidekick.log');
+console.log(`  log read: ${LOG}`);
 
 const logLines = () => readFileSync(LOG, 'utf8').split('\n');
 const folderNames = () => readdirSync(folder);

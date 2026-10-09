@@ -5,9 +5,10 @@ import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 
 import { handleWriter, pullShareWith, type ShareConnection, type SharePullResult } from './bulk';
+import { log } from './logger';
 import { newPartNonce, publishExclusive, sharePartPath, type PublishResult } from './shareDestination';
 import { FileShareLedger, sweepLedger } from './shareLedger';
 import { startFakePhone, synthetic, type PhoneBehaviour } from './sharePhone.testkit';
@@ -627,5 +628,42 @@ test('the handle is closed exactly once on every exit path', T, async () => {
     assert.equal(w.all.length, 1, `${label}: one handle opened`);
     assert.equal(w.all[0]!.closes, 1, `${label}: closed once (result ${reason(result)})`);
     assert.equal(w.all[0]!.real.fd, -1, `${label}: the real handle is closed`);
+  }
+});
+
+/**
+ * B8 on hardware, 2026-10-09: a share the person cancelled mid-transfer was logged
+ * `W [bulk] share … failed (cancelled: cancelled) …` — an expected stop worded and levelled as a fault,
+ * the Mac-side twin of the phone's B10 finding. `cancelled` means this Mac's own abort signal fired; the
+ * share layer names who asked. Read through the logger the product uses.
+ */
+test('a cancelled pull is logged as stopped at I, not as a failure at W', T, async () => {
+  const warn = mock.method(log, 'warn', () => undefined);
+  const info = mock.method(log, 'info', () => undefined);
+  try {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 60);
+    const { result } = await run(100_000, { stallAfter: 20_000, chunkSize: 10_000 }, { signal: ac.signal, idleTimeoutMs: 5000 });
+    assert.equal(reason(result), 'cancelled', 'control: the cancel path ran');
+    const bulk = (m: typeof warn) => m.mock.calls.filter((c) => c.arguments[0] === 'bulk').map((c) => String(c.arguments[1]));
+    assert.deepEqual(bulk(warn).filter((l) => l.includes('cancelled')), [], 'a cancel logged at W');
+    const stopped = bulk(info).filter((l) => / stopped \(cancelled: cancelled\) after \d+ of 100000 bytes; /.test(l));
+    assert.equal(stopped.length, 1, `one stopped line at I; info lines were: ${JSON.stringify(bulk(info))}`);
+    assert.doesNotMatch(stopped[0]!, /failed/);
+  } finally {
+    warn.mock.restore();
+    info.mock.restore();
+  }
+});
+
+test('control: a pull that stalls is still a failure at W', T, async () => {
+  const warn = mock.method(log, 'warn', () => undefined);
+  try {
+    const { result } = await run(100_000, { stallAfter: 20_000, chunkSize: 10_000 }, { idleTimeoutMs: 150 });
+    assert.equal(reason(result), 'interrupted');
+    const lines = warn.mock.calls.filter((c) => c.arguments[0] === 'bulk').map((c) => String(c.arguments[1]));
+    assert.equal(lines.filter((l) => / failed \(interrupted: /.test(l)).length, 1, JSON.stringify(lines));
+  } finally {
+    warn.mock.restore();
   }
 });

@@ -954,15 +954,11 @@ object BulkTransfers {
             entry.partial.keep()
             updateRecord(context, entry, total, TransferStatus.PAUSED)
             val how = BulkStops.classifyFailure(null, e)
+            // Counted before the line is built: the line carries the tally, and it must include this stop.
+            if (how.expected) stopped.incrementAndGet() else failed.incrementAndGet()
             val line = "${entry.transferId} push ${how.words} after $received bytes ($total of ${entry.size}) in " +
                 "${elapsed}ms; the partial is kept and is resumable — ${tally()}; " + framing.tally.summary()
-            if (how.expected) {
-                stopped.incrementAndGet()
-                LinkLog.i("bulk", "$line (${e.javaClass.simpleName})")
-            } else {
-                failed.incrementAndGet()
-                LinkLog.e("bulk", line, e)
-            }
+            if (how.expected) LinkLog.i("bulk", "$line (${e.javaClass.simpleName})") else LinkLog.e("bulk", line, e)
             runCatching {
                 sendDone(channel, entry.transferId) {
                     put("ok", false)
@@ -1197,15 +1193,11 @@ object BulkTransfers {
         } catch (e: Exception) {
             val elapsed = System.currentTimeMillis() - startedAt
             val how = BulkStops.classifyFailure(null, e)
+            // Counted before the line is built: the line carries the tally, and it must include this stop.
+            if (how.expected) stopped.incrementAndGet() else failed.incrementAndGet()
             val line = "${entry.transferId} pull ${how.words} after $sent of ${entry.size} bytes in ${elapsed}ms — " +
                 "${tally()}; ${framing.tally.summary()}"
-            if (how.expected) {
-                stopped.incrementAndGet()
-                LinkLog.i("bulk", "$line (${e.javaClass.simpleName})")
-            } else {
-                failed.incrementAndGet()
-                LinkLog.e("bulk", line, e)
-            }
+            if (how.expected) LinkLog.i("bulk", "$line (${e.javaClass.simpleName})") else LinkLog.e("bulk", line, e)
             runCatching {
                 channel.session.send(
                     Envelope(

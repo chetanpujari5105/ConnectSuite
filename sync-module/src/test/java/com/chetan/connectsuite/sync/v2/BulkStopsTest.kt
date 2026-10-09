@@ -213,6 +213,30 @@ class BulkStopsTest {
         assertEquals("catches that log a stop as a failure without asking", emptyList<String>(), unclassified)
     }
 
+    /**
+     * The stop line carries the running tally, so the tally must be read **after** this stop is counted.
+     * Found on hardware 2026-10-09 (B8): a plain pull cancelled mid-transfer logged "… pull stopped … —
+     * 4 completed / 0 stopped / 0 failed", because the push and plain-pull catches built the line, tally
+     * included, before `stopped.incrementAndGet()`. The block-pull catch counted first and read right.
+     */
+    @Test
+    fun `every stream catch counts the stop before it reads the tally`() {
+        val src = listOf("src/main/java/com/chetan/connectsuite/sync/v2/BulkTransfers.kt",
+            "sync-module/src/main/java/com/chetan/connectsuite/sync/v2/BulkTransfers.kt").map { File(it) }.first { it.isFile }.readLines()
+        val counts = { l: String -> "failed.incrementAndGet()" in l || "stopped.incrementAndGet()" in l }
+        val catches = src.indices.filter { at -> src[at].trim() == "} catch (e: Exception) {" &&
+            src.subList(at, minOf(at + 20, src.size)).any(counts) }
+        assertTrue("control: the stream catches were found (${catches.size})", catches.size >= 3)
+        val late = catches.filter { at ->
+            val body = src.subList(at, minOf(at + 20, src.size))
+            val firstTally = body.indexOfFirst { "tally()" in it }
+            val firstCount = body.indexOfFirst(counts)
+            assertTrue("control: catch at line ${at + 1} reads a tally", firstTally >= 0)
+            firstTally < firstCount
+        }.map { "line ${it + 1}" }
+        assertEquals("catches that read the tally before counting this stop", emptyList<String>(), late)
+    }
+
     /** B10, 2026-10-09: a Pause read "block pull Cancelled … cancelled by the Mac (reason=pause)". */
     @Test
     fun `a Pause is worded as a pause, a Cancel as a cancel`() {

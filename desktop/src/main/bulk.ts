@@ -978,7 +978,10 @@ async function pullShareWith(
         .then(() => discardOwn())
         .then(async (cleanup) => {
           await release();
-          log.warn('bulk', `share ${transferId} failed (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; ${cleanup.note}`);
+          // `cancelled` is this Mac's own abort signal — an expected stop, not a fault (B8, 2026-10-09). The
+          // share layer's line says who asked; this one says only what the stream did.
+          if (reason === 'cancelled') log.info('bulk', `share ${transferId} stopped (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; ${cleanup.note}`);
+          else log.warn('bulk', `share ${transferId} failed (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; ${cleanup.note}`);
           resolve(failure(reason, detail, cleanup));
         });
     };
