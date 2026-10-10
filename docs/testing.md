@@ -29244,3 +29244,45 @@ Phone: debug build `21570962…` installed; re-paired to this Mac; **both 205 de
 `sk-b6-collision (2).bin`, `sk-b8-cancel-300mb.bin`, `sk-b8-cancel-300mb (2).bin` (two full saves before the
 cancel probe worked), `sk-b7-2.png`, `sk-b7-3.png`, and `sidekick-pass-stop-200mb (9).bin` from B10. Nothing
 was deleted.
+
+### Defect 205 — the night without the lock (2026-10-09 17:30 → 2026-10-10 08:36), and the owner's decision
+
+The phone was left unplugged with the lock off (debug marker) and the per-minute ticker on. Evidence:
+`docs/evidence/release-candidate-2026-10-09/205-night/`.
+
+- **The Mac slept at 19:01:53** (`pmset -g log`: *Clamshell Sleep*), with maintenance wakes about every 15 min
+  all night. The Mac's request probe therefore covers 17:38–18:58 only (17 samples: 8 ok, 9 *not connected*
+  17:53–18:33 while the Mac reconnected, then ok); it ended with *unsettled top-level await* — a CDP read that
+  never answered once the Mac slept. Recorded as a bound of the instrument, not a link reading.
+- **The lock is held only while a Mac is connected** (`LinkService.kt` — `if (state.isConnected) acquireLocks()
+  else releaseLocks()`). So with the Mac asleep the normal build would also have held no lock for most of the
+  night: this run measured **a mostly disconnected night**, not *lock off* against *lock on*. The 2026-10-07/08
+  soak (176 mAh, `ConnectSuite:link` held 8 h 54 min) had a Mac awake and connected.
+- What it does show: deep idle from **03:15** (ticks 9–49 min apart, which is the CPU sleeping — the ticker
+  cannot run without it); the phone **accepted** the Mac's reconnects at 22:23, 22:56, 00:55 and 01:12 with no
+  lock; batterystats since the last charge (~01:20, **7 h 16 min** on battery): CPU awake **31 min** (7.1 %),
+  screen on 4 min 42 s, 229 mAh computed = actual, **Sidekick 0.955 mAh**.
+- **Not measured:** whether a link survives deep Doze **without** the lock while a Mac stays awake.
+- **Owner's decision, 2026-10-10:** keep the lock and state the cost — ≈ 20 mAh per connected hour (≈ 0.4 % of
+  5,000 mAh), released when the Mac sleeps or disconnects. Stated in the privacy draft §3 and the tester guide.
+  Register: `docs/defects.md` → 205 (accepted, with reopen conditions).
+
+### B7, phone half (read 2026-10-10 from the phone's log)
+
+`selection of 3 files for review` → `started at share.file 3; one copy at a time` → three `offered` lines, each
+preceded by a concurrent-budget reading (`quota=143617582 ownCache=… held=… usable=1789571072` — **the cache
+quota B8's plan asked to measure, read by the product itself**, 0 failed readings); two `saved on the Mac as
+sk-b7-3.png` / `sk-b7-2.png`, one `declined (user)`; every staged copy deleted; `0 unoffered file(s) deleted`.
+The same log shows `5 completed / 1 stopped` on the next line after B8's stop — the stop *was* counted, after its
+own line had printed `0 stopped`, which is the ordering `9ccb1b4` fixes. **B7: hardware-verified, both ends.**
+
+### Reinstall, 2026-10-10 08:52 — markers removed, the fixes on the phone
+
+The first attempt read `grants=0`, `listener=0` and `remove markers → 0`: the phone had dropped off USB and the
+pin refused every write — but the helper sent stderr to `/dev/null`, so the refusals read as readings. Nothing
+was changed. Re-run with stderr visible after the owner re-connected: before 27 grants, both bindings, both
+markers; markers removed (folder still listed 4 entries — control); `install -r` of the debug APK from `c66ef7f`
+→ `Success`; installed `base.apk` SHA-256 `4d548ae0…` = the build; after 27 grants, both bindings;
+`link-up.sh` 3/3; the phone logged `205 measurement: link wake lock held (no debug marker)` and `dumpsys power`
+lists `ConnectSuite:link` under uid 11011. `9ccb1b4`'s phone fix is now installed; its next stop line is the
+hardware reading still owed.

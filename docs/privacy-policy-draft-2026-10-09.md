@@ -95,7 +95,7 @@ none was invented.
 | `NEARBY_WIFI_DEVICES` (`neverForLocation`) | the same on Android 13+, declared as never used for location |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE` | keeping the link to the Mac alive, with a visible notification |
 | `FOREGROUND_SERVICE_MEDIA_PROJECTION` | screen mirroring, after Android's own consent dialog each time |
-| `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | reconnecting after sleep and restart. **Cost stated:** the link's wake lock is the largest app battery consumer overnight on the test phone (≈ 3.5 % of a 5,000 mAh battery per night, one reading — defect 205) |
+| `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | reconnecting after sleep and restart. **Cost stated (kept by decision, defect 205):** while a Mac is connected the link keeps the phone's processor awake — ≈ 20 mAh per hour on the test phone (≈ 0.4 % of a 5,000 mAh battery), one reading. It is released when the Mac disconnects or sleeps; a night with the Mac asleep measured Sidekick at under 1 mAh |
 | `POST_NOTIFICATIONS` | the link's status notification and the clipboard, share and app-opening prompts |
 | `READ_SMS`, `RECEIVE_SMS`, `SEND_SMS` | showing and sending text messages from the Mac |
 | `READ_CALL_LOG`, `READ_PHONE_STATE`, `CALL_PHONE`, `ANSWER_PHONE_CALLS` | call events, recent calls, dialling and answering from the Mac |

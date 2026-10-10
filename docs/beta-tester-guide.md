@@ -37,6 +37,10 @@ and about ten minutes.
 - **Grant only what you want to use.** Each feature asks for its own permission the first time you turn it on
   (notifications, messages, calls, photos, screen mirroring, Send to Mac). Everything works without the ones you
   skip, and each screen says what is missing.
+- **Battery:** while your Mac is awake and connected, Sidekick keeps the phone ready to answer it, which costs about
+  0.4 % of a typical phone battery per hour. When the Mac sleeps or disconnects, that stops. If you leave the Mac awake
+  overnight and the phone shows Sidekick high in its battery list, that is why — tell the developer if it is high with
+  the Mac asleep.
 - If the Mac ever shows **"This Mac still remembers a phone"** with a **Forget** button, press it, then scan the
   new code; on the phone, remove the Mac under **Paired Macs** too.
 - If Sidekick on the Mac shows **"Sidekick can't use this Mac's saved key"**, choose **Quit** and tell the

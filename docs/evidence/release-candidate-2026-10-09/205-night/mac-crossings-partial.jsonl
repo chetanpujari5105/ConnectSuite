@@ -1,0 +1,24 @@
+{"started":"2026-10-09T12:08:05.075Z","minutes":900,"intervalSeconds":300,"note":"one fs.list(roots) request per sample, via the app client; a sample is a request, not a socket record"}
+{"n":1,"at":"2026-10-09T12:08:05.123Z","phaseBefore":"connected","ok":true,"ms":33,"roots":6,"err":null,"control":"function"}
+{"n":2,"at":"2026-10-09T12:13:05.148Z","phaseBefore":"connected","ok":true,"ms":21,"roots":6,"err":null,"control":"function"}
+{"n":3,"at":"2026-10-09T12:18:05.822Z","phaseBefore":"connected","ok":true,"ms":18,"roots":6,"err":null,"control":"function"}
+{"n":4,"at":"2026-10-09T12:23:05.840Z","phaseBefore":"reconnecting","ok":false,"ms":2,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":5,"at":"2026-10-09T12:28:05.856Z","phaseBefore":"reconnecting","ok":false,"ms":2,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":6,"at":"2026-10-09T12:33:05.870Z","phaseBefore":"reconnecting","ok":false,"ms":2,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":7,"at":"2026-10-09T12:38:05.884Z","phaseBefore":"reconnecting","ok":false,"ms":1,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":8,"at":"2026-10-09T12:43:05.898Z","phaseBefore":"reconnecting","ok":false,"ms":3,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":9,"at":"2026-10-09T12:48:05.915Z","phaseBefore":"connecting","ok":false,"ms":2,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":10,"at":"2026-10-09T12:53:05.935Z","phaseBefore":"reconnecting","ok":false,"ms":4,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":11,"at":"2026-10-09T12:58:05.951Z","phaseBefore":"reconnecting","ok":false,"ms":2,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":12,"at":"2026-10-09T13:03:05.962Z","phaseBefore":"reconnecting","ok":false,"ms":1,"roots":null,"err":"The Mac is not connected to the phone, so that was not sent.","control":"function"}
+{"n":13,"at":"2026-10-09T13:08:05.889Z","phaseBefore":"connected","ok":true,"ms":20,"roots":6,"err":null,"control":"function"}
+{"n":14,"at":"2026-10-09T13:13:05.909Z","phaseBefore":"connected","ok":true,"ms":14,"roots":6,"err":null,"control":"function"}
+{"n":15,"at":"2026-10-09T13:18:06.007Z","phaseBefore":"connected","ok":true,"ms":86,"roots":6,"err":null,"control":"function"}
+{"n":16,"at":"2026-10-09T13:23:06.149Z","phaseBefore":"connected","ok":true,"ms":26,"roots":6,"err":null,"control":"function"}
+{"n":17,"at":"2026-10-09T13:28:06.197Z","phaseBefore":"connected","ok":true,"ms":30,"roots":6,"err":null,"control":"function"}
+Warning: Detected unsettled top-level await at file:///Users/chetan/Desktop/ConnectSuite/scripts/link-crossing-probe.mjs:19
+  const r = await probe.read({
+            ^
+
+
+

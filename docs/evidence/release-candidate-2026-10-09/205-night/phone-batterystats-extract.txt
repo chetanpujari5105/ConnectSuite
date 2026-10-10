@@ -1,0 +1,34 @@
+# dumpsys batterystats --charged, read 2026-10-10 08:4x IST on replug. Window: since the last charge (~01:20 IST), 7 h 16 min on battery.
+# Extract: header, global estimated power, device idle, and Sidekick (u0a1011) only.
+  Estimated screen off time: 8d 5h 24m 5s 400ms 
+  Estimated screen off device idle time: 8d 3h 48m 16s 300ms 
+Statistics since last charge:
+  Time on battery: 7h 16m 9s 718ms (99.5%) realtime, 30m 59s 404ms (7.1%) uptime
+  Time on battery screen off: 7h 11m 27s 659ms (98.9%) realtime, 26m 17s 344ms (6.0%) uptime
+  Time on battery screen doze: 44s 115ms (0.2%)
+  Estimated power use (mAh):
+    Capacity: 5000, Rated: 4855, Typical: 5000, Computed drain: 229, actual drain: 229
+    Global
+    screen: 2.85 apps: 2.85
+    cpu: 51.6 apps: 51.5 duration: 34m 0s 633ms 
+    bluetooth: 0.000124 apps: 0.0000420
+    camera: 0.400 apps: 0.400 duration: 3s 600ms 
+    audio: 0.0837 apps: 0.0837 duration: 21s 212ms 
+    video: 0.0326 apps: 0.0208 duration: 4s 997ms 
+    mobile_radio: 130 apps: 129
+    sensors: 0.0715 apps: 0.0715
+    wakelock: 8.63 apps: 8.63 duration: 26m 17s 344ms 
+    ambient_display: 0.434 apps: 0
+      (on battery, screen on)
+      screen: 2.85 apps: 2.85
+  Estimated screen off device idle time: 8d 3h 48m 16s 300ms 
+  Device light idling: 1h 15m 45s 770ms (17.4%) 2x
+  UID u0a1011: 0.955 bg: 0.955
+    Mobile network: 55.97KB received, 55.97KB sent (packets 246 received, 246 sent)
+    Mobile radio active: 6m 4s 702ms (3.6%) 23x @ 741 mspp
+    Wi-Fi network: 15.02KB received, 15.02KB sent (packets 66 received, 66 sent)
+    Wake lock NotificationManagerService:post:com.chetan.connectsuite.debug realtime
+    WiFi Multicast Wakelock count = 0 time = 7h 16m 9s 718ms
+    Total cpu time: u=1s 105ms s=1s 227ms 
+    Total cpu time per freq:
+    Total screen-off cpu time per freq:
