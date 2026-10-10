@@ -4236,6 +4236,10 @@ input.files-search {
 .security-row {
   display: flex;
   align-items: center;
+  /* Wraps when the text's 180 px minimum and the actions cannot share one line — a display
+     narrower than the window's 1100 px floor (UX batch 2026-10-10). At every normal width the row
+     fits and nothing moves; when it does wrap, the actions keep to the right. */
+  flex-wrap: wrap;
   gap: var(--space-5);
 }
 .security-card[data-layout='stacked'] .security-row { flex-wrap: wrap; align-items: flex-start; }
@@ -4290,7 +4294,7 @@ input.files-search {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.security-actions { display: flex; gap: var(--space-4); flex: none; }
+.security-actions { display: flex; gap: var(--space-4); flex: none; margin-left: auto; }
 .security-card[data-layout='stacked'] .security-actions {
   flex-basis: 100%;
   justify-content: flex-end;
