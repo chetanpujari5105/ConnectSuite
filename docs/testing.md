@@ -29286,3 +29286,49 @@ markers; markers removed (folder still listed 4 entries — control); `install -
 `link-up.sh` 3/3; the phone logged `205 measurement: link wake lock held (no debug marker)` and `dumpsys power`
 lists `ConnectSuite:link` under uid 11011. `9ccb1b4`'s phone fix is now installed; its next stop line is the
 hardware reading still owed.
+
+### B5 — the drop sheet on a real sheet, 2026-10-10 19:02–19:07 · **hardware-verified (Return, Escape); Send not re-run**
+
+Owner's word: *arrange the windows yourself; run the drop-sheet Return and Escape check on a real sheet; report exactly
+what each key does.* Escape-does-nothing was accepted by the owner on 2026-10-09.
+
+Instrument: stage 7's `axtool` (genuine HID drags, gated on the element under the pointer before mouse-down and before
+mouse-up) plus a new `key` command that posts Return or Escape **only** when Sidekick is frontmost and has exactly one
+sheet, read in the same run. Source: a synthetic `drop-b5.txt` (77 B, `24bdba16…`) in the session scratch folder —
+`~/.s7-run` not used. Window work: Sidekick's main window was closed to the Dock, so a *reopen* event ran its own
+`revealMainWindow('dock icon')`; it was moved to the built-in display (0,33; 1100 × 800 — its minimum width) and a
+new Finder window on the scratch folder placed beside it. No browser window needed moving; nothing was closed but that
+Finder window, afterwards. The drop tile appears only on a root that can receive (`canSendHere`), so **Received files**
+was opened first; the tile read *Drop files here to send them to Received files*.
+
+| Trial | Sheet | Key | What happened |
+|---|---|---|---|
+| 1 | *Send “drop-b5.txt” to your phone?* + the file's path; buttons **Send**, **Cancel**; AX default **Cancel**, AX cancel none | **Return** (19:02:38) | sheet gone within 2 s; Mac `drop of 1 file(s) not confirmed — nothing granted` at 19:02:38.511; nothing sent in 30 s |
+| 2 | identical | **Escape** | **nothing**: the sheet still open at 2, 10 and 20 s, no log line. Then **Cancel** pressed by its title (AXPress) → sheet gone, `not confirmed — nothing granted` (19:07:13) |
+
+**Control for Escape's "nothing":** the key went through the same posting path, gated the same way, that made Return
+act in trial 1 — so the keystroke reached the frontmost sheet and did nothing, rather than never arriving. **Send** by
+title was not re-run (stage 7 Z3, one dispatch); nothing reached the phone.
+
+**Instrument faults, none recorded as findings:** the first trial-2 drag was refused by its own gate — the hit test at
+the tile's centre returned the tile's own `<div>` (`AXGroup`, empty label; its text is a child run) where trial 1 had
+returned the text run. `axtool` now reports `AXDOMIdentifier` and child text, and the gate matched `#ids=files-drop`,
+a stricter discriminator than the text. The script then ran its 20 s watch over a stimulus that had not happened —
+those lines were discarded, and the retry stops on the first refusal. A zsh loop passed `"603 759"` as one argument
+and printed nothing; read as a tool failure, not a reading.
+
+### Synthetic files deleted, 2026-10-10 (owner's list, listed and hashed first)
+
+**Mac `~/Downloads/Sidekick` (7; 79 → 72 entries):** `sk-b6-collision.bin` and `sk-b6-collision (2).bin` (1 MiB,
+`d7a51f37…`), `sk-b7-2.png` (`69a7b6e7…`), `sk-b7-3.png` (`07272c64…`), `sk-b8-cancel-300mb.bin` and
+`sk-b8-cancel-300mb (2).bin` (300 MiB, `bfc1d93d…`), `sidekick-pass-stop-200mb (9).bin` (200 MiB, `bf375859…`) — each
+equal to its recorded synthetic source. **Phone (11 files, 4 folders):** `Download/SidekickBeta` (`sk-b6-collision.bin`,
+`sk-b8-cancel-300mb.bin`), `Pictures/SidekickBeta` (`sk-b7-1/2/3.png`, `7b4db9ce…`, `69a7b6e7…`, `07272c64…`),
+`Download/SidekickS5` (`sidekick-s5-a.txt` `d43032ae…`, `-b.txt` `e7512f96…`, `-c.bin` 120 MiB `ffbe601f…`),
+`Documents/Sidekick137` (`sk137-1/2/3.txt`, `bdc06bc6…`, `1b471399…`, `dc3e6836…`) — random content, each recorded as
+synthetic when created. Deleted by exact path, folders by `rmdir` (refuses a non-empty folder); MediaStore rows
+11 → 0 after a rescan; the sibling folders still list (control). Phone free space after: 2.8 GB.
+
+**Left, not on the list:** Mac `sidekick-pass-stop-200mb.bin` and `(2)`–`(8)` (8 × 200 MiB) and `sidekick-s5-a/b.txt`;
+`~/.s7-run`; the T1 evidence. **The `Documents/Sidekick137` grant is still held** (its folder is gone) — the owner
+removes it in Sidekick → Sync → Folders.

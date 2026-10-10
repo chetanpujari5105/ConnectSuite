@@ -1,12 +1,38 @@
 # Beta hardware plan — 2026-10-09 (prepared; each step runs only on the owner's word)
 
-> **Status after the 2026-10-09 run** (evidence: `docs/testing.md` → *hardware run*): A1–A6, B1 (first scan; the
-> rotated-code rescan not run), B2, B4, B6 **pass**; B9, B10, B8 **pass after a fix each** (`27a6f0d`, `177aab6`,
-> `9ccb1b4` — the last is tests-only on the phone until the next install); B7 **passes on both ends** (phone read
-> 2026-10-10); B3 stands from the isolated run; B5 not run (Escape accepted; Return needs the owner's windows);
-> B11/B12 blocked on a named consenting caller/number; §C, §D not run. Defect 205: **accepted by the owner
-> 2026-10-10 — lock kept, cost stated**; markers removed and the lock re-verified held. The phone runs the build
-> from `c66ef7f` (carries `9ccb1b4`).
+> **Status, 2026-10-10** (evidence: `docs/testing.md` → *hardware run* and the sections after it):
+> **Done on hardware:** A1–A6, B1 (first scan), B2, B4, B5 (Return cancels; Escape does nothing — accepted), B6,
+> B7 (both ends), and B8, B9, B10 after one fix each (`9ccb1b4`, `27a6f0d`, `177aab6`). B3 stands from the isolated
+> run. Defect 205 **accepted by the owner — lock kept, cost stated**. The phone runs the debug build from `c66ef7f`.
+> Synthetic test files deleted on both devices (owner's list).
+> **Left:** B1's second scan of a fresh code (needs a Forget and re-pair; optional) · B11, B12 (a consenting caller /
+> number) · §C screen readers (ask before taking over speech) · §D fresh user (a new macOS account; a second phone
+> or approval to uninstall here; the **signed** APK) · `9ccb1b4` not yet seen on hardware on either end (no
+> stream has stopped since the phone install; the Mac's running `dist` predates it — rebuild and relaunch).
+>
+> ### What the owner still has to do, in plain words
+>
+> 1. **Sign the Android app** with your release key. Nothing can be installed by a tester until you do.
+> 2. **Fill in the privacy policy's blanks** (`docs/privacy-policy-draft-2026-10-09.md`): your legal name, postal
+>    address, support email, the date it takes effect, where it will be hosted, and how changes are announced.
+> 3. **Make two small decisions** in that same file: may the phone's diagnostic logs move when someone copies their
+>    phone to a new one, and should old Mac Activity history that may hold link hosts be rewritten.
+> 4. **Create a new macOS user account** for the first-time-user test, and tell me when it exists.
+> 5. **Decide how to test a fresh phone install:** lend a second Android phone, or allow uninstalling the test build
+>    here (that removes every permission and both settings switches, which are then granted again by hand).
+> 6. **Remove the old test folder's access on the phone:** Sidekick → Sync → Folders → *Documents › Sidekick137* →
+>    Remove. The folder itself is already deleted.
+> 7. **Name a number and a caller who agree to be used** — one number for the new-conversation SMS test (defect 30)
+>    and one caller for the camera and call-banner tests — or tell me to leave those out of the beta.
+> 8. **Say when I may run the screen-reader checks** — VoiceOver on the Mac and TalkBack on the phone speak aloud and
+>    take over the screen for a few minutes each.
+> 9. **Decide about the licence list:** a licence-report plugin or one online fetch would confirm the licence of every
+>    Android library (today 152 of 153 are by publisher, not read from the files). Both need your yes.
+> 10. **Optional tidy-up:** older test files are still on the Mac — eight `sidekick-pass-stop-200mb` copies in
+>     `~/Downloads/Sidekick` (1.6 GB), two `sidekick-s5-*.txt`, and `~/.s7-run`. They were not on your list, so they
+>     stay until you say.
+>
+> Apple notarization, Developer ID and any Play listing are not needed for a named-tester beta and remain your call.
 
 Builds under test: **phone** — a debug APK from `34362e1` or later (same signer as the installed one, so no
 uninstall and no grant loss); **Mac** — the development `dist` built from the same commit, relaunched from the

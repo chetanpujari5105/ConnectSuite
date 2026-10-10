@@ -1,3 +1,41 @@
+# BETA HARDWARE RUN — 2026-10-09/10: the beta plan run on the phone and the Mac — **every check that needs no one else has passed; what is left is the owner's** (signing, policy blanks, a fresh macOS user, named consenting people)
+
+**Read first:** `docs/beta-hardware-plan-2026-10-09.md` — its status block says what is done and what is left, and
+ends with **the owner's checklist in plain words**. Evidence: `docs/testing.md` → *Release-fix batch 2026-10-09 —
+hardware run* and the sections after it; `docs/evidence/release-candidate-2026-10-09/`.
+
+1. **Hardware-verified (SM-S938B + the development Mac app):** install over the old build keeping all 27 grants and
+   both settings switches (A1–A6); the development profile seeded by copy with the stored identity loaded, no prompt
+   (207 b); *This Mac still remembers a phone* with **Forget** (207 d); **a real ZXing scan and re-pair**, v2 both sides
+   proved (B1); the selection entry does not pull Sidekick forward (B4); **drop sheet: Return cancels at once, Escape
+   does nothing** (B5 — the accepted trade-off), on a real sheet; share collision → `name (2).ext`, hashes equal (B6);
+   gallery multi-select → one offer per file, Accept/Decline each (B7, both ends); Cancel mid-transfer at 101,974,016 of
+   314,572,800 bytes → nothing saved, both partials gone (B8); thumbnails of the selected root only (B9); a Pause or
+   Disconnect logged as *stopped*, not failed (B10).
+2. **Found on hardware and fixed (each red first, mutation-checked):** `27a6f0d` — 208's root check refused real DCIM
+   ids (percent-encoded wire ids checked undecoded) and the Mac cached the refusal; `177aab6` — expected stops logged at
+   W/E and counted failed; `9ccb1b4` — the phone's stop line read the tally before counting its own stop (my
+   `177aab6`), and the Mac logged a person's Cancel as `W … failed`. `9ccb1b4` is **tests-only on both ends**: the phone
+   build carries it but no stream has stopped since, and the Mac's running `desktop/dist` predates it (`bulk.js`
+   10:27 on 10-09, the commit 12:48) — a rebuild and relaunch puts it in.
+3. **Defect 205 — accepted by the owner (2026-10-10): the lock is kept and its cost stated** (≈ 20 mAh per hour while a
+   Mac is awake and connected; released when the Mac sleeps — the lock is held only while connected). Hour B and the
+   night without the lock did not compare the two conditions (phone in use; Mac asleep from 19:01); both are recorded
+   with why. Stated in the privacy draft §3 and the tester guide; reopen conditions in the register. Debug markers
+   removed; lock re-verified held.
+4. **Commits (local, not pushed):** `27a6f0d` `177aab6` `0aaebb5` `9ccb1b4` `06a89a1` `c66ef7f` `731f50e`, and the
+   commit carrying this entry. Nothing signed, notarized, published or pushed; no release gate changed.
+5. **Fresh totals, after the last code change:** phone **1,481 / 0** (core 279, app 214, sync-module 684, camera-module 187, mirror-module 65, input-module 52; `--rerun-tasks`, 0 result files older than the run, gradle exit 0); Mac **2,017 / 0** (npm exit 0); Mac typecheck exit 0, test ratchet 14 / 14 (2026-10-09, no Mac code since).
+6. **Left on your devices:** phone — debug build from `c66ef7f` (`4d548ae0…`), re-paired to this Mac (the Mac stores
+   the phone as `2F:97:0F:EC…`), `adb logcat -c` run once on 2026-10-09; the **`Documents/Sidekick137` grant** still
+   held (folder deleted). Mac — profile `sidekick-desktop-dev` (the original `sidekick-desktop` untouched),
+   `desktop/dist` rebuilt on 2026-10-09; Sidekick's window moved to the built-in display for B5. **Deleted on the
+   owner's list, each hashed first:** 7 files in `~/Downloads/Sidekick`, 11 files and 4 folders on the phone. **Not
+   deleted (not on the list):** 8 older `sidekick-pass-stop-200mb` copies (1.6 GB) and `sidekick-s5-a/b.txt` in
+   `~/Downloads/Sidekick`, `~/.s7-run`, the T1 evidence.
+7. **Next:** the owner's checklist (plan status block). Then, with a new macOS account and the signed APK, §D's
+   fresh-user test — the first run of the packaged Mac app and the release APK anywhere.
+
 # RELEASE-FIX BATCH — 2026-10-09: items 1–7 built, tested and committed; hardware NOT run (phone off USB) — beta NOT YET, four steps away
 
 **Read first:** `docs/release-verification-2026-10-08.md` §7 (items table and verdict), then
