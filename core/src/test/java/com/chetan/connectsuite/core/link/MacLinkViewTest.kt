@@ -65,13 +65,20 @@ class MacLinkViewTest {
         assertFalse(MacLinkView.of(listening, emptyList()).paired)
     }
 
+    /*
+     * Changed deliberately 2026-10-10 (UX batch, section 3). This asserted that Send files stays off
+     * even on a live link, under "isn't available yet" — true when the only send path was v1's, false
+     * since phone → Mac sharing shipped (B6/B7). The button now hands picks to the share flow.
+     */
     @Test
-    fun `send files stays unavailable on a live link, and says why`() {
+    fun `send files is offered while a Mac is connected, and says why when none is`() {
         val up = listening.afterSessionReady("Chetans-MacBook-Pro")
-        val view = MacLinkView.of(up, listOf(mac))
-        // Control: the link really is up, so the refusal is about the send path, not the link.
-        assertTrue(view.connected)
-        assertFalse(view.canSendFiles)
-        assertTrue(MacLinkView.SEND_FILES_REASON.contains("Files pane on your Mac"))
+        assertTrue(MacLinkView.of(up, listOf(mac)).connected)
+        assertTrue(MacLinkView.of(up, listOf(mac)).canSendFiles)
+        val down = MacLinkView.of(listening, listOf(mac))
+        assertTrue("control: the Mac is paired while the link is down", down.paired)
+        assertFalse(down.canSendFiles)
+        assertTrue(MacLinkView.SEND_FILES_REASON.contains("needs your Mac connected"))
+        assertFalse("the reason still claims the feature does not exist", MacLinkView.SEND_FILES_REASON.contains("yet"))
     }
 }

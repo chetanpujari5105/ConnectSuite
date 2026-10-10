@@ -158,9 +158,8 @@ fun MirrorScreen(extraCards: @Composable () -> Unit = {}) {
                     ) {
                         IconBadge(Icons.Outlined.Info, tint = SidekickColors.textMeta)
                         Text(
-                            "Android asks for screen capture permission every time a session starts. " +
-                                "That is enforced by the system and cannot be remembered, so this prompt " +
-                                "is not a bug.",
+                            "Android asks you to allow screen sharing each time you start. That is " +
+                                "Android's rule, and it can't be remembered.",
                             style = SidekickType.caption,
                             color = SidekickColors.textMeta,
                             modifier = Modifier.weight(1f),

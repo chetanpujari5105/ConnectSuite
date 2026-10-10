@@ -112,9 +112,8 @@ object OnboardingCopy {
                 "you tap to allow it, each time it starts.",
             // The security note. Defect 63: the first clause used to describe a key-comparison
             // flow this app has never implemented. The second clause was always accurate.
-            "Pairing is a code you scan once. The certificate behind it is pinned, and every " +
-                "connection after that is checked against it — an unpaired device is refused " +
-                "without asking you anything.",
+            "Pairing is a code you scan once. Every connection after that is checked against the " +
+                "Mac you scanned — an unpaired device is refused without asking you anything.",
         ),
     )
 

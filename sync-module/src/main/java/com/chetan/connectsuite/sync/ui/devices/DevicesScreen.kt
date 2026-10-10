@@ -134,6 +134,8 @@ fun DevicesSection(
     onOpenMac: () -> Unit,
     onQuickAction: (QuickAction) -> Unit,
     modifier: Modifier = Modifier,
+    /** Opens the file picker; what is picked goes to the Mac through the share flow (`SendFilesRoute`). */
+    onSendFiles: () -> Unit = {},
 ) {
     // Defect 145: every Mac-specific element below reads this, not `Device.isConnected` — that is
     // the v1 Android-to-Android transport, which the Mac never uses.
@@ -167,6 +169,7 @@ fun DevicesSection(
                 mirroringAvailable = mirroringAvailable,
                 onStartMirroring = onStartMirroring,
                 onOpenMac = onOpenMac,
+                onSendFiles = onSendFiles,
             )
         }
 
@@ -276,6 +279,7 @@ private fun ConnectionHero(
     mirroringAvailable: Boolean,
     onStartMirroring: () -> Unit,
     onOpenMac: () -> Unit,
+    onSendFiles: () -> Unit,
 ) {
     val connected = macLink.connected
     val macName = macLink.name
@@ -324,7 +328,7 @@ private fun ConnectionHero(
             if (connected && address != null) {
                 FactChip(Icons.Outlined.Wifi, address)
             }
-            FactChip(Icons.Outlined.Lock, "TLS 1.3")
+            FactChip(Icons.Outlined.Lock, "Encrypted")
             FactChip(Icons.Outlined.Hub, "Local network")
         }
 
@@ -342,11 +346,10 @@ private fun ConnectionHero(
         Spacer(Modifier.height(Space.sm))
 
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            // Gated on whether a send can work, not on the link: the phone has no route to push a
-            // file to the Mac (Feature A), so a lit button here would lead only to a failure.
+            // Gated on whether a send can work: a share needs a connected Mac on the other end.
             SecondaryButton(
                 text = "Send files",
-                onClick = {},
+                onClick = onSendFiles,
                 icon = Icons.Outlined.Upload,
                 enabled = macLink.canSendFiles,
                 modifier = Modifier.weight(1f),

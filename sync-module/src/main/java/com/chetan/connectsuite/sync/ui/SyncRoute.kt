@@ -90,6 +90,8 @@ fun SyncRoute(
     notificationsViewModel: NotificationsViewModel = viewModel(),
     foldersViewModel: FoldersViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
+    /** Devices' Send files: opens the picker in the app module, which owns the share activities. */
+    onSendFiles: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val devicesState by devicesViewModel.uiState.collectAsStateWithLifecycle()
@@ -219,6 +221,7 @@ fun SyncRoute(
                     onOpenDevice = startSend,
                     onStartMirroring = onStartMirroring,
                     onOpenMac = onOpenMac,
+                    onSendFiles = onSendFiles,
                     onQuickAction = { action ->
                         when (action) {
                             // The tile opens the Mirror screen; the hero's button starts a

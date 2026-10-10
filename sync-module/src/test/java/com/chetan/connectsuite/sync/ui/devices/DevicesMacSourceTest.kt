@@ -44,6 +44,9 @@ class DevicesMacSourceTest {
     fun `send files is gated on whether a send can work, and says why when it cannot`() {
         assertTrue(screen.contains("enabled = macLink.canSendFiles"))
         assertTrue(screen.contains("MacLinkView.SEND_FILES_REASON"))
+        // And it does something when lit (2026-10-10): before, onClick was `{}` under a greyed button.
+        assertTrue(screen.contains("onClick = onSendFiles"))
+        assertFalse(Regex("""text = "Send files",\s*onClick = \{\}""").containsMatchIn(screen))
     }
 
     @Test

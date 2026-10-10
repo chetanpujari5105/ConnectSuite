@@ -24,11 +24,11 @@ import com.chetan.connectsuite.core.model.DeviceType
  *   pinned peer (an unpaired Mac is refused before one is made), so this is the paired Mac.
  * - [name] — the live session's peer name, else the trusted row's.
  * - [address] — the trusted row's last address, which is what Mac settings shows too.
- * - [canSendFiles] — **false, whatever the link says.** Sending from the phone runs through
- *   `TransferManager.send`, which needs a v1 connection the Mac never has; a phone-initiated
- *   transfer to the Mac is Feature A, blocked on a protocol decision. Lighting the button on the v2
- *   link would put it in front of a sure failure, so the gate is the fact that decides whether it
- *   can work — see [SEND_FILES_REASON].
+ * - [canSendFiles] — **a Mac is connected.** Until 2026-10-10 this was false whatever the link said,
+ *   because the only send path then was v1's `TransferManager.send`. Phone → Mac sharing has shipped
+ *   since (`share.file`, proven in B6/B7), and the button now hands picked files to the same share
+ *   activities a Gallery share reaches (`SendFilesRoute`). A send needs a Mac on the other end, so
+ *   that is the gate, and [SEND_FILES_REASON] says so when there is none.
  */
 data class MacLinkView(
     val paired: Boolean,
@@ -36,13 +36,12 @@ data class MacLinkView(
     val name: String?,
     val address: String?,
 ) {
-    val canSendFiles: Boolean get() = false
+    val canSendFiles: Boolean get() = connected
 
     companion object {
-        /** Shown under the disabled Send files, because a greyed control needs its reason. */
+        /** Shown under Send files while no Mac is connected, because an unavailable control needs its reason. */
         const val SEND_FILES_REASON =
-            "Sending files from this phone to your Mac isn't available yet — send them from the " +
-                "Files pane on your Mac instead."
+            "Sending files needs your Mac connected."
 
         fun of(link: LinkState, trusted: List<TrustedDeviceEntity>): MacLinkView {
             val mac = trusted.firstOrNull { it.type == DeviceType.DESKTOP }

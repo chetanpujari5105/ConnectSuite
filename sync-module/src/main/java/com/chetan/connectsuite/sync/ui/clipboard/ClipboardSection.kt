@@ -336,10 +336,8 @@ private fun FocusWallCard() {
                     color = SidekickColors.textPrimary,
                 )
                 Text(
-                    "Android forbids every app from reading the clipboard in the background — not " +
-                        "just this one, and no permission changes it. Copy in another app, come " +
-                        "back here, and it goes the moment this screen appears. From the Mac it " +
-                        "arrives straight away.",
+                    "Android lets apps read the clipboard only while they are open. Copy something, " +
+                        "then open Sidekick, and it is sent. From the Mac it arrives straight away.",
                     style = SidekickType.caption,
                     color = SidekickColors.textBody,
                 )

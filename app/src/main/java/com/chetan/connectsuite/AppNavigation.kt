@@ -1,5 +1,7 @@
 package com.chetan.connectsuite
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -204,6 +206,11 @@ fun ConnectSuiteRoot(
         else -> -1
     }
 
+    // Devices' Send files (2026-10-10): Android's picker, then the share flow a Gallery share reaches.
+    val pickFilesToSend = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { picked ->
+        SendFilesRoute.intentFor(context, picked)?.let { context.startActivity(it) }
+    }
+
     val openRoute: (String) -> Unit = { route ->
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -248,6 +255,7 @@ fun ConnectSuiteRoot(
                     onOpenMirror = { openRoute(TopLevelTab.Mirror.route) },
                     onOpenMac = { openRoute(TopLevelTab.Mac.route) },
                     onOpenSettings = { navController.navigate(ROUTE_SYNC_SETTINGS) },
+                    onSendFiles = { pickFilesToSend.launch(arrayOf("*/*")) },
                 )
             }
             composable(TopLevelTab.Mirror.route) {

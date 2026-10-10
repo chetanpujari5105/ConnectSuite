@@ -254,7 +254,7 @@ private fun TrustRow() {
         TrustColumn(
             Icons.Outlined.Lock,
             "Secure",
-            "TLS 1.3, pinned to the key in the QR",
+            "Encrypted, and locked to the Mac you scan",
             Modifier.weight(1f),
         )
         TrustColumn(
@@ -420,7 +420,7 @@ private fun ConnectedStage(macName: String, title: String, body: String, onOpenD
                     color = SidekickColors.textPrimary,
                 )
                 Text(
-                    "Local network · TLS 1.3",
+                    "Local network · Encrypted",
                     style = SidekickType.meta,
                     color = SidekickColors.textMeta,
                 )

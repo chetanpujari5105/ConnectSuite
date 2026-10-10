@@ -361,7 +361,7 @@ fun MacManagementSection(
             Spacer(Modifier.height(Space.md))
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 macLink.address?.let { FactChip(Icons.Outlined.Wifi, it) }
-                FactChip(Icons.Outlined.Lock, "TLS 1.3")
+                FactChip(Icons.Outlined.Lock, "Encrypted")
             }
         }
 
@@ -554,10 +554,9 @@ fun MacManagementSection(
                         color = SidekickColors.textPrimary,
                     )
                     Text(
-                        "Both ends hold their own key and pinned the other's when you scanned the " +
-                            "code. Every connection after that is checked against the pinned key, " +
-                            "over TLS 1.3, on your local network — there is no account, no server " +
-                            "in the middle and no plaintext fallback. A Mac whose key has changed " +
+                        "Your phone and your Mac each keep a key, and check the other's on every " +
+                            "connection. Everything is encrypted and stays on your local network — " +
+                            "no account and no server in the middle. A Mac whose key has changed " +
                             "is refused and told so.",
                         style = SidekickType.caption,
                         color = SidekickColors.textBody,
