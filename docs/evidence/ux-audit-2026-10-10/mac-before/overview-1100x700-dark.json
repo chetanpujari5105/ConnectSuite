@@ -1,0 +1,24 @@
+{
+  "screen": "overview",
+  "size": "1100x700",
+  "theme": "dark",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 1011,
+  "vw": 1100,
+  "vh": 700,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [
+    {
+      "el": "div.overview-grid>div#remote-card.card>p#remote-note.card-sub",
+      "text": "Nothing is playing on the phone.",
+      "over": 201
+    }
+  ],
+  "clippedTextCount": 1
+}

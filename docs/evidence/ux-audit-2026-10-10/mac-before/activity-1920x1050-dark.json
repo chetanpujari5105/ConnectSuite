@@ -1,0 +1,18 @@
+{
+  "screen": "activity",
+  "size": "1920x1050",
+  "theme": "dark",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 493,
+  "vw": 1920,
+  "vh": 1050,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [],
+  "clippedTextCount": 0
+}

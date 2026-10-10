@@ -1,0 +1,18 @@
+{
+  "screen": "clipboard",
+  "size": "1100x700@1.2",
+  "theme": "dark",
+  "emulated": true,
+  "zoomEmulated": 1.2,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 395,
+  "vw": 917,
+  "vh": 583,
+  "dpr": 2.4000000953674316,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [],
+  "clippedTextCount": 0
+}

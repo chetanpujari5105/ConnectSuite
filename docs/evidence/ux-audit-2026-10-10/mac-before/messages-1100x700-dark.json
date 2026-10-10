@@ -1,0 +1,119 @@
+{
+  "screen": "messages",
+  "size": "1100x700",
+  "theme": "dark",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 512,
+  "vw": 1100,
+  "vh": 700,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "3 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "2 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "16 unread",
+      "over": 56
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "6 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "118 unread",
+      "over": 62
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "10 unread",
+      "over": 56
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "14 unread",
+      "over": 56
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "6 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "2 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "1 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "4 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "13 unread",
+      "over": 56
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "6 unread",
+      "over": 50
+    },
+    {
+      "el": "span.sms-thread-meta>span.sms-unread>span.visually-hidden",
+      "text": "2 unread",
+      "over": 50
+    }
+  ],
+  "clippedTextCount": 49
+}

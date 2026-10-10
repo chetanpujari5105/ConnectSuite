@@ -1,0 +1,18 @@
+{
+  "screen": "settings",
+  "size": "1100x700",
+  "theme": "dark",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 868,
+  "vw": 1100,
+  "vh": 700,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [],
+  "clippedTextCount": 0
+}

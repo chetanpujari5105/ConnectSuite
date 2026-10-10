@@ -1,0 +1,18 @@
+{
+  "screen": "photos",
+  "size": "1440x900",
+  "theme": "light",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 582,
+  "vw": 1440,
+  "vh": 900,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [],
+  "clippedTextCount": 0
+}

@@ -1,0 +1,18 @@
+{
+  "screen": "calls",
+  "size": "1920x1050",
+  "theme": "light",
+  "emulated": true,
+  "zoomEmulated": 1,
+  "settleMs": 620,
+  "control": true,
+  "sectionH": 882,
+  "vw": 1920,
+  "vh": 1050,
+  "dpr": 2,
+  "pageHScroll": false,
+  "offRight": [],
+  "offRightCount": 0,
+  "clippedText": [],
+  "clippedTextCount": 0
+}

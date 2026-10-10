@@ -1,0 +1,834 @@
+[
+  {
+    "screen": "overview",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1100x700",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1440x900",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1920x1050",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": true
+  },
+  {
+    "screen": "mirror",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1100x700@1.2",
+    "theme": "dark",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1100x700",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1440x900",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": false
+  },
+  {
+    "screen": "mirror",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1920x1050",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "overview",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 1,
+    "pageHScroll": true
+  },
+  {
+    "screen": "mirror",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "files",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "photos",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "messages",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 49,
+    "pageHScroll": false
+  },
+  {
+    "screen": "notifications",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "clipboard",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "calls",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "camera",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "apps",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "activity",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "settings",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  },
+  {
+    "screen": "pairing",
+    "size": "1100x700@1.2",
+    "theme": "light",
+    "offRight": 0,
+    "clippedText": 0,
+    "pageHScroll": false
+  }
+]
