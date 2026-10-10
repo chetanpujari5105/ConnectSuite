@@ -568,6 +568,40 @@ test('a dropped link keeps the conversations on screen and says how old they are
   assert.match(pane.state.textContent, /as of \d\d:\d\d/);
 });
 
+/*
+ * Found by the 2026-10-10 UX sweep on the live app: Messages read "Your phone is not connected.
+ * Conversations are shown as of 20:10" beside a strip reading Connected · 9 ms, an hour after the
+ * link came back. `setAdvertised(true)` set the link live and, with threads already loaded,
+ * returned without drawing — so the banner from the drop stayed up, and the list was never asked
+ * again. Every status tick afterwards took the same early return.
+ */
+test('a link that comes back clears the Disconnected banner and refetches the list once', async () => {
+  const pane = mount([thread('1'), thread('2')]);
+  pane.view.setLinkState(true, true, null);
+  await settle();
+  pane.view.setLinkState(false, false, null);
+  assert.match(pane.state.textContent, /not connected/, 'control: the banner was drawn on the drop');
+  const before = pane.bridge.calls.filter((c) => c.startsWith('smsThreads')).length;
+  pane.bridge.threads = [thread('0', { snippet: 'arrived while offline' }), thread('1'), thread('2')];
+
+  let release!: () => void;
+  pane.bridge.threadsGate = new Promise<void>((r) => (release = r));
+  pane.view.setLinkState(true, true, null);
+  // At once, while the refetch is still held — the banner must not wait on the phone to answer.
+  assert.equal(pane.state.hidden, true, 'the Disconnected banner outlived the disconnect');
+  pane.bridge.threadsGate = null;
+  release();
+  await settle();
+  assert.doesNotMatch(pane.state.textContent, /not connected/);
+  // A status tick is not a reconnect: only the transition refetches.
+  pane.view.setLinkState(true, true, null);
+  pane.view.setLinkState(true, true, null);
+  await settle();
+  const after = pane.bridge.calls.filter((c) => c.startsWith('smsThreads')).length;
+  assert.equal(after - before, 1, 'expected exactly one refetch on reconnect');
+  assert.equal(pane.list.queryAll('.sms-thread').length, 3, 'the list is still the one from before the drop');
+});
+
 test('a refused grant draws the phone’s own reason, and a permission block rather than a blank', () => {
   const pane = mount([thread('1')]);
   pane.view.setLinkState(true, false, 'SMS permission is off for ConnectSuite.');

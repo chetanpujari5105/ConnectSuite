@@ -387,9 +387,17 @@ class SmsView {
       this.render();
       return;
     }
+    const returning = this.link === 'disconnected';
     this.permissionReason = advertised ? null : reason;
     this.link = advertised ? 'live' : 'permission';
     this.setAdvertised(advertised);
+    // The link came back. `setAdvertised` draws only on a first load, so without this the banner
+    // from the drop stayed up beside a live strip and the list was never asked again (UX sweep
+    // 2026-10-10). Only the transition refetches — a status tick on a live link is not a return.
+    if (returning && advertised && this.loaded) {
+      this.render();
+      void this.loadThreads();
+    }
   }
 
   setAdvertised(advertised: boolean): void {
