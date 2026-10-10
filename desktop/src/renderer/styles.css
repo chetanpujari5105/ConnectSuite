@@ -4256,7 +4256,6 @@ input.files-search {
 @media (prefers-reduced-motion: reduce) {
   .security-card[data-state='connecting'] .security-badge svg { animation: none; }
 }
-}
 
 .security-text { flex: 1; min-width: 180px; }
 .security-title {

@@ -929,3 +929,47 @@ test('every class the renderer toggles for emphasis resolves to a rule', () => {
   assert.ok(/\.primary-action\b/.test(sheets));
   assert.ok(!/\.button-primary\b/.test(sheets));
 });
+
+/**
+ * Brace depth over a sheet, comments and strings blanked: the first place it goes below zero, and
+ * where it ends. A stray `}` at the top level does not error in a browser — the CSS parser treats
+ * it as the start of a junk rule and **swallows the next real rule with it**.
+ */
+function braceBalance(css: string): { strayAtLine: number | null; endDepth: number } {
+  const blanked = css
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, (m) => ' '.repeat(m.length));
+  let depth = 0;
+  let line = 1;
+  for (const ch of blanked) {
+    if (ch === '\n') line++;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth < 0) return { strayAtLine: line, endDepth: depth };
+    }
+  }
+  return { strayAtLine: null, endDepth: depth };
+}
+
+/*
+ * Named for the 2026-10-10 UX sweep's finding: a stray `}` after the security card's
+ * reduced-motion block in styles.css swallowed `.security-text { flex: 1; min-width: 180px }`, so
+ * the text block never filled and the card's actions overflowed the page at View → Zoom In.
+ * `getComputedStyle` read `flex-grow: 0` and **no** rule naming `.security-text` existed in
+ * `document.styleSheets` — tsc clean, every other test green.
+ */
+test('every stylesheet has balanced braces — no stray } swallowing the next rule', () => {
+  const dir = __dirname;
+  for (const sheet of readdirSync(dir).filter((f) => f.endsWith('.css'))) {
+    const { strayAtLine, endDepth } = braceBalance(readFileSync(join(dir, sheet), 'utf8'));
+    assert.equal(strayAtLine, null, `${sheet}: a stray } at line ${strayAtLine} — the rule after it is dropped by the parser`);
+    assert.equal(endDepth, 0, `${sheet}: ${endDepth} unclosed {`);
+  }
+});
+
+test('control_the brace check sees a stray }, ignores braces in comments and strings', () => {
+  assert.equal(braceBalance('@media (x) { a { b: c; } }\n}\n.next { d: e; }').strayAtLine, 2);
+  assert.deepEqual(braceBalance('/* } */ a { content: "}"; }'), { strayAtLine: null, endDepth: 0 });
+  assert.equal(braceBalance('a { b: c;').endDepth, 1);
+});
