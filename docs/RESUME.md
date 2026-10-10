@@ -1,3 +1,33 @@
+# CLEANUP + MAC REDEPLOY — 2026-10-10 evening: test files removed on both devices; `9ccb1b4` is deployed on the Mac
+
+1. **Deleted** (each proven by a doc entry, a recorded hash or a generated name; literal paths; neighbours re-listed):
+   - Mac `~/Downloads/Sidekick`: **51** synthetic files (every `sidekick-*`, `inbox-probe`, `nogrant-probe`, `drop-me*`);
+     your 22 photos and videos untouched. `~/.s7-run` gone (3 drop files, `.DS_Store`, both folders by rmdir).
+   - Mac scratch: 44 earlier session scratchpads under `/private/tmp/claude-501/…ConnectSuite` (~10.5 GB, no keystores
+     found), `desktop/release` (743 MB, the 2026-09-17 ConnectSuite packaged build), `/private/tmp/claude-501/bulk.ts.orig`,
+     and ~87,000 npm-test temp dirs in `$TMPDIR` (33 prefixes proved against repo `mkdtemp` calls, only dirs idle ≥ 2 h;
+     2.10 → 0.13 GB) plus `sidekick-207-profile-kwZzN1`.
+   - Phone (`adb-pinned.sh`): **208** files (~1.69 GB) from `Download/ConnectSuite`, `Pictures|Documents/SidekickShareTest`,
+     `Download/SidekickGrantP5`, `Pictures|Documents/SidekickRC`; those five folders rmdir'd; `files/shared/drop-me.txt`
+     via run-as. MediaStore lists none of them (218 → 10 rows: one unknown file + 9 directory rows of deleted folders;
+     DCIM control 22,461 rows). No SAF grant pointed at a deleted folder.
+2. **Kept:** `~/.connectsuite-evidence-private/rollback-2026-10-06` (your choice). The RC moved out of `/private/tmp`
+   (wiped at reboot) to `~/.connectsuite-evidence-private/rc-34362e1/` — APK `c0814f50…`, dmgs `d9d3a456…`/`f08492d6…`,
+   both zips, and the older unsigned APK `8803cfcd…`; hashes identical after the move, `SHA256SUMS.txt` beside them.
+   **Unknown, left:** `Download/ConnectSuite/TNbdOLDFd7pfa-Qr.mp4` (arrived via Sidekick, no record); the
+   `cdp-profile-*`, `frames.err`, `pg.html`, `prod.log` in `/private/tmp/claude-501` (the Lookamx-website project's);
+   20 unproven `$TMPDIR` prefixes.
+3. **Free space:** Mac 3.1 → 22.0 GB. Phone 4,661,128 → 4,530,436 KB — **confounded**: a 584,608,433-byte video was
+   recorded on the phone at 20:00 during the run, so the phone figure is not a measure of what was freed.
+4. **Mac redeployed:** `desktop/dist` rebuilt at 20:08 from HEAD `50c997d` (desktop source equal to HEAD); the built
+   `bulk.js` carries `9ccb1b4`'s `cancelled → stopped` branch (control: the 10-08 dist copy lacks it). Before quitting:
+   no transfer since 19:40:06, `pull-resume/` empty, ledger `share-temporary-files.json` `[]`, receive folder the default
+   `~/Downloads/Sidekick`; the app's quit logged *nothing to wait for (2 checked)*. Relaunched 20:10 (PID 16240):
+   stored identity `A9:59:35:BB…` loaded, connected via last-known, pairing v2 — **no re-pair**; profile
+   `sidekick-desktop-dev`; one instance; no `CONNECTSUITE_*` variables, 0 debug-switch lines; `link-up.sh` 3/3.
+5. **Still yours, by hand on the phone:** Sidekick → Sync → Folders → Documents › Sidekick137 → **Remove** (stale grant).
+   Also still running: orphaned Mac test processes from Oct 3/7 (PIDs 25501, 88652, 89011) — not touched.
+
 # BETA HARDWARE RUN — 2026-10-09/10: the beta plan run on the phone and the Mac — **every check that needs no one else has passed; what is left is the owner's** (signing, policy blanks, a fresh macOS user, named consenting people)
 
 **Read first:** `docs/beta-hardware-plan-2026-10-09.md` — its status block says what is done and what is left, and
@@ -16,8 +46,8 @@ hardware run* and the sections after it; `docs/evidence/release-candidate-2026-1
    ids (percent-encoded wire ids checked undecoded) and the Mac cached the refusal; `177aab6` — expected stops logged at
    W/E and counted failed; `9ccb1b4` — the phone's stop line read the tally before counting its own stop (my
    `177aab6`), and the Mac logged a person's Cancel as `W … failed`. `9ccb1b4` is **tests-only on both ends**: the phone
-   build carries it but no stream has stopped since, and the Mac's running `desktop/dist` predates it (`bulk.js`
-   10:27 on 10-09, the commit 12:48) — a rebuild and relaunch puts it in.
+   build carries it but no stream has stopped since; **the Mac has run it since 2026-10-10 20:10** (rebuilt and
+   relaunched — see the entry above), and no Mac-side Cancel has been exercised on it yet.
 3. **Defect 205 — accepted by the owner (2026-10-10): the lock is kept and its cost stated** (≈ 20 mAh per hour while a
    Mac is awake and connected; released when the Mac sleeps — the lock is held only while connected). Hour B and the
    night without the lock did not compare the two conditions (phone in use; Mac asleep from 19:01); both are recorded
