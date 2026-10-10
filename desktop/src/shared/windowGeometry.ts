@@ -174,3 +174,60 @@ export function zoomStep(
     },
   };
 }
+
+/**
+ * The window after it was moved, or after the displays changed under it (2026-10-10).
+ *
+ * **Why.** [fitWindow] decides the size once, at open, against the display under the pointer. Nothing
+ * re-decided it afterwards, so a 1440 x 920 window opened on the external display (work area
+ * 1920 x 1050) and dragged onto the built-in one (1512 x 865) stayed 920 tall in an 865 work area — its
+ * bottom, with the dock and the pane footers, under the Dock or off the screen — and the minimum was
+ * still the one chosen for the display it left.
+ *
+ * **The rule — it must never fight the person.**
+ *  - A window that **fits** the display it is on, moved **within** that display, is left exactly where
+ *    it was put, even partly over an edge: macOS lets a window be parked that way on purpose. Only the
+ *    title bar is held below the top of the work area, because a title bar under the menu bar cannot
+ *    be grabbed again. A window that has just **arrived** on a display (`contain`) is held inside it.
+ *  - A window that **does not fit** (wider or taller than the work area) is shrunk on that axis to the
+ *    work area less [MARGIN] each side — never below the minimum unless the display itself is smaller
+ *    — and then moved fully inside.
+ *  - The minimum is the display's own ([minimumsFor] of [sizeFor]), raised for View → Zoom exactly as
+ *    [zoomStep] raises it, and capped by the work area so a zoomed minimum can never force the window
+ *    off a smaller display.
+ *
+ * `bounds: null` means nothing to move.
+ */
+export function refitWindow(
+  current: Bounds,
+  area: Area,
+  zoomLevel = 0,
+  /**
+   * True when the window has just arrived on this display, or the display changed under it: then it
+   * is held fully inside. A move within one display is the person's own placement and is left alone.
+   * Measured 2026-10-10: a drag from the external display re-fitted the window, and the drop then
+   * left it 14 px under the Dock on the built-in one — a fit in size, not a fit on the screen.
+   */
+  contain = false,
+): { bounds: Bounds | null; minimum: { width: number; height: number } } {
+  const base = minimumsFor(sizeFor(area));
+  const factor = zoomFactorFor(zoomLevel);
+  const zoomed = factor > 1 ? { width: Math.ceil(MIN.width * factor), height: Math.ceil(MIN.height * factor) } : base;
+  const minimum = {
+    width: Math.min(Math.max(base.width, zoomed.width), area.width),
+    height: Math.min(Math.max(base.height, zoomed.height), area.height),
+  };
+  const tooWide = current.width > area.width;
+  const tooTall = current.height > area.height;
+  const width = tooWide ? Math.min(area.width, Math.max(minimum.width, area.width - MARGIN * 2)) : current.width;
+  const height = tooTall ? Math.min(area.height, Math.max(minimum.height, area.height - MARGIN * 2)) : current.height;
+  let { x, y } = current;
+  if (tooWide || tooTall || contain) {
+    x = Math.min(Math.max(x, area.x), area.x + area.width - width);
+    y = Math.min(Math.max(y, area.y), area.y + area.height - height);
+  } else if (y < area.y) {
+    y = area.y;
+  }
+  const changed = x !== current.x || y !== current.y || width !== current.width || height !== current.height;
+  return { bounds: changed ? { x, y, width, height } : null, minimum };
+}

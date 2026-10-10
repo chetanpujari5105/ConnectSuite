@@ -193,6 +193,16 @@ export class FloatMirrorWindow {
    * The README's red-light row: *"Closes the window only — session, device, quality and toggles all
    * persist."* Position and width are remembered here so the next open is where you left it.
    */
+  /**
+   * The displays changed under the window (one removed, a resolution or arrangement changed).
+   * Re-resolved against the display it is on with the same clamp a drag uses, so it can never be
+   * left on a display that is gone or past the edge of one that shrank (2026-10-10).
+   */
+  refit(): void {
+    if (!this.living()) return;
+    this.place((current) => ({ x: current.x, y: current.y, width: current.width }));
+  }
+
   closeFloat(): void {
     const float = this.window;
     if (!float || float.isDestroyed()) return;

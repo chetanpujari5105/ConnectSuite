@@ -155,7 +155,7 @@ import { wireWebcamSpike, type SpikeWiring } from './webcamSpike';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armIfAsked, armPairingCode } from './pairingArm';
-import { fitWindow, DESIGN, zoomStep, zoomFactorFor, type ZoomDirection } from '../shared/windowGeometry';
+import { fitWindow, DESIGN, zoomStep, zoomFactorFor, refitWindow, type ZoomDirection } from '../shared/windowGeometry';
 
 const [MAIN_PAGE, FLOAT_PAGE, SHARE_PAGE] = ['index.html', 'float.html', 'share-window.html'].map((page) =>
   join(__dirname, '..', 'renderer', page),
@@ -700,6 +700,7 @@ function createWindow(): void {
     const got = window?.getBounds();
     if (!got) return;
     const landedOn = screen.getDisplayMatching(got);
+    windowDisplayId = landedOn.id;
     const asked = `${bounds.width}x${bounds.height} at (${bounds.x},${bounds.y})`;
     const actual = `${got.width}x${got.height} at (${got.x},${got.y})`;
     const fits = got.width <= landedOn.workArea.width && got.height <= landedOn.workArea.height;
@@ -720,6 +721,17 @@ function createWindow(): void {
     if (windowBaseMinimum) window?.setMinimumSize(windowBaseMinimum.width, windowBaseMinimum.height);
   });
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+  // Dragged to another display, or dropped too big for this one: re-fit (see `refitMainWindow`) —
+  // once it has **settled**. On macOS `moved` is an alias of `move` and fires all through a drag;
+  // re-fitting on the first one set the window's bounds mid-drag, the drag carried on, and it was
+  // dropped 14 px under the Dock with nothing left to re-fit it (measured 2026-10-10).
+  window.on('moved', () => {
+    if (refitTimer) clearTimeout(refitTimer);
+    refitTimer = setTimeout(() => {
+      refitTimer = null;
+      refitMainWindow('moved');
+    }, REFIT_SETTLE_MS);
+  });
   window.on('focus', () => nativeNotifier.setWindowFocused(true));
   window.on('blur', () => nativeNotifier.setWindowFocused(false));
   window.on('closed', () => {
@@ -734,6 +746,48 @@ function createWindow(): void {
 
 /** The minimum `fitWindow` chose for this display — the floor a zoomed minimum never goes below. */
 let windowBaseMinimum: { width: number; height: number } | null = null;
+
+/** The display the main window was last fitted to, so a move onto another one is logged once. */
+let windowDisplayId: number | null = null;
+/** How long a window must stop moving before a move counts as finished. A drag pauses less than this. */
+const REFIT_SETTLE_MS = 450;
+let refitTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The main window after a move or a display change, decided by `refitWindow` (2026-10-10).
+ *
+ * A window that fits where it is stays exactly where it was put; one that does not fit — taller than
+ * the built-in display's 865 px work area, after being dragged from the external one — is shrunk on
+ * that axis and moved inside. The minimum follows the display it is on, raised for the current zoom.
+ * Fullscreen and minimised windows belong to macOS and are left alone; Spaces do not move a window.
+ */
+function refitMainWindow(why: string): void {
+  const w = window;
+  if (!w || w.isDestroyed() || w.isFullScreen() || w.isSimpleFullScreen() || w.isMinimized()) return;
+  const before = w.getBounds();
+  const display = screen.getDisplayMatching(before);
+  const movedDisplay = windowDisplayId !== null && windowDisplayId !== display.id;
+  // Arrived on another display, or the displays changed: held fully inside. A move within one display
+  // is the person's own placement.
+  const decision = refitWindow(before, display.workArea, w.webContents.getZoomLevel(), movedDisplay || why !== 'moved');
+  windowDisplayId = display.id;
+  windowBaseMinimum = refitWindow(before, display.workArea, 0).minimum;
+  if (decision.bounds) w.setBounds(decision.bounds);
+  w.setMinimumSize(decision.minimum.width, decision.minimum.height);
+  // The success case beside the change: a move onto another display that needed nothing is a line too.
+  if (decision.bounds || movedDisplay || why !== 'moved') {
+    const area = display.workArea;
+    log.info(
+      'window',
+      `${why}: on display ${display.id} (work area ${area.width}x${area.height}, scale ${display.scaleFactor}) — ` +
+        (decision.bounds
+          ? `re-fitted ${before.width}x${before.height} at (${before.x},${before.y}) → ` +
+            `${decision.bounds.width}x${decision.bounds.height} at (${decision.bounds.x},${decision.bounds.y})`
+          : `fits as placed (${before.width}x${before.height})`) +
+        `; minimum ${decision.minimum.width}x${decision.minimum.height}`,
+    );
+  }
+}
 
 /**
  * View → Zoom, decided by `zoomStep` (2026-10-07): a step that would leave the page smaller than the
@@ -1221,6 +1275,15 @@ app.whenReady().then(() => {
    * returns either way.
    */
   createWindow();
+  // The displays changing under open windows — a monitor unplugged, a resolution or arrangement
+  // changed, the Dock moved. Each window re-fits against the display it is on (2026-10-10).
+  for (const event of ['display-added', 'display-removed', 'display-metrics-changed'] as const) {
+    screen.on(event as 'display-added', () => {
+      refitMainWindow(event);
+      float?.refit();
+      shareWindow?.refit();
+    });
+  }
 
   const identity = resolveIdentity();
   // Defect 207: Quit was chosen on the blocked-identity prompt — nothing was written, and nothing

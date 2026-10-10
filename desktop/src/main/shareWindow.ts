@@ -128,6 +128,22 @@ export class ShareReceiveWindow {
     };
   }
 
+  /**
+   * The displays changed under the window: held inside the work area of the display it is on, the
+   * way [setContentHeight] already holds its height (2026-10-10). Never shown or focused by this.
+   */
+  refit(): void {
+    const w = this.window;
+    if (!w || w.isDestroyed()) return;
+    const b = w.getBounds();
+    const area = screen.getDisplayMatching(b).workArea;
+    const width = Math.min(b.width, area.width);
+    const height = Math.min(b.height, area.height);
+    const x = Math.min(Math.max(b.x, area.x), area.x + area.width - width);
+    const y = Math.min(Math.max(b.y, area.y), area.y + area.height - height);
+    if (x !== b.x || y !== b.y || width !== b.width || height !== b.height) w.setBounds({ x, y, width, height });
+  }
+
   /** The page measured its content; resize, keeping the top-right corner where it is. */
   setContentHeight(raw: unknown): void {
     const h = clampShareWindowHeight(raw);

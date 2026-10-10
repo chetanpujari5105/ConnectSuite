@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DESIGN, MARGIN, MIN, sizeFor, minimumsFor, positionFor, fitWindow, zoomStep } from './windowGeometry.ts';
+import { DESIGN, MARGIN, MIN, sizeFor, minimumsFor, positionFor, fitWindow, zoomStep, refitWindow } from './windowGeometry.ts';
 
 /**
  * The two displays on the Mac that reported this, read from Electron's own `screen` module.
@@ -141,4 +141,49 @@ test('Actual Size from 120% returns the display’s own minimum', () => {
 test('levels are clamped to Chromium’s range', () => {
   const r = zoomStep(-8, 'out', { width: 2000, height: 2000 });
   assert.equal(r.ok && r.level, -8);
+});
+
+// ---- refitWindow: moved between displays, or the displays changed (2026-10-10) -------------------
+
+test('a design-size window dragged onto the shorter built-in display is shrunk to fit and moved inside', () => {
+  // Dropped on the built-in with its top at y = 40: 920 tall in an 865 work area.
+  const r = refitWindow({ x: 30, y: 40, width: 1440, height: 920 }, BUILT_IN);
+  assert.ok(r.bounds, 'a window taller than the work area was left as it was');
+  assert.equal(r.bounds.height, 865 - MARGIN * 2);
+  assert.equal(r.bounds.width, 1440, 'the axis that fits keeps its size');
+  assert.ok(r.bounds.y >= BUILT_IN.y && r.bounds.y + r.bounds.height <= BUILT_IN.y + BUILT_IN.height, 'not fully inside the work area');
+  assert.deepEqual(r.minimum, { width: 1100, height: 700 });
+});
+
+test('a window that fits is left where it was put, even partly over an edge — only the title bar is held', () => {
+  assert.equal(refitWindow({ x: 1600, y: 100, width: 1200, height: 800 }, EXTERNAL).bounds, null);
+  assert.equal(refitWindow({ x: 1300, y: 100, width: 1200, height: 800 }, EXTERNAL).bounds, null, 'a deliberate partial park was undone');
+  assert.deepEqual(refitWindow({ x: 1600, y: 10, width: 1200, height: 800 }, EXTERNAL).bounds, { x: 1600, y: 30, width: 1200, height: 800 });
+});
+
+test('a zoomed window keeps a zoomed minimum, capped by the display so it can never be forced off it', () => {
+  const zoomed = refitWindow({ x: 1600, y: 30, width: 1400, height: 900 }, EXTERNAL, 1);
+  assert.deepEqual(zoomed.minimum, { width: 1320, height: 840 });
+  const small = { x: 0, y: 25, width: 1280, height: 775 };
+  const capped = refitWindow({ x: 0, y: 25, width: 1320, height: 840 }, small, 1);
+  assert.ok(capped.minimum.width <= small.width && capped.minimum.height <= small.height, 'a minimum larger than the display');
+  assert.ok(capped.bounds && capped.bounds.width <= small.width && capped.bounds.height <= small.height);
+});
+
+test('a display smaller than the minimum still gets a window that fits it', () => {
+  const tiny = { x: 0, y: 25, width: 1024, height: 640 };
+  const r = refitWindow({ x: 0, y: 25, width: 1440, height: 920 }, tiny);
+  assert.ok(r.bounds);
+  assert.ok(r.bounds.width <= tiny.width && r.bounds.height <= tiny.height);
+  assert.ok(r.minimum.width <= tiny.width && r.minimum.height <= tiny.height);
+});
+
+test('a window that has just arrived on a display is held fully inside it, even when it fits in size', () => {
+  // The reading: re-fitted to 1440 x 841, then dropped at (14, 71) — bottom at 912 in a work area ending at 898.
+  const dropped = { x: 14, y: 71, width: 1440, height: 841 };
+  assert.equal(refitWindow(dropped, BUILT_IN).bounds, null, 'control: a move within one display is left alone');
+  const held = refitWindow(dropped, BUILT_IN, 0, true).bounds;
+  assert.ok(held, 'a window arriving 14 px under the Dock was left there');
+  assert.equal(held.y + held.height, BUILT_IN.y + BUILT_IN.height);
+  assert.equal(held.height, 841, 'it fitted in size, so only its position changes');
 });
