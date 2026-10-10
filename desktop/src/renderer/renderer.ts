@@ -524,10 +524,16 @@ function paintMirrorLink(status: RendererStatus | null): void {
   );
 }
 
+/** Whether the last status was connected — null before the first. A change to `true` is a return. */
+let wasConnected: boolean | null = null;
+
 function render(status: RendererStatus | null): void {
   shell.setStatus(status);
   // Held for Settings → Device info, which is built when it is opened rather than on every status.
   lastStatus = status;
+  const nowConnected = status?.phase === 'connected';
+  if (nowConnected && wasConnected !== true) returnToScreen('reconnect');
+  wasConnected = nowConnected;
   // Settings → Connection's trusted-device sentence follows every pairing change, not only a rebuild.
   paintTrustedDevice(status);
   drawPairSteps();
@@ -1203,7 +1209,7 @@ const photos = new PhotosView(
 connect.onMediaPreviewAgreed((ticket) => photos.onPreviewAgreed(ticket));
 connect.onMessage((envelope) => photos.onTransferEvent(envelope));
 shell.onRoute((id) => {
-  if (id === 'photos') void photos.refresh();
+  if (id === 'photos') void photos.onReturn('route');
 });
 
 // Apps. Fetches on open like Photos and Files — 122 labels and a megabyte of icons is a round trip
@@ -1274,7 +1280,7 @@ new WebcamView(
 // functions this page does (defect 156: an inline literal here dropped Pause, Resume and Cancel).
 const files = createFilesView(filesBridgeFrom(connect));
 shell.onRoute((id) => {
-  if (id === 'files') void files?.refresh();
+  if (id === 'files') void files?.onReturn('route');
 });
 /*
  * The one live fact the island shows beside the connection, and the only one this app has.
@@ -1401,6 +1407,31 @@ const calls = new CallsView(
   el('call-frequent'),
   connect,
 );
+shell.onRoute((id) => {
+  if (id === 'calls') void calls.onReturn('route');
+});
+
+/*
+ * Coming back to the Mac — the window focused or shown, or the link back — refreshes the pane on
+ * screen, by the one rule in `shared/returnRefresh.ts` (UX batch 2026-10-10). There is no "the
+ * phone changed" message on the wire, so these are the moments someone can be expecting news: a
+ * photo taken on the phone, then a click back to the Mac. Only the visible pane asks; the others
+ * ask when they are routed to. Panes that are pushed their data (Notifications, Clipboard) or
+ * already re-read on every visit (Apps, Overview, Activity) are not listed — they are not stale.
+ */
+let returnWired = false;
+function returnToScreen(trigger: ReturnTrigger): void {
+  // `render` can run before the panes below its declaration exist; they ask on their first route.
+  if (!returnWired) return;
+  if (shell.screen === 'photos') void photos.onReturn(trigger);
+  else if (shell.screen === 'files') void files?.onReturn(trigger);
+  else if (shell.screen === 'calls') void calls.onReturn(trigger);
+}
+window.addEventListener('focus', () => returnToScreen('focus'));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') returnToScreen('visible');
+});
+returnWired = true;
 
 /**
  * The six global actions, and their wire names.

@@ -684,13 +684,21 @@ class PhotosView {
       this.failure = { reason: result.reason ?? 'The phone did not answer.', fixHint: result.fixHint };
       this.albums = [];
       this.items = [];
+      this.everLoaded = false;
       this.render();
       return;
     }
     this.failure = null;
-    const buckets = result.data ?? [];
+    this.albums = PhotosView.albumsFrom(result.data ?? []);
+    if (this.selectedAlbum === null && this.albums.length) this.selectedAlbum = ALL_PHOTOS;
+    this.render();
+    await this.loadAlbum();
+    this.everLoaded = this.failure === null;
+  }
+
+  private static albumsFrom(buckets: MediaBucketRow[]): MediaBucketRow[] {
     const total = buckets.reduce((sum, one) => sum + one.count, 0);
-    this.albums = buckets.length
+    return buckets.length
       ? [
           {
             bucketId: ALL_PHOTOS,
@@ -702,9 +710,93 @@ class PhotosView {
           ...buckets,
         ]
       : [];
-    if (this.selectedAlbum === null && this.albums.length) this.selectedAlbum = ALL_PHOTOS;
+  }
+
+  /** True once a full load has succeeded; until then a return is a full load. */
+  private everLoaded = false;
+  private lastAskedAtMs: number | null = null;
+  private newestInFlight: Promise<void> | null = null;
+
+  /**
+   * The pane was returned to — routed to, the window refocused or shown, or the link came back.
+   *
+   * Measured on hardware 2026-10-10 before this existed: a photo taken while the pane stayed open
+   * never appeared, and leaving and returning showed it only by reloading the whole grid. Now the
+   * first page of the album is asked for and merged on top (`shared/returnRefresh.ts`), so new
+   * photos appear first and someone scrolled down keeps their place.
+   */
+  async onReturn(trigger: ReturnTrigger, nowMs = Date.now()): Promise<void> {
+    const inFlight = this.newestInFlight !== null || this.loading;
+    if (!shouldRefreshOnReturn({ trigger, nowMs, lastAskedAtMs: this.lastAskedAtMs, inFlight })) return;
+    this.lastAskedAtMs = nowMs;
+    if (!this.everLoaded) {
+      await this.refresh();
+      return;
+    }
+    this.newestInFlight = this.refreshNewest().finally(() => {
+      this.newestInFlight = null;
+    });
+    await this.newestInFlight;
+  }
+
+  private async refreshNewest(): Promise<void> {
+    const album = this.selectedAlbum;
+    if (album === null) return;
+    const [buckets, page] = await Promise.all([
+      this.bridge.mediaBuckets(),
+      this.bridge.mediaList({ ...(album === ALL_PHOTOS ? {} : { bucketId: album }), limit: PHOTOS_PAGE }),
+    ]);
+    // The person moved to another album while this was asked: what came back describes a list no
+    // longer on screen.
+    if (album !== this.selectedAlbum) return;
+    if (buckets.ok) this.albums = PhotosView.albumsFrom(buckets.data ?? []);
+    if (!page.ok || !page.data) {
+      // A background check that failed leaves what is shown alone; the next return asks again.
+      this.renderRail();
+      return;
+    }
+    const merge = mergeFirstPage(this.items, page.data.items, page.data.hasMore, (one) => one.id);
+    if (merge.reset) {
+      await this.loadAlbum();
+      return;
+    }
+    if (merge.added === 0 && merge.removed === 0) {
+      this.renderRail();
+      return;
+    }
+    const anchor = this.scrollAnchor();
+    const held = new Set(this.items.map((one) => one.id));
+    this.items = merge.items;
+    if (!page.data.hasMore) this.hasMore = false;
+    if (this.selectedItem !== null && !this.items.some((one) => one.id === this.selectedItem)) this.selectedItem = null;
     this.render();
-    await this.loadAlbum();
+    this.restoreAnchor(anchor);
+    await this.fillThumbs(page.data.items.filter((one) => !held.has(one.id)).map((one) => one.id));
+  }
+
+  /**
+   * Where the reader is: the first tile at the top of the grid and its offset, or `top` when the
+   * grid is scrolled to the top — then new items should simply appear there.
+   */
+  private scrollAnchor(): { kind: 'top' } | { kind: 'tile'; id: string; offset: number } {
+    if (this.tiles.scrollTop <= 0 || typeof this.tiles.getBoundingClientRect !== 'function') return { kind: 'top' };
+    const box = this.tiles.getBoundingClientRect();
+    for (const [id, tile] of this.drawn?.tiles ?? []) {
+      const r = tile.getBoundingClientRect();
+      if (r.bottom > box.top) return { kind: 'tile', id, offset: r.top - box.top };
+    }
+    return { kind: 'top' };
+  }
+
+  private restoreAnchor(anchor: { kind: 'top' } | { kind: 'tile'; id: string; offset: number }): void {
+    if (anchor.kind === 'top') {
+      this.tiles.scrollTop = 0;
+      return;
+    }
+    const tile = this.drawn?.tiles.get(anchor.id);
+    if (!tile) return;
+    const box = this.tiles.getBoundingClientRect();
+    this.tiles.scrollTop += tile.getBoundingClientRect().top - box.top - anchor.offset;
   }
 
   private async loadAlbum(): Promise<void> {

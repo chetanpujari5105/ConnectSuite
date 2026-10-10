@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDouble.testkit';
 import './icons';
 import './stateBlock';
+import '../shared/returnRefresh';
 import './photos';
 
 /**
@@ -70,7 +71,7 @@ interface Pane {
   rail: FakeElement;
   tiles: FakeElement;
   detail: FakeElement;
-  view: { setAdvertised(on: boolean): void; refresh(): Promise<void> };
+  view: { setAdvertised(on: boolean): void; refresh(): Promise<void>; onReturn(trigger: string, nowMs?: number): Promise<void> };
 }
 
 function mount(): Pane {
@@ -431,4 +432,46 @@ test('selecting a tile moves the highlight without rebuilding the grid', async (
   assert.equal(b2, b, 'selection rebuilt tile b');
   assert.ok(b2!.className.split(' ').includes('on'), 'the selected tile is not marked');
   assert.ok(!a2!.className.split(' ').includes('on'), 'the previous selection is still marked');
+});
+
+// ---- Coming back to the pane (UX batch 2026-10-10, section 1b) -----------------------------------
+/*
+ * Measured on the SM-S938B before this existed: a photo taken while Photos stayed open never
+ * appeared, and leaving and returning showed it only by reloading the whole grid from page one.
+ */
+
+test('a photo taken while away appears on top on return; pages already scrolled through stay', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 3)];
+  pane.bridge.pages = [
+    { items: [item('a', noon(1, 30)), item('b', noon(1, 20))], hasMore: true },
+    { items: [item('c', noon(1, 10))], hasMore: false },
+  ];
+  await pane.view.onReturn('route', 1_000);
+  await scrollToBottom(pane);
+  assert.deepEqual(tilesOf(pane).map((t) => t.dataset.id), ['a', 'b', 'c'], 'control: two pages drawn');
+  const callsBefore = pane.bridge.listCalls.length;
+  const thumbsBefore = pane.bridge.thumbCalls.length;
+
+  pane.bridge.buckets = [bucket('camera', 4)];
+  pane.bridge.pages = [{ items: [item('n', noon(0)), item('a', noon(1, 30)), item('b', noon(1, 20))], hasMore: true }];
+  await pane.view.onReturn('focus', 10_000);
+
+  assert.deepEqual(tilesOf(pane).map((t) => t.dataset.id), ['n', 'a', 'b', 'c'], 'the new photo is not on top, or page two was thrown away');
+  assert.equal(pane.bridge.listCalls.length - callsBefore, 1, 'exactly one list request for a return');
+  assert.equal(pane.bridge.listCalls.at(-1)!.before, undefined, 'a return asks for the first page, not the next one');
+  assert.deepEqual(pane.bridge.thumbCalls.slice(thumbsBefore), [['n']], 'thumbnails are asked only for what is new');
+});
+
+test('a focus and a route inside the gap are one ask, and the first return ever is a full load', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 1)];
+  pane.bridge.pages = [{ items: [item('a', noon(1))], hasMore: false }];
+  await pane.view.onReturn('focus', 1_000);
+  assert.deepEqual(tilesOf(pane).map((t) => t.dataset.id), ['a'], 'the first return did not load the pane');
+  const after = pane.bridge.listCalls.length;
+  await pane.view.onReturn('route', 1_500);
+  assert.equal(pane.bridge.listCalls.length, after, 'a route half a second after a focus asked the phone again');
+  await pane.view.onReturn('reconnect', 1_600);
+  assert.equal(pane.bridge.listCalls.length, after + 1, 'a reconnect must always ask');
 });

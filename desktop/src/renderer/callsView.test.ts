@@ -10,6 +10,7 @@ import './stateBlock';
 import '../shared/contactPhotos';
 import '../shared/appCall';
 import '../shared/callAudio';
+import '../shared/returnRefresh';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
 // the view class and the pure label rules on `globalThis`.
 import './calls';
@@ -845,4 +846,24 @@ test('a refusal after a log was read says so, and keeps the rows it read', async
   assert.ok(pane.note.textContent.includes('The phone did not answer.'), `a refused re-read was silent: "${pane.note.textContent}"`);
   assert.ok(pane.note.textContent.includes('last read'), `the rows on screen are not said to be the last read: "${pane.note.textContent}"`);
   assert.ok(pane.body.children.some((c) => c.className === 'call-log'), 'the rows that were read were thrown away');
+});
+
+// ---- Coming back to the pane (UX batch 2026-10-10, section 1b) -----------------------------------
+
+test('a call made while the Mac was not watching reaches the log when the link comes back', async () => {
+  const pane = mount([row('c1')]);
+  await settle();
+  const reads = () => pane.bridge.calls.filter((c) => c === 'callLog').length;
+  assert.equal(reads(), 1, 'control: the log was read once when the phone offered calls');
+  const view = pane.view as unknown as { onReturn(t: string, now?: number): Promise<void> };
+  // The phone's log gained a row while this Mac was away; nothing on the wire announces it.
+  pane.bridge.log = [row('c2', { dateMs: Date.UTC(2026, 8, 3, 10, 0) }), row('c1')];
+  // The second setAdvertised(true) on reconnect is what the app does — and before, it read nothing.
+  pane.view.setAdvertised(true);
+  await settle();
+  assert.equal(reads(), 1, 'control: a reconnect alone did not re-read the log (the defect)');
+  await view.onReturn('reconnect', 5_000);
+  assert.equal(reads(), 2, 'a return after a reconnect did not re-read the log');
+  await view.onReturn('focus', 5_500);
+  assert.equal(reads(), 2, 'a focus half a second later asked again');
 });

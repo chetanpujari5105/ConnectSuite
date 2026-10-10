@@ -582,6 +582,25 @@ class CallsView {
     await this.loadLog();
   }
 
+  private lastAskedAtMs: number | null = null;
+  private returning: Promise<void> | null = null;
+
+  /**
+   * The pane was returned to (route, focus, a link that came back). The log is read once when the
+   * phone first offers calls and again when a call ends **while this Mac is watching** — so a call
+   * made or missed while the link was down, or the Mac asleep, never reached the list (UX batch
+   * 2026-10-10). Fifty rows, so a return re-reads them whole; `shared/returnRefresh.ts` decides when.
+   */
+  async onReturn(trigger: ReturnTrigger, nowMs = Date.now()): Promise<void> {
+    if (this.card.classList.contains('hidden')) return;
+    if (!shouldRefreshOnReturn({ trigger, nowMs, lastAskedAtMs: this.lastAskedAtMs, inFlight: this.returning !== null })) return;
+    this.lastAskedAtMs = nowMs;
+    this.returning = this.refresh().finally(() => {
+      this.returning = null;
+    });
+    await this.returning;
+  }
+
   private async refreshCurrent(): Promise<void> {
     this.call = await this.bridge.callCurrent().catch(() => null);
     this.applyAppCall();

@@ -393,6 +393,88 @@ class FilesView {
     await this.openPath('');
   }
 
+  private lastAskedAtMs: number | null = null;
+  private revalidating: Promise<void> | null = null;
+
+  /**
+   * The pane was returned to — routed to, the window refocused or shown, or the link came back.
+   *
+   * Before 2026-10-10 a return ran [refresh], which reopened the **top of the root** and emptied the
+   * table first: someone three folders deep came back to the top, and a big folder cost its whole
+   * listing again (DCIM/Camera: 11.4 s on the phone when its snapshot had expired). Now a return
+   * keeps the folder on screen and asks the phone for its first page, merged on top of what is
+   * shown (`shared/returnRefresh.ts`). The first visit, and any state that is not a loaded listing,
+   * is still a full [refresh].
+   */
+  async onReturn(trigger: ReturnTrigger, nowMs = Date.now()): Promise<void> {
+    const inFlight = this.inFlight !== null || this.revalidating !== null || this.loading;
+    if (!shouldRefreshOnReturn({ trigger, nowMs, lastAskedAtMs: this.lastAskedAtMs, inFlight })) return;
+    this.lastAskedAtMs = nowMs;
+    if (!this.advertised || this.fetch.kind !== 'ready' || this.selectedRoot === null || this.listFailure) {
+      await this.refresh();
+      return;
+    }
+    this.revalidating = this.revalidate().finally(() => {
+      this.revalidating = null;
+    });
+    await this.revalidating;
+  }
+
+  private async revalidate(): Promise<void> {
+    const gen = this.listGen;
+    const rootId = this.selectedRoot;
+    const path = this.path;
+    if (rootId === null) return;
+    const roots = await this.bridge.fsRoots();
+    if (gen !== this.listGen) return;
+    if (!roots.ok) return; // a background check that failed leaves the screen alone
+    this.roots = roots.data?.roots ?? [];
+    this.grantHint = roots.data?.grantHint ?? null;
+    this.pushAvailable = pushOffered(roots.data?.push);
+    this.fetch = { kind: 'ready', roots: this.roots, grantHint: this.grantHint };
+    if (!this.roots.some((r) => r.rootId === rootId)) {
+      // The folder's root is gone (a grant removed on the phone): the full path picks another.
+      this.selectedRoot = null;
+      await this.refresh();
+      return;
+    }
+    this.render();
+    await this.revalidateListing(gen, rootId, path);
+  }
+
+  /** The listing half of a return: this folder's first page, merged into what is shown. */
+  private async revalidateListing(gen: number, rootId: string, path: string): Promise<void> {
+    const listed = await this.bridge.fsList({ rootId, path, limit: FILES_PAGE });
+    if (gen !== this.listGen) return;
+    if (!listed.ok) {
+      if (listed.code === 'NOT_FOUND') {
+        if (this.openedKey !== null) this.folderCache.delete(this.openedKey);
+        this.listFailure = { reason: listed.reason ?? 'That folder is no longer on the phone.', code: listed.code };
+        this.render();
+      }
+      return;
+    }
+    const page = listed.data ?? { entries: [], hasMore: false };
+    const merge = mergeFirstPage(this.entries, page.entries, page.hasMore, (e) => e.id);
+    if (merge.reset) {
+      // Forgotten first, or the reopen would draw this same remembered copy and come back here.
+      if (this.openedKey !== null) this.folderCache.delete(this.openedKey);
+      await this.openPath(path);
+      return;
+    }
+    if (merge.added === 0 && merge.removed === 0) {
+      this.remember();
+      return;
+    }
+    this.entries = merge.items;
+    if (!page.hasMore) this.hasMore = false;
+    this.remember();
+    const present = new Set(this.entries.map((e) => e.id));
+    if (this.selected && !present.has(this.selected.id)) this.selected = null;
+    for (const id of [...this.selectedIds]) if (!present.has(id)) this.selectedIds.delete(id);
+    this.render();
+  }
+
   /**
    * The one row or tile that carries `tabindex=0` — the listing's single tab stop (a roving
    * tabindex), so Tab reaches the list once rather than stopping on every file. Follows the last
@@ -426,7 +508,35 @@ class FilesView {
     // navigation is how a stale picture ends up beside a new name.
     this.thumbCache.clear();
     this.thumbAsked.clear();
+    const remembered = this.selectedRoot !== null ? this.folderCache.get(key) : undefined;
+    if (remembered && this.selectedRoot !== null) {
+      // Drawn at once, then asked again behind it: re-opening DCIM/Camera after the phone's own
+      // 30 s snapshot has expired costs the phone 11.4 s (measured 2026-10-10), and the person has
+      // already seen this folder — showing it while the phone re-reads is the honest middle.
+      this.entries = remembered.entries.slice();
+      this.hasMore = remembered.hasMore;
+      this.render();
+      await this.revalidateListing(this.listGen, this.selectedRoot, path);
+      return;
+    }
     await this.loadMore();
+  }
+
+  /**
+   * Listings this pane has shown, by root + path, most recent last. Six: a person browsing moves
+   * between a handful of folders, and each holds at most the pages they scrolled through.
+   */
+  private readonly folderCache = new Map<string, { entries: FsEntryRow[]; hasMore: boolean }>();
+  private static readonly FOLDER_CACHE_MAX = 6;
+
+  /** Keeps the listing on screen as the remembered copy of its folder. */
+  private remember(): void {
+    if (this.openedKey === null || this.listFailure) return;
+    this.folderCache.delete(this.openedKey);
+    this.folderCache.set(this.openedKey, { entries: this.entries.slice(), hasMore: this.hasMore });
+    while (this.folderCache.size > FilesView.FOLDER_CACHE_MAX) {
+      this.folderCache.delete(this.folderCache.keys().next().value!);
+    }
   }
 
   /**
@@ -464,6 +574,7 @@ class FilesView {
       const known = new Set(this.entries.map((e) => e.id));
       this.entries = this.entries.concat(page.entries.filter((e) => !known.has(e.id)));
       this.hasMore = page.hasMore;
+      this.remember();
     } finally {
       // A superseded listing leaves the flag and the screen to the one that replaced it.
       if (gen === this.listGen) {

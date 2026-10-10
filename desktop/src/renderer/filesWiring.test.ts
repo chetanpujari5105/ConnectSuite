@@ -6,6 +6,7 @@ import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import '../shared/filesRoots';
 import '../shared/sendBatch';
 import '../shared/filesListing';
+import '../shared/returnRefresh';
 import './icons';
 import './stateBlock';
 import './overflowTitle';

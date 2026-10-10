@@ -4,6 +4,7 @@ import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import '../shared/filesRoots';
 import '../shared/sendBatch';
 import '../shared/filesListing';
+import '../shared/returnRefresh';
 import './icons';
 import './stateBlock';
 import './overflowTitle';
@@ -1203,6 +1204,99 @@ test('a progress tick updates the send card and leaves the listing’s rows as t
     // Control: a verdict is a state change, and it does redraw what depends on it.
     pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: 't-big', ok: true, bytes: 1000, verified: true } });
     assert.equal(pane.detail.queryAll('.files-send-item')[0]!.dataset.phase, 'arrived');
+  } finally {
+    pane.restore();
+  }
+});
+
+// ---- Coming back to the pane (UX batch 2026-10-10, sections 1a and 1b) ---------------------------
+/*
+ * Before: every route to Files ran refresh(), which reopened the top of the root and emptied the
+ * table first — someone three folders deep came back to the top, and DCIM/Camera cost its whole
+ * listing again (measured 11.4 s on the SM-S938B when the phone's snapshot had expired).
+ */
+test('a return keeps the folder on screen and merges its fresh first page on top', async () => {
+  const pane = mount();
+  try {
+    pane.bridge.roots = [TREE];
+    const listed: Array<{ path?: string; afterName?: string }> = [];
+    const photo = (id: string, name: string) => ({ id, name, dir: false, size: 10, mtimeMs: 1, mime: 'image/jpeg' });
+    const tree: Record<string, unknown[]> = {
+      '': [{ id: 'd-camera', name: 'Camera', dir: true, size: 0, mtimeMs: 1, mime: 'inode/directory' }],
+      Camera: [photo('p1', 'one.jpg'), photo('p2', 'two.jpg')],
+    };
+    // Camera is two pages: the first says there is more, the second (after a cursor) is three.jpg.
+    (pane.bridge as unknown as { fsList: unknown }).fsList = async (o: { path?: string; afterName?: string }) => {
+      listed.push({ ...o });
+      if (o.path === 'Camera') {
+        return o.afterName
+          ? { ok: true as const, data: { entries: [photo('p3', 'three.jpg')], hasMore: false } }
+          : { ok: true as const, data: { entries: tree.Camera!, hasMore: true } };
+      }
+      return { ok: true as const, data: { entries: tree[o.path ?? ''] ?? [], hasMore: false } };
+    };
+    const view = pane.view as unknown as { onReturn(t: string, now?: number): Promise<void> };
+    pane.view.setAdvertised(true, null);
+    await view.onReturn('route', 1_000);
+    const camera = pane.table.queryAll('.files-row').find((r) => r.textContent.includes('Camera'))!;
+    assert.ok(camera, 'control: the first return loaded the root');
+    camera.dispatch('dblclick');
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    const names = () => pane.table.queryAll('.files-row').map((r) => (r.textContent.match(/\w+\.jpg/) ?? [''])[0]).filter(Boolean).sort();
+    assert.deepEqual(names(), ['one.jpg', 'two.jpg'], 'control: Camera is open');
+    pane.footer.queryAll('.files-load-more')[0]!.dispatch('click');
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(names(), ['one.jpg', 'three.jpg', 'two.jpg'], 'control: the second page is loaded');
+
+    tree.Camera = [photo('p0', 'new.jpg'), photo('p1', 'one.jpg'), photo('p2', 'two.jpg')];
+    const rootsBefore = pane.bridge.calls.filter((c) => c === 'fsRoots').length;
+    await view.onReturn('focus', 10_000);
+    assert.deepEqual(names(), ['new.jpg', 'one.jpg', 'three.jpg', 'two.jpg'], 'the return reset the folder, missed the new file, or dropped page two');
+    assert.equal(listed.at(-1)!.path, 'Camera', 'the return listed a different folder from the one on screen');
+    assert.equal(listed.at(-1)!.afterName, undefined, 'a return asks for the first page');
+    assert.equal(pane.bridge.calls.filter((c) => c === 'fsRoots').length, rootsBefore + 1, 'the roots (free space) are re-read once');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('a folder opened again is drawn at once from what was shown, then re-checked behind it', async () => {
+  const pane = mount();
+  try {
+    pane.bridge.roots = [TREE];
+    const photo = (id: string, name: string) => ({ id, name, dir: false, size: 10, mtimeMs: 1, mime: 'image/jpeg' });
+    const tree: Record<string, unknown[]> = {
+      '': [{ id: 'd-camera', name: 'Camera', dir: true, size: 0, mtimeMs: 1, mime: 'inode/directory' }],
+      Camera: [photo('p1', 'one.jpg'), photo('p2', 'two.jpg')],
+    };
+    let hold: Promise<void> | null = null;
+    (pane.bridge as unknown as { fsList: unknown }).fsList = async (o: { path?: string }) => {
+      if (hold && o.path === 'Camera') await hold;
+      return { ok: true as const, data: { entries: tree[o.path ?? ''] ?? [], hasMore: false } };
+    };
+    const tick = async () => { for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r)); };
+    const names = () => pane.table.queryAll('.files-row').map((r) => (r.textContent.match(/\w+\.jpg/) ?? [''])[0]).filter(Boolean).sort();
+    const view = pane.view as unknown as { onReturn(t: string, now?: number): Promise<void> };
+    pane.view.setAdvertised(true, null);
+    await view.onReturn('route', 1_000);
+    const open = (label: string) => pane.table.queryAll('.files-row').find((r) => r.textContent.includes(label))!.dispatch('dblclick');
+    open('Camera');
+    await tick();
+    assert.deepEqual(names(), ['one.jpg', 'two.jpg'], 'control: Camera is open');
+    pane.crumbs.queryAll('.files-crumb')[0]!.dispatch('click'); // back to the top of the root
+    await tick();
+    assert.deepEqual(names(), [], 'control: back at the top');
+
+    // The phone is slow this time (its snapshot has expired), and has a new file.
+    let release!: () => void;
+    hold = new Promise<void>((r) => (release = r));
+    tree.Camera = [photo('p0', 'new.jpg'), photo('p1', 'one.jpg'), photo('p2', 'two.jpg')];
+    open('Camera');
+    await tick();
+    assert.deepEqual(names(), ['one.jpg', 'two.jpg'], 'the folder waited on the phone instead of drawing what was already known');
+    release();
+    await tick();
+    assert.deepEqual(names(), ['new.jpg', 'one.jpg', 'two.jpg'], 'the re-check did not merge the new file');
   } finally {
     pane.restore();
   }
