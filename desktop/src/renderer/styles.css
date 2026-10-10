@@ -1795,6 +1795,18 @@ img#qr {
  */
 @media (max-width: 1240px) {
   .calls-grid { grid-template-columns: 240px minmax(0, 1fr) 248px; gap: var(--space-5); }
+  /*
+   * The log row at this width (UX batch 2026-10-10): the time moves onto the second line so the name
+   * or number gets the row's whole width. At 240 the name had 69px of a 195px row and a number lost
+   * its last digits — the ones that tell two numbers apart (+919689… / +919689…). `display: contents`
+   * makes the two lines grid items of the row; nothing in the DOM changes.
+   */
+  .call-row { grid-template-rows: auto auto; row-gap: 3px; align-content: center; }
+  .call-row-lines { display: contents; }
+  .call-row > .call-disc { grid-row: 1 / span 2; }
+  .call-row .call-log-who { grid-column: 2 / span 2; grid-row: 1; }
+  .call-row .call-log-kind { grid-column: 2; grid-row: 2; }
+  .call-row > .call-log-when { grid-column: 3; grid-row: 2; }
   .calls-stage { padding: var(--space-8) var(--space-6); }
   .calls-stage .state-block { padding: var(--space-6) var(--space-2); }
   .calls-dialer { padding: var(--space-6); }
