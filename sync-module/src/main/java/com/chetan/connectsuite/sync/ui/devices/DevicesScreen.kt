@@ -481,7 +481,10 @@ private fun YourMacCard(macLink: MacLinkView, onClick: () -> Unit) {
                     macLink.name ?: "Your Mac",
                     style = SidekickType.title,
                     color = SidekickColors.textPrimary,
-                    maxLines = 1,
+                    // Two lines, not one (UX batch 2026-10-10): at 1.3x text the SM-S938B cut
+                    // "Chetans-MacBook-Pro" to "Chetans-MacBoo…" — a name that says which Mac
+                    // this is wraps before it truncates.
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 StatusPill(
