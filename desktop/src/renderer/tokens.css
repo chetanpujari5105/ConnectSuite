@@ -569,14 +569,8 @@
   --dur-spin: 1.2s;       /* one turn of an indeterminate spinner */
   --dur-spin-fast: 900ms; /* the smaller state-block spinner — less radius, so less arc per ms */
   --dur-flash: 1.4s;      /* the deep-link reveal, once, then quiet */
-  /*
-   * The brand halo's breath. Six seconds is deliberately at the slow end of the 5.5–6.5s the brief
-   * allows: Apple §14 warns off slow looping oscillation near 0.2 Hz, and this is 0.17 Hz with an
-   * amplitude of 0.23 opacity and no movement whatsoever — no scale, no rotation, no hue change.
-   * It runs only under `prefers-reduced-motion: no-preference`; there is no reduced form of it,
-   * because an ambient glow has nothing to communicate and is simply switched off.
-   */
-  --dur-brand-breath: 6s;
+  /* `--dur-brand-breath` (the halo's 6 s breath) left with the halo, 2026-10-10: the outlined mask
+     needs no stage behind it, so the only looping ambient motion in the app is gone. */
 
   /* ---- Sidekick roles (Figma `28:543` / `28:866`) — the names the rebuilt components read -----
    * Aliases where the value already exists above, so one decision has one home.

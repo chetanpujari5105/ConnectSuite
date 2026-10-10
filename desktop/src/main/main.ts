@@ -870,10 +870,11 @@ function revealMainWindow(why: string): void {
 
 function refreshTray(): void {
   if (!tray) return;
-  // A text-only tray item: the connection state is the whole point of the icon, and a glyph
-  // reads at a glance without shipping a bitmap that has to be redrawn per theme.
+  // The mask as a menu-bar **template** image (UX batch 2026-10-10) — one colour, which macOS redraws
+  // for light and dark menu bars itself, so nothing is redrawn per theme — and the connection state
+  // beside it as the dot it always was. The title used to be "● CS": ConnectSuite's initials.
   const connected = lastStatus?.phase === 'connected';
-  tray.setTitle(connected ? '● CS' : '○ CS');
+  tray.setTitle(connected ? '●' : '○');
   tray.setToolTip(statusLabel(lastStatus));
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -2212,7 +2213,11 @@ app.whenReady().then(() => {
     activity.record('calls', row.kind, row.detail);
   });
 
-  tray = new Tray(nativeImage.createEmpty());
+  // `trayTemplate.png` + `@2x`, derived from the outlined logo (scripts/brand/derive-outline-logo.py).
+  // The "Template" suffix is what makes Electron mark it a template image; createFromPath picks the @2x.
+  const trayImage = nativeImage.createFromPath(join(__dirname, '..', 'renderer', 'assets', 'brand', 'trayTemplate.png'));
+  trayImage.setTemplateImage(true);
+  tray = new Tray(trayImage.isEmpty() ? nativeImage.createEmpty() : trayImage);
   refreshTray();
   // The window is created at the top of this callback now, ahead of `loadIdentity` — see D15 there.
 

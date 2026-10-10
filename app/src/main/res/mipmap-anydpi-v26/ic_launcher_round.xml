@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The outlined Sidekick mask (UX batch 2026-10-10), derived from LOGOS/head logo with outline.png by
+  scripts/brand/derive-outline-logo.py: drawn 58 dp wide inside the 66 dp safe circle, on the app's own
+  canvas colour. The monochrome layer is the same mask as a silhouette for themed icons. The earlier
+  ConnectSuite "two linked devices" vectors in drawable/ are no longer referenced.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/sidekick_canvas" />
+    <foreground android:drawable="@mipmap/ic_launcher_mask" />
+    <monochrome android:drawable="@mipmap/ic_launcher_mask_mono" />
 </adaptive-icon>

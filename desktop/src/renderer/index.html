@@ -52,23 +52,19 @@
           <div class="traffic-row" aria-hidden="true"></div>
 
           <!--
-            The Sidekick lockup: the mask from LOGOS/head_logo.png (derived at 2x and 3x into
-            assets/brand/, never loaded from LOGOS/ at runtime) plus the word in the product type.
-            Neither supplied file contains the word, so this is the lockup the Figma component
-            `61:24256` draws. It sits below the real traffic lights rather than beside them.
+            The Sidekick lockup: the outlined mask from LOGOS/head logo with outline.png (cut out of
+            its black background and derived at 2x and 3x into assets/brand/ by
+            scripts/brand/derive-outline-logo.py, never loaded from LOGOS/ at runtime) plus the word
+            in the product type. It sits below the real traffic lights rather than beside them.
           -->
           <div class="brand">
             <!--
-              The stage and the halo exist because the mask is near-black on a near-black sidebar
-              (measured: 1.08:1) and only its eyes read. The halo sits BEHIND the mask and is
-              clipped by the stage, so it silhouettes the wings without tinting the sidebar. It is
-              decoration and carries no state, so it is aria-hidden and the lockup keeps one label.
-              docs/sidekick-motion-system.md §5.
+              No box (UX batch 2026-10-10). The stage and halo existed because the un-outlined mask
+              was near-black on a near-black sidebar (1.08:1). The outlined mask carries its own
+              white edge on dark, and its dark body reads on light, so it stands on the sidebar as
+              designed.
             -->
-            <span class="brand-stage">
-              <span class="brand-halo" aria-hidden="true"></span>
-              <img class="brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="65" height="30" alt="" />
-            </span>
+            <img class="brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="56" height="30" alt="" />
             <span class="brand-name">Sidekick</span>
           </div>
 
@@ -850,7 +846,7 @@
                 <div class="settings-body" id="settings-body"></div>
                 <aside class="settings-aside">
                   <section class="settings-brand">
-                    <img class="settings-brand-tile" src="assets/brand/tile-44@2x.png" srcset="assets/brand/tile-44@2x.png 2x, assets/brand/tile-44@3x.png 3x" width="44" height="44" alt="" />
+                    <img class="settings-brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="82" height="44" alt="" />
                     <div class="settings-brand-name">Sidekick</div>
                     <div class="settings-brand-version mono" id="settings-version">—</div>
                     <p class="settings-brand-line">Your phone essentials, on your Mac.</p>

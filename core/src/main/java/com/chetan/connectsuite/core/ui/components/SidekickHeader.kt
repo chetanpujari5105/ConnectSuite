@@ -1,5 +1,7 @@
 package com.chetan.connectsuite.core.ui.components
 
+import com.chetan.connectsuite.core.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,9 +54,11 @@ fun SidekickHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        // `Image`, not `Icon`: the mark carries its own gradient and a tint would flatten it.
+        // `Image`, not `Icon`: the mark carries its own gradient and a tint would flatten it. The
+        // outlined mask (2026-10-10), a bitmap at five densities derived from LOGOS/ by
+        // scripts/brand/derive-outline-logo.py — no tile or box behind it.
         Image(
-            imageVector = SidekickIcons.Mark,
+            painter = painterResource(R.drawable.sidekick_mark),
             contentDescription = null,
             modifier = Modifier.width(52.dp).height(26.dp),
         )

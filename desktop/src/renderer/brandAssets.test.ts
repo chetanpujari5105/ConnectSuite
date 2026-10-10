@@ -53,8 +53,10 @@ test('every brand path the page references exists in the source tree', () => {
   }
 });
 
-test('the mark is the visible mask — 1515 × 797 in LOGOS/ — at one density on both axes', () => {
-  const visible = 1515 / 797;
+// The source changed 2026-10-10 (UX batch, section 5): `head logo with outline.png`, cut out of its
+// black background, whose visible mask is 1559 × 834. Updated with the asset, not to make it pass.
+test('the mark is the visible outlined mask — 1559 × 834 in LOGOS/ — at one density on both axes', () => {
+  const visible = 1559 / 834;
   const two = pngSize(join(RENDERER, 'assets/brand/mark@2x.png'));
   const three = pngSize(join(RENDERER, 'assets/brand/mark@3x.png'));
   assert.equal(two.h, 60, 'the lockup box is 30px tall');
