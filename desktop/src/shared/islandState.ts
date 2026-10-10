@@ -157,7 +157,7 @@ function islandReason(kind: string | null | undefined): string | null {
     case 'dropped':
       return 'the phone closed the connection';
     case 'protocol':
-      return 'this Mac and the phone disagree about the protocol';
+      return 'this Mac and the phone run different versions';
     default:
       return null;
   }

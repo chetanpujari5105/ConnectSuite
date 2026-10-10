@@ -335,7 +335,7 @@ function pointAt(event: PointerEvent): { x: number; y: number; geom: { id: numbe
 
 canvas.addEventListener('pointerdown', (event) => {
   if (!inputAdvertised) {
-    say('The phone is not accepting input — turn Accessibility on for ConnectSuite.');
+    say('The phone is not accepting input — turn on Sidekick Input in the phone’s Accessibility settings.');
     return;
   }
   if (gesture.down(pointAt(event)) === 'no-geometry') {
@@ -358,7 +358,7 @@ canvas.addEventListener(
   (event) => {
     event.preventDefault();
     if (!inputAdvertised) {
-      say('The phone is not accepting input — turn Accessibility on for ConnectSuite.');
+      say('The phone is not accepting input — turn on Sidekick Input in the phone’s Accessibility settings.');
       return;
     }
     const point = pointAt(event as unknown as PointerEvent);

@@ -48,12 +48,23 @@ test('no step is ever drawn as failed — a phone that has not paired has not fa
   }
 });
 
-test('a step prints a fact only once it has one: the fingerprint appears with the handshake', () => {
-  const waiting = pairSteps({ sighted: true, paired: false, fingerprint: 'ABCD1234' });
-  assert.equal(waiting[2]!.note, null, 'the fingerprint was printed before anything presented one');
-
-  const verifying = pairSteps({ sighted: true, phase: 'connecting', paired: false, fingerprint: 'ABCD1234' });
-  assert.equal(verifying[2]!.note, 'ABCD1234');
+/*
+ * Changed deliberately 2026-10-10 (UX batch, section 3), with the string it asserts on. This test used
+ * to require the Mac's key under the verify step once the handshake began. QR pairing has no step
+ * where a person compares two keys — the phone shows none on this path — so the hex was mechanism on
+ * screen. The keys are exchanged and pinned exactly as before; only the printing stopped.
+ */
+test('the verify step says what it is doing in plain words and never prints a key, in any phase', () => {
+  for (const input of [
+    { sighted: true, paired: false, fingerprint: 'ABCD1234' },
+    { sighted: true, phase: 'connecting', paired: false, fingerprint: 'ABCD1234' },
+    { sighted: true, phase: 'connected', paired: true, fingerprint: 'ABCD1234' },
+  ]) {
+    const verify = pairSteps(input)[2]!;
+    assert.equal(verify.id, 'verify', 'control: this is the verify step');
+    assert.equal(verify.note, null, `a key was printed (${JSON.stringify(input)})`);
+    assert.doesNotMatch(verify.label, /certificate|fingerprint|key|TLS/i);
+  }
 });
 
 test('the found step names what it knows, and says something when it knows nothing', () => {

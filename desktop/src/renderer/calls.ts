@@ -785,7 +785,7 @@ class CallsView {
     // both and this phone puts no `EXTRA_CALL_IS_VIDEO` on the wire.
     const controlled = this.appCall
       ? audioStrip(appCallNote(this.appCall.appName))
-      : audioStrip('Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.');
+      : audioStrip('Mute, speaker and keypad tones are controlled on the phone.');
     controlled.classList.add('call-controlled-note');
     if (this.appCall) {
       controlled.classList.add('call-hosted-note');

@@ -217,7 +217,7 @@ function personFacts(thread: SmsThreadRow): Array<[string, string]> {
  * listed with the others for the vocabulary decision.
  */
 const SMS_PERSON_REFUSAL =
-  'Muting and blocking are decided on the phone — Android does not offer them over the link.';
+  'Muting and blocking happen on your phone.';
 
 /** The composer's standing caption — frame `32:4382`, verbatim. Says who actually sends it. */
 const SMS_COMPOSER_CAPTION = 'Sent as an SMS from the phone’s number, over the phone’s own network.';

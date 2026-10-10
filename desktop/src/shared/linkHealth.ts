@@ -77,17 +77,18 @@ function peerAlert(raw: string): number | null {
 
 /** The phone refused this Mac's certificate, and nothing suggests why. */
 export const ORDINARY_REFUSAL =
-  'Your phone no longer recognises this Mac. Open ConnectSuite on the phone and scan a new ' +
+  'Your phone no longer recognises this Mac. Open Sidekick on the phone and scan a new ' +
   'pairing code — this usually means the Mac was removed from the phone’s paired list.';
 
 /**
  * The phone refused this Mac's certificate while a rename re-pair is still owed: the rename minted a
- * new key, and the phone only knows the old one. Also drawn proactively on the pairing screen. "ConnectSuite on your phone" is
- * correct — the Android app kept its name.
+ * new key, and the phone only knows the old one. Also drawn proactively on the pairing screen. The
+ * first "ConnectSuite" is **this Mac's** former name and stays; the phone app is named Sidekick since
+ * its own rename (Android plan Appendix A), so the second sentence names it that way (Appendix B).
  */
 export const RENAME_REFUSAL =
   'Sidekick replaced ConnectSuite on this Mac and now uses a new security key. Your phone does not ' +
-  'recognise it yet. Open ConnectSuite on your phone and scan the new pairing code.';
+  'recognise it yet. Open Sidekick on your phone and scan the new pairing code.';
 
 /**
  * Classify a raw error string into something showable.
@@ -128,7 +129,7 @@ export function classifyLinkError(
     return {
       kind: 'unreachable',
       message:
-        'Could not reach your phone. Check that both are on the same Wi-Fi and that ConnectSuite ' +
+        'Could not reach your phone. Check that both are on the same Wi-Fi and that Sidekick ' +
         'is running on the phone.',
       raw: text,
     };
@@ -146,7 +147,7 @@ export function classifyLinkError(
     return {
       kind: 'protocol',
       message:
-        'This Mac and your phone disagree about the protocol. Update both to the same version.',
+        'This Mac and your phone are running different versions of Sidekick. Update both to the latest version.',
       raw: text,
     };
   }

@@ -1038,7 +1038,9 @@ class ShellView {
       { icon: 'network', label: 'Address', value: status?.address ?? '—', numeric: true, advanced: false },
       // Not a reading and not dressed as one: locked decision #3 is TLS 1.3, both ends pinned, no
       // plaintext fallback ever — a fact about the architecture, true before the phone answers.
-      { icon: 'lock', label: 'Security', value: 'TLS 1.3, pinned', numeric: false, advanced: false },
+      // The value is the promise in plain words; the mechanism (TLS 1.3, both ends pinned) is the
+      // security card's and Device info's to explain, not a tile's (UX batch 2026-10-10).
+      { icon: 'lock', label: 'Security', value: 'Encrypted', numeric: false, advanced: false },
       { icon: 'activity', label: 'Latency', value: latency, numeric: true, advanced: false },
     ];
 

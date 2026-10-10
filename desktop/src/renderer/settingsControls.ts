@@ -130,9 +130,9 @@ function settingValue(label: string, sub: string, value: string): HTMLElement {
 function trustedDeviceSentence(status: { paired?: boolean; pairedLegacy?: boolean } | null): string {
   if (!status?.paired) return 'No phone is paired with this Mac. Pair one by scanning the code shown on the Overview.';
   if (status.pairedLegacy) {
-    return 'Paired before secure pairing \u2014 forget and pair again to verify this phone. Forgetting removes its certificate; you will pair again from scratch.';
+    return 'Paired before secure pairing \u2014 forget and pair again to verify this phone. You will pair again from scratch.';
   }
-  return 'Paired with secure pairing. Forgetting removes the phone\u2019s certificate from the trust store; you will pair again from scratch.';
+  return 'Paired with secure pairing. Forgetting removes this phone from this Mac; you will pair again from scratch.';
 }
 
 /** The element currently showing [trustedDeviceSentence], if a Connection pane is built. */

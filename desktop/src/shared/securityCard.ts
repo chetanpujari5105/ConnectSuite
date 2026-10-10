@@ -55,7 +55,7 @@ function securityCard(input: SecurityCardInput): SecurityCardView {
     return {
       state: 'connected',
       title: 'Encrypted connection',
-      body: 'TLS 1.3, pinned to this Mac. Only your devices can read this traffic.',
+      body: 'Encrypted between your phone and this Mac. Only your two devices can read it.',
       actions: ['disconnect'],
       layout: 'inline',
     };
@@ -73,7 +73,7 @@ function securityCard(input: SecurityCardInput): SecurityCardView {
     return {
       state: 'connecting',
       title: 'Not encrypted yet',
-      body: 'The handshake has not finished, so nothing has been sent.',
+      body: 'Still setting up a secure connection, so nothing has been sent.',
       actions: [],
       layout: 'inline',
     };
@@ -82,8 +82,8 @@ function securityCard(input: SecurityCardInput): SecurityCardView {
     state: 'disconnected',
     title: 'Not connected',
     body: input.endedAt
-      ? `The last session was encrypted with TLS 1.3 and ended at ${input.endedAt}. Nothing is being sent now.`
-      : 'Nothing is being sent anywhere. The next session is encrypted with TLS 1.3, pinned to this Mac.',
+      ? `The last session was encrypted and ended at ${input.endedAt}. Nothing is being sent now.`
+      : 'Nothing is being sent anywhere. Every session is encrypted.',
     actions: ['reconnect', 'troubleshoot'],
     layout: 'stacked',
   };

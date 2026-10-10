@@ -82,7 +82,7 @@ function pairSteps(input: PairStepsInput): PairStep[] {
       ? null
       : blocked
         ? 'A code carries this Mac’s address, and there is none yet.'
-        : 'Open Sidekick’s code on the phone and point the camera at it.',
+        : 'Open Sidekick on the phone, tap Scan pairing code, and point the camera at this code.',
   };
 
   const foundStep: PairStep = {
@@ -97,11 +97,13 @@ function pairSteps(input: PairStepsInput): PairStep[] {
 
   const verify: PairStep = {
     id: 'verify',
-    label: 'Verifying certificates',
+    label: 'Confirming it’s your phone',
     state: verified ? 'done' : verifying ? 'active' : 'waiting',
-    // The fingerprint is printed from the moment it can be compared, which is as soon as the
-    // handshake starts — that is when a person would look at the phone and check the two match.
-    note: verifying || verified ? (input.fingerprint ?? null) : null,
+    // No key is printed here (UX batch 2026-10-10). QR pairing has no step where a person compares
+    // two keys — the phone shows none on this path (Android plan decision 3) — so a hex string here
+    // was mechanism, not something to check. The keys are still exchanged and pinned exactly as
+    // before; the Mac's own key is in Settings → Advanced for anyone who wants it.
+    note: null,
   };
 
   const paired: PairStep = {

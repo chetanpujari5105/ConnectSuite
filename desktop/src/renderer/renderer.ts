@@ -1072,9 +1072,11 @@ void (async () => {
   const name = self.name ?? 'This Mac';
   el('account-name').textContent = name;
   el('account-avatar').textContent = initialsFor(name);
-  if (self.fingerprint) el('account-sub').textContent = `key ${self.fingerprint}…`;
-  // The verify step prints it beside the phone's own, so the two can be compared by eye.
+  // The key is no longer printed under the name on every screen (UX batch 2026-10-10): it is a
+  // mechanism, not something a person acts on there. It lives in Settings → Advanced's diagnostics,
+  // beside the phone's own Details, which shows the same value for the Mac it is paired with.
   macFingerprint = self.fingerprint ?? null;
+  setDiag('mac-key', self.fingerprint ? `${self.fingerprint}…` : '—');
   drawPairSteps();
 })();
 
@@ -1528,28 +1530,24 @@ const ADVANCED_LIMITS = [
   {
     name: 'Sound from phone',
     kind: 'unbuilt' as const,
-    why: 'No audio channel exists in the protocol yet. Media audio is possible on Android 10+; ' +
-      'call audio never will be.',
+    why: 'Not built yet. The phone’s media sound could come later; call audio never can.',
   },
   {
     name: 'Show touches',
     kind: 'wall' as const,
-    why: 'It is a secure system setting, and changing it needs a signature-level permission this ' +
-      'app cannot hold.',
+    why: 'It is a protected Android setting that only system apps can change.',
   },
   {
     name: 'Keep screen on',
     kind: 'unbuilt' as const,
-    why: 'Nothing on the wire carries it. The phone could hold a wake lock while mirroring.',
+    why: 'Not built yet. While you mirror, the phone’s screen follows its own timeout.',
   },
   {
     name: 'Phone screen off',
     kind: 'wall' as const,
-    // No backticks. This string is set with `textContent`, so markdown does not render — it
-    // renders as backticks, which is what shipped. Wire message names are written plainly here;
-    // the mono treatment they deserve is a span, and this row has no room for one.
-    why: 'Blanking the phone while it mirrors needs a system-signed permission. The mirror.screenoff ' +
-      'message is deliberately unimplemented, and a test asserts it is never registered.',
+    // `mirror.screenoff` stays deliberately unimplemented and a test asserts it is never registered;
+    // that belongs in this comment, not on screen (UX batch 2026-10-10).
+    why: 'Android only lets system apps turn the phone’s screen off while it is being shared.',
   },
 ];
 
@@ -2059,7 +2057,7 @@ shell.addSettingsPane(
       links.appendChild(button);
     }
     body.appendChild(
-      settingRow('Link', 'Discovery order: last known address, then the default gateway, then mDNS.', links),
+      settingRow('Link', 'Sidekick finds your phone on its own. Use these only if it can’t.', links),
     );
 
     body.appendChild(
@@ -2283,7 +2281,7 @@ shell.addSettingsPane(
       });
       const row = settingRow(
         'Earlier downloads',
-        'Files saved by ConnectSuite remain in ~/Downloads/ConnectSuite.',
+        'Earlier downloads stay in ~/Downloads/ConnectSuite — named for Sidekick’s earlier name, not moved.',
         show,
       );
       legacyRow.replaceWith(row);
@@ -2292,9 +2290,8 @@ shell.addSettingsPane(
     body.appendChild(
       settingValue(
         'Send to the phone',
-        'Files sent from this Mac arrive in the folder open in the Files pane. Received files — ' +
-          'Download/ConnectSuite on the phone — needs no permission of any kind, so it works on a ' +
-          'phone that has shared nothing.',
+        'Files sent from this Mac go to the folder open in the Files pane. Received files ' +
+          '(Download/ConnectSuite on the phone) always works, even when nothing else is shared.',
         'The open folder',
       ),
     );
@@ -2383,6 +2380,7 @@ shell.addSettingsPane(
       ['ttff', 'first frame'],
       ['battery', 'battery'],
       ['error', 'last error'],
+      ['mac-key', 'this Mac\u2019s key'],
     ] as [string, string][]) {
       detail.appendChild(diagLine(key, label));
     }
