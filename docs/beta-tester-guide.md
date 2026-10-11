@@ -1,8 +1,10 @@
 # Sidekick beta — install and pair (one page)
 
-*Updated 2026-10-12 for the beta token (builds from `711a1e0` on; release candidate `8f8ecbb` has no token
-step). Statements the owner has not yet confirmed on a fresh Mac
-account or a tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this page.*
+*Updated 2026-10-12 for the beta token. Release candidate `83c4096` is the first build whose token step works
+(it carries the public key; builds from `711a1e0` up to `3f5155d` showed the token screen and could check no
+token; `8f8ecbb` has no token step). The token step below was walked on the owner's Mac on the development
+build, not yet on a fresh account. Statements the owner has not yet confirmed on a fresh Mac account or a
+tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this page.*
 
 Sidekick connects your Android phone and your Mac directly over your own Wi-Fi (or your phone's hotspot).
 There is no account and no server. This is a **test build from one developer**: neither app is signed by Apple
@@ -22,7 +24,8 @@ and about ten minutes.
 3. Open **System Settings → Privacy & Security**, scroll to the message about Sidekick being blocked, click
    **Open Anyway**, enter your Mac password, then confirm **Open Anyway** in the dialog that follows. You do
    this once.
-4. Sidekick asks for your **beta token** — the text or the `.sidekick-token` file you were sent with the app.
+4. Sidekick asks for your **beta token** — the text, or the one file ending in `.sidekick-token`, you were sent
+   with the app.
    Paste it into the box and press **Use this token**, or press **Open token file…** and choose the file. The
    token is checked on your Mac; nothing is sent anywhere.
 5. If macOS asks whether Sidekick may **find devices on your local network**, click **Allow** — this is how it

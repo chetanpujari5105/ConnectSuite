@@ -1,3 +1,22 @@
+# BETA KEY CREATED, OWNER TOKEN WORKING, RC `83c4096` — 2026-10-12 small hours: 3 local commits; nothing pushed, signed or published
+
+1. **Key:** created once on the owner's Mac with the documented command; public key
+   `MCowBQYDK2VwAyEA5JYQoRvRKm4y1orhtMhrO5dC4mJL75s4f6Xhz/olFKc=` in `desktop/src/main/trialKey.ts` (`3f5155d`,
+   red-first). The private key was only `stat`ed (mode 600, outside the repo); guard `--tree` PASS on 2,788 files.
+   **Owner's to-do: back up the key folder offline.**
+2. **Owner token** *Chetan (owner)*, 11 Oct → 25 Nov 2026, in the key folder's `tokens/`; entered through the real
+   screen of the development app **without** `skipTrial` (it now runs that way): gate lifted, link back in 0.2 s,
+   pairing unchanged, About *45 days left*.
+3. **Every state walked on screen** (shifted clock in an isolated second instance, never the system clock):
+   `docs/testing.md` → *Beta trial — key created…*, screenshots `docs/evidence/trial-states-2026-10-12/`.
+   Found and fixed red-first: **221** (a refusal in Settings while valid showed nothing and threw) and **222** (a
+   thank-you stayed under a later clock-back/expired screen) — `83c4096`.
+4. **RC `83c4096`** in `~/.connectsuite-evidence-private/rc-83c4096/` (older folders kept): fuses `000011011`,
+   quarantine key, ASAR integrity, gates off, public key in the packaged `trialKey.js`, packaged build cannot skip
+   the trial, **0 private-key hits** in both Mac builds, both zips and the APK. `docs/release-candidate-2026-10-12.md`.
+5. **Tests:** Mac 2,103 / 0; scripts 325 / 0; 17 hooks allowed every commit. Docs: trial summary (*Issuing a token
+   to a tester*), tester guide, checklist steps 2–4 and 18. Next: checklist step 5 (publisher details).
+
 # BETA TOKEN TRIAL + "SIDEKICK" WORDING — 2026-10-12 early: 7 local commits; nothing pushed, signed or published
 
 1. **Built (owner's decision D):** signed, 45-day beta tokens checked offline on the Mac — `2c7d924` private-key

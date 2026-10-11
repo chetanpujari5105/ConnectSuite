@@ -79,6 +79,15 @@ The private key is never on a tester's Mac and never in this repository (a commi
 
 ### Making the key — once, on the owner's Mac
 
+**Done 2026-10-12.** The key was created on the owner's Mac with the command below, once. Its public half is
+`MCowBQYDK2VwAyEA5JYQoRvRKm4y1orhtMhrO5dC4mJL75s4f6Xhz/olFKc=`, committed as text in
+`desktop/src/main/trialKey.ts` (`3f5155d`) and present in every build from that commit on — the release
+candidate `83c4096` included (`docs/release-candidate-2026-10-12.md`). The private half exists only in the
+owner's key folder, mode 600, outside the repository; it has never been printed, copied or committed. Tokens
+are written beside it in `~/.sidekick-trial-key/tokens/`, never into the repository. **Do not run the command
+again:** a new key makes every token issued so far unusable in builds carrying the new public key. **Back the
+key folder up offline** (a password manager or an encrypted drive).
+
 ```sh
 mkdir -m 700 -p ~/.sidekick-trial-key
 node -e "const c=require('node:crypto'),f=require('node:fs'),p=require('node:path').join(require('node:os').homedir(),'.sidekick-trial-key','private.pem');const k=c.generateKeyPairSync('ed25519');f.writeFileSync(p,k.privateKey.export({type:'pkcs8',format:'pem'}),{mode:0o600,flag:'wx'});console.log(k.publicKey.export({type:'spki',format:'der'}).toString('base64'))"
@@ -99,6 +108,31 @@ node scripts/issue-trial-token.mjs --key ~/.sidekick-trial-key/private.pem --lab
 It prints the token (or writes it with `--out asha.sidekick-token`) and appends a row to
 `~/.sidekick-trial-key/issued-tokens.tsv`: when, id, label, start, end. `--start YYYY-MM-DD` sets a later
 start; without it the token starts at the beginning of today (UTC).
+
+### Issuing a token to a tester — in plain words
+
+**One command.** On the owner's Mac, from the repository folder, with the tester's name:
+
+```sh
+node scripts/issue-trial-token.mjs --key <private key file> --label "Asha" --days 45 --out ~/.sidekick-trial-key/tokens/asha.sidekick-token
+```
+
+`<private key file>` is the file *Making the key* created; it stays where it is. The command prints the
+token's id, the name and its two dates, and adds a line to the owner's ledger beside the key
+(`issued-tokens.tsv`).
+
+**One file to send.** Send `asha.sidekick-token` (or the text inside it) to the tester by any private channel,
+with the app. It is not secret — it is signed, and only the private key can make one — but it is that tester's
+access, so do not post it publicly. The tester presses **Open token file…** (or pastes the text) on the screen
+Sidekick shows before pairing.
+
+**Renewing.** Before the old token ends, issue a new one the same way (no `--start`, so it starts today and
+runs 45 days from today) and send it. The tester enters it in **Settings › About › Beta access**; it replaces
+the old one at once. A token issued later also clears a *"this Mac's date looks earlier"* screen.
+
+**Revoking.** There is no revoke: a token works until its end date, on any Mac it is copied to. To end someone's
+access, do not renew — the token simply expires, and Sidekick then shows the *ended* screen with nothing
+deleted. Issue shorter tokens (`--days 14`) to anyone whose access may need to end sooner.
 
 ### How a tester gets and enters it
 
@@ -126,3 +160,15 @@ sentence; nothing is stored.
 A token cannot be revoked before its end date (issue short ones); it works on any Mac it is copied to
 (allowed); deleting `trial.json` loses the clock mark, which only weakens the clock check (the end date is in
 the token); and no offline check survives someone who modifies the app.
+
+### Verified on the owner's Mac — 2026-10-12
+
+The owner's own token (*Chetan (owner)*, 11 Oct → 25 Nov 2026, in `~/.sidekick-trial-key/tokens/`) was entered
+through the real screen of the development app running **without** the skip switch: the screen lifted, the
+phone link came back in 0.2 s with the pairing unchanged, and Settings › About reads *Beta access until 25 Nov
+2026 · 45 days left*. Every other state was walked on screen — no token, copied incompletely, one character
+changed, a token from another key, not yet valid, clock set back, the 7-day and 1-day notices (once each, not
+repeated after a relaunch), expired (Activity and Settings still open, nothing deleted), a relaunch and a
+reinstall (same end date). Two entry defects found on the way were fixed (221, 222). Evidence:
+`docs/testing.md` → *Beta trial — key created, owner token entered, every state on screen* and
+`docs/evidence/trial-states-2026-10-12/`.
