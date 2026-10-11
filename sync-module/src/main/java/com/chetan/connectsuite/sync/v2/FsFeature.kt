@@ -799,7 +799,7 @@ sealed class FsFailure(
         label = "root-not-granted",
         code = ErrorCode.ROOT_NOT_GRANTED,
         reason = "This phone has not shared that folder.",
-        fixHint = "On the phone: ConnectSuite › Sync › Folders › Add folder.",
+        fixHint = "On the phone: Sidekick › Sync › Folders › Add folder.",
     )
 
     class NoSuchPath(path: String) : FsFailure(

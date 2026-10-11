@@ -189,7 +189,7 @@ sealed class ContactsFailure(
         label = "not-granted",
         code = ErrorCode.PERMISSION_DENIED,
         reason = "This phone is not sharing its contacts.",
-        fixHint = "On the phone: Settings > Apps > ConnectSuite > Permissions > Contacts, and " +
+        fixHint = "On the phone: Settings > Apps > Sidekick > Permissions > Contacts, and " +
             "choose Allow.",
     )
 

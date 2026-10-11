@@ -333,7 +333,7 @@ sealed class CallFailure(
         label = "not-granted",
         code = ErrorCode.PERMISSION_DENIED,
         reason = "This phone is not sharing its calls.",
-        fixHint = "On the phone: Settings > Apps > ConnectSuite > Permissions, and allow Phone " +
+        fixHint = "On the phone: Settings > Apps > Sidekick > Permissions, and allow Phone " +
             "and Call logs. Calls need both, plus permission to answer.",
     )
 

@@ -598,7 +598,7 @@ sealed class RemoteFailure(
         reason = "The media remote needs the same notification access as notification mirroring, " +
             "and this phone has not granted it.",
         fixHint = "On the phone: Settings > Notifications > Device & app notifications, and " +
-            "allow ConnectSuite.",
+            "allow Sidekick.",
     )
 
     object NoSession : RemoteFailure(

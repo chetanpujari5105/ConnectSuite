@@ -35,7 +35,7 @@ sealed class InputFailure(
      */
     data object ServiceDisabled : InputFailure(
         code = ErrorCode.PERMISSION_DENIED,
-        reason = "ConnectSuite's accessibility service is not enabled on the phone, so it cannot " +
+        reason = "Sidekick Input, the accessibility service, is not enabled on the phone, so it cannot " +
             "tap, type or swipe.",
         fixHint = "On the phone: Settings > Accessibility > Installed apps > Sidekick Input, " +
             "and turn it on.",

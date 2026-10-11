@@ -194,7 +194,7 @@ object FsPartials {
         expected: String,
         actual: String,
     ): String = buildString {
-        appendLine("ConnectSuite transfer failed — checksum mismatch")
+        appendLine("Sidekick transfer failed — checksum mismatch")
         appendLine("file      $name")
         appendLine("when      $whenIso")
         appendLine("size      $bytes bytes received")

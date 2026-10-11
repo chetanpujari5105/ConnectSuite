@@ -80,7 +80,7 @@ object NotificationChannels {
                     "Connection status",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Shown while ConnectSuite is listening for paired devices."
+                    description = "Shown while Sidekick is listening for paired devices."
                     setShowBadge(false)
                 },
                 NotificationChannel(

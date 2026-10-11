@@ -34,7 +34,7 @@ object FsRoots {
      * been granted. That is the honest state of this design rather than a defect in it.
      */
     const val GRANT_HINT =
-        "Add a folder in ConnectSuite on the phone, under Sync › Folders, to browse more of it"
+        "Add a folder in Sidekick on the phone, under Sync › Folders, to browse more of it"
 
     /**
      * Free bytes on the shared volume, via the app's own directory on it.

@@ -58,7 +58,7 @@ object NotificationDelivery {
         }
         val enabled = app.getSystemService<NotificationManager>()?.areNotificationsEnabled() ?: false
         if (!enabled) {
-            return "notifications for ConnectSuite are switched off on the phone, " +
+            return "notifications for Sidekick are switched off on the phone, " +
                 "so it cannot tell its owner what arrived"
         }
         return null

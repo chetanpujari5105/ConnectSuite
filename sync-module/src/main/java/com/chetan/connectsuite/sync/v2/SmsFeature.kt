@@ -544,7 +544,7 @@ sealed class SmsFailure(
         label = "not-granted",
         code = ErrorCode.PERMISSION_DENIED,
         reason = "This phone is not sharing its text messages.",
-        fixHint = "On the phone: Settings > Apps > ConnectSuite > Permissions > SMS, and choose " +
+        fixHint = "On the phone: Settings > Apps > Sidekick > Permissions > SMS, and choose " +
             "Allow. Reading and sending are one permission group, so both arrive together.",
     )
 

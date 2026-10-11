@@ -384,7 +384,7 @@ sealed class NotificationFailure(
         code = ErrorCode.PERMISSION_DENIED,
         reason = "This phone is not sharing its notifications yet.",
         fixHint = "On the phone: Settings > Notifications > Device & app notifications, and " +
-            "allow ConnectSuite.",
+            "allow Sidekick.",
     )
 
     /**
@@ -407,7 +407,7 @@ sealed class NotificationFailure(
         reason = "Notification access is switched on, but Android has not started the service, " +
             "so the phone cannot reach your notifications.",
         fixHint = "This happens after the app is reinstalled. On the phone: Settings > " +
-            "Notifications > Device & app notifications > ConnectSuite, and turn it off and on " +
+            "Notifications > Device & app notifications > Sidekick, and turn it off and on " +
             "again.",
     )
 

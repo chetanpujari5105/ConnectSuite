@@ -268,7 +268,7 @@ sealed class MediaFailure(
         label = "not-granted",
         code = ErrorCode.PERMISSION_DENIED,
         reason = "This phone is not sharing its photos and videos.",
-        fixHint = "On the phone: Settings > Apps > ConnectSuite > Permissions > Photos and videos, " +
+        fixHint = "On the phone: Settings > Apps > Sidekick > Permissions > Photos and videos, " +
             "and choose Allow.",
     )
 

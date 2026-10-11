@@ -202,9 +202,9 @@ object AppsFeature {
         if (!posted) {
             return refuse(
                 session, request, ErrorCode.NOTIFICATIONS_BLOCKED,
-                "The phone could not show the request: notifications from ConnectSuite are turned " +
+                "The phone could not show the request: notifications from Sidekick are turned " +
                     "off, and tapping one is the only way an app can be opened from here.",
-                fixHint = "Turn on notifications for ConnectSuite on the phone.",
+                fixHint = "Turn on notifications for Sidekick on the phone.",
             )
         }
 
