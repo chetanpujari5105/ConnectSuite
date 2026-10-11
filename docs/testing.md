@@ -29465,3 +29465,37 @@ compared before/after (Recent activity excluded because its contents changed bet
 The first attempt (trim, `overflow: hidden` kept) cut the descenders off *Encrypted* in a 2× crop. The value now
 clips across only. A clone with a 60-character value drew its ellipsis (`scrollWidth` 278 > `clientWidth`
 118, right edge at the cell edge). Evidence: `docs/evidence/tile-centre-2026-10-11/{before,after}/`.
+
+### Sharing speed — 2026-10-11 13:15–14:20 (SM-S938B on its own hotspot, development Mac app)
+
+Full write-up: `docs/transfer-speed-2026-10-11.md` §5–§9. The readings, as recorded:
+
+- **Your video, 12:36 (logs only; the file was not opened):** 595,001,919 B share; offer → Mac 25 ms; Accept
+  waited 19.3 s (excluded); Accept → claimed 61 ms; **wire 11,084 ms (429 Mbit/s)** on the Mac's timer,
+  10,946 ms on the phone's; verified against the digest agreed in advance; ack 12 ms. Staging duration not
+  logged by that build. Phone on battery (60 %, discharging, saver off).
+- **Instrument added and shipped:** `ShareStaging.copy` reports `in N ms (read · hash · write; buffer)` and the
+  model logs `staging started`. `ShareStagingTest` +1, red with the read timer removed (29 → 1 failed),
+  restored. Installed `19f087e8…` = build, twice (the 1 MiB experiment in between was `659990ea…`); 27 grants
+  and both bindings before and after each of the three installs; `link-up.sh` 3/3 after each.
+- **Staging, headless (warm reads), 64 KiB:** 4 MB 8 ms; 100 MB 157 ms; 595 MB 1,056 · 1,778 · 1,153 ms.
+  **1 MiB:** 595 MB 1,029 · 1,146 · 1,335 ms; 100 MB 241 ms. Not kept. First attempt's trigger used
+  shell-made `.bin` files in `Download/` and was refused with `SecurityException` (another owner's non-media
+  file); the files were moved to `Movies/SidekickSpeed/` as `.mp4` so the read used MediaProvider, as a
+  Gallery share does.
+- **Shared by the owner, Accept by the owner:** 595 MB synthetic: staging 2,278 ms, wire 10,202 ms (467
+  Mbit/s), Accept → saved 10.28 s. 100 MB: staging 269 ms, wire 1,221 ms (687 Mbit/s). 4 MB: staging 14 ms,
+  Accept → saved 173 ms. Every copy's SHA-256 equals the source (`ae87411c…`, `0c5c0871…`, `7ee3fa90…`).
+- **Files pull (headless, block-verified):** 100 MB 1,974 ms (425 Mbit/s, 800 blocks); 595 MB 10,549 ms
+  (451 Mbit/s, 1,135 blocks). The probe first reported both files *not listed*: the pane was in grid view and
+  the probe knew list rows only (`.files-row`). Both share one click handler (`wireEntry`); the probe now
+  finds rows or tiles.
+- **Files push (the owner picked both at once):** they ran concurrently. 100 MB 10,723 ms (shared); 595 MB
+  42,423 ms (112 Mbit/s); Mac pre-hash 167 / 566 ms.
+- **Raw TCP (`scripts/raw-link-speed.mjs`):** up, one stream 228–490, four 241–482, no consistent gain; down,
+  one stream 64–155, four 191–250, 1.5–3× in every pairing. Control without the phone's byte count: the
+  same. First down runs refused by the script itself (`phone count mismatch`, counts unprinted because of
+  `sleep 120` holding the pipeline); fixed. Loss counters: no reading (`netstat -s` all zeros on this Mac).
+- **Cleanup:** six synthetic files deleted on the Mac (`~/Downloads/Sidekick/speed-*`, 30 → 24 entries) and five
+  on the phone (`Movies/SidekickSpeed/` and its folder; `Download/ConnectSuite/speed-*`); no `speed-*`
+  MediaStore rows; no staging copies; phone free space 1.0 → 2.3 GB.

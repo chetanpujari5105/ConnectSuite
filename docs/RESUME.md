@@ -1,3 +1,32 @@
+# ICON ALIGNMENT + SHARING SPEED — 2026-10-11 afternoon: 2 local commits; nothing pushed, signed or published
+
+**Read first:** `docs/transfer-speed-2026-10-11.md` §5–§9 (the second sitting) and defect **217**.
+
+1. **Icons (defect 217), fixed, measured on the development app:** the device card's four fact tiles sat 1.05 / 1.30 px
+   below their text at every size and theme, while every box centre read 0.00. `text-box` trimming makes `align-items:
+   center` centre the letters: 0.00 / 0.00 everywhere, 48 tile centres compared, 0 moved. Checked everywhere else
+   with the same pattern: the sidebar device card (−0.27 px), Recent activity (−0.67) and the security card (−0.47)
+   were already within 1 px and are unchanged; Settings and the other panes have none. Guard: `scripts/tile-centre-
+   sweep.mjs` (live, gates at 1 px), red on the old build, green after. Commit `26add06`.
+2. **Speed: nothing in the transfer path changed, because nothing measured was Sidekick's.** Your video: 11.1 s on
+   the wire at 429 Mbit/s (the link's speed then), ~1–2 s of staging before your Send tap, and 1.4 s + 19.3 s of
+   yours. Phone → Mac: one Sidekick stream equals four raw TCP streams. Mac → phone: one stream gets about half of
+   what four get in today's link state (push 112 Mbit/s against raw 109–112 single, 205–207 four). A multi-stream
+   push is **designed (§9), not built**: a contract change across the push path's resume and verdict logic, and its
+   gain depends on the link state.
+3. **Shipped in this commit:** staging timing in the share log (`staged … in N ms (read · hash · write)`),
+   `scripts/raw-link-speed.mjs` (raw ceiling, 1–N streams, both directions), and `transfer-speed-probe.mjs` now
+   pulls in grid view too. 1 MiB staging buffers were tried on hardware and **not** kept.
+4. **Fresh totals:** Mac 2,040 / 0; phone 1,485 / 0 (core 279, app 217, sync-module 685, camera-module 187,
+   mirror-module 65, input-module 52; `--rerun-tasks`, 0 stale result files); scripts 297 / 0.
+5. **Left on your devices:** phone runs the debug build `19f087e8…` (this commit's code), 27 grants, both bindings,
+   link 3/3, **charging on the USB cable**; every synthetic file deleted on both devices (phone 2.3 GB free, which is
+   tight: a share of a file over ~2 GB will be refused for space). Mac: `dist` rebuilt from `26add06` and relaunched;
+   the Files pane was routed by the probes and left on Received files.
+6. **Your decision:** whether to build the multi-stream push. Its precondition is one raw reading in the fast link
+   state (§9). Unrelated but seen: macOS reports your hotspot's security as **None**. If that's real, the hotspot is
+   open, and Sidekick's own traffic is TLS-pinned either way.
+
 # UX POLISH, SPEED AND TRIAL-DESIGN BATCH — 2026-10-10/11: sections 0–7 done; 16 local commits; nothing pushed, signed or published
 
 **Read first:** `docs/ux-audit-2026-10-10.md` (findings, every string changed, the spacing pass),

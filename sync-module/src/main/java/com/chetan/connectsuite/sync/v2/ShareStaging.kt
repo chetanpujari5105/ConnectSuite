@@ -129,7 +129,13 @@ object ShareStaging {
 
     sealed interface Outcome {
         val attemptId: String
-        data class Staged(override val attemptId: String, val bytes: Long, val sha256: String) : Outcome
+        data class Staged(
+            override val attemptId: String,
+            val bytes: Long,
+            val sha256: String,
+            /** Where the copy's time went; null only for an outcome built by hand (tests). */
+            val timing: Timing? = null,
+        ) : Outcome
         data class NoSpace(override val attemptId: String, val bytesWritten: Long, val available: Long) : Outcome
         data class OverLimit(override val attemptId: String, val limit: Long) : Outcome
         data class SourceReadFailed(override val attemptId: String, val bytesWritten: Long, val exceptionClass: String) : Outcome
@@ -143,6 +149,20 @@ object ShareStaging {
          * default.
          */
         data class BudgetStopped(override val attemptId: String, val bytesWritten: Long, val stop: ShareAdmission.Stop) : Outcome
+    }
+
+    /**
+     * Where a staged copy's time went, measured inside [copy] with `System.nanoTime` around each call.
+     * [totalMs] is from opening the partial to the rename; the three parts are the time spent inside
+     * `read`, `MessageDigest.update` and `write` — what is left over is the loop, the space re-checks
+     * and the progress callback. Added 2026-10-11: the share path's copy ran on every share and no line
+     * said how long it took, so a 15-second share could not be split.
+     */
+    data class Timing(val totalMs: Long, val readMs: Long, val hashMs: Long, val writeMs: Long, val bufferSize: Int) {
+        fun line(bytes: Long): String {
+            val mbps = if (totalMs > 0) bytes / 1e6 / (totalMs / 1000.0) else 0.0
+            return "in ${totalMs}ms (%.0f MB/s; read ${readMs}ms, hash ${hashMs}ms, write ${writeMs}ms; ${bufferSize / 1024} KiB buffers)".format(mbps)
+        }
     }
 
     /**
@@ -184,6 +204,10 @@ object ShareStaging {
             if (markerCreated) runCatching { Files.deleteIfExists(marker) }
         }
 
+        val startedNs = System.nanoTime()
+        var readNs = 0L
+        var hashNs = 0L
+        var writeNs = 0L
         source.use { input ->
             val out = try {
                 Files.newOutputStream(part, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
@@ -200,8 +224,9 @@ object ShareStaging {
                 if (atStart < FLOOR_BYTES) return@use Outcome.NoSpace(attemptId, 0, atStart)
                 while (true) {
                     if (cancelled()) return@use Outcome.Cancelled(attemptId, written)
+                    val readAt = System.nanoTime()
                     val n = try {
-                        input.read(buffer)
+                        input.read(buffer).also { readNs += System.nanoTime() - readAt }
                     } catch (e: IOException) {
                         return@use Outcome.SourceReadFailed(attemptId, written, e.javaClass.name)
                     } catch (e: SecurityException) {
@@ -210,12 +235,16 @@ object ShareStaging {
                     if (n < 0) break
                     if (n == 0) continue
                     if (written + n > limit) return@use Outcome.OverLimit(attemptId, limit)
+                    val writeAt = System.nanoTime()
                     try {
                         sink.write(buffer, 0, n)
                     } catch (e: IOException) {
                         return@use Outcome.WriteFailed(attemptId, written, e.javaClass.name)
                     }
+                    val hashAt = System.nanoTime()
+                    writeNs += hashAt - writeAt
                     digest.update(buffer, 0, n)
+                    hashNs += System.nanoTime() - hashAt
                     written += n
                     sinceCheck += n
                     if (sinceCheck >= recheckEvery) {
@@ -242,7 +271,9 @@ object ShareStaging {
                 }
                 // No REPLACE_EXISTING: a `.bin` of this name already existing is a collision, not ours to replace.
                 Files.move(part, bin)
-                Outcome.Staged(attemptId, written, sha)
+                val ms = { ns: Long -> ns / 1_000_000 }
+                Outcome.Staged(attemptId, written, sha,
+                    Timing(ms(System.nanoTime() - startedNs), ms(readNs), ms(hashNs), ms(writeNs), bufferSize))
             } catch (e: IOException) {
                 discard()
                 Outcome.WriteFailed(attemptId, written, e.javaClass.name)

@@ -129,6 +129,20 @@ class ShareStagingTest {
         }
     }
 
+    @Test fun `a staged copy reports where its time went, with the buffer it used`() {
+        // A source that takes time to read, so the split is measured rather than all zeros.
+        val bytes = Random(7).nextBytes(64 * 1024)
+        val slow = object : FilterInputStream(ByteArrayInputStream(bytes)) {
+            override fun read(b: ByteArray, off: Int, len: Int): Int { Thread.sleep(5); return super.read(b, off, len) }
+        }
+        val out = copy(tmp.newFolder("timed"), bytes, source = slow, bufferSize = 16 * 1024) as Outcome.Staged
+        val t = out.timing!!
+        assertEquals(16 * 1024, t.bufferSize)
+        assertTrue("read time includes the 4 slow reads plus the EOF read: $t", t.readMs >= 20)
+        assertTrue("the total covers its parts: $t", t.totalMs >= t.readMs + t.hashMs + t.writeMs)
+        assertTrue(t.line(out.bytes).contains("16 KiB buffers"))
+    }
+
     @Test fun `attempt ids are 128-bit, well-formed and not repeated`() {
         val ids = List(2_000) { ShareStaging.newAttemptId() }
         assertEquals(ids.size, ids.toSet().size)

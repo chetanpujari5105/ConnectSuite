@@ -341,6 +341,7 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         attemptId = id
         live.add(id)
         _state.value = ShareSheetState.Preparing(name, 0, expected)
+        LinkLog.i("share", "attempt=$id staging started: ${expected ?: "unknown"} bytes expected, type=${topLevel(mime)}")
         val input = try {
             app.contentResolver.openInputStream(source) ?: error("openInputStream returned null")
         } catch (e: Exception) {
@@ -371,7 +372,7 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
                     return
                 }
                 val n = stagedCount.incrementAndGet()
-                LinkLog.i("share", "attempt=$id staged bytes=${outcome.bytes} type=${topLevel(mime)} — " +
+                LinkLog.i("share", "attempt=$id staged bytes=${outcome.bytes} type=${topLevel(mime)} ${outcome.timing?.line(outcome.bytes) ?: ""} — " +
                     "$n staged / ${failedCount.get()} failed since start")
                 stagedSha256 = outcome.sha256
                 _state.value = ShareSheetState.Ready(name, mime, outcome.bytes, currentAvailability())

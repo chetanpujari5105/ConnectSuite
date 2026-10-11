@@ -103,12 +103,17 @@ if (mode === 'push') {
 }
 
 // pull
+// The pane draws a listing as rows (list view) or tiles (grid view) — the owner's choice, not ours to
+// change. Both carry one shared click handler (`wireEntry` in files.ts), so either is the same pull.
+// The first version knew rows only and reported "not listed" for every file in grid view (2026-10-11).
+const ENTRIES = `[...document.querySelectorAll('#files-table .files-row, #files-table .files-tile')]`;
+const ENTRY_NAME = (r) => `(${r}.querySelector('.files-cell-name, .files-tile-name')?.textContent ?? '').replace(/^·/, '')`;
 let failures = 0;
 for (const name of args) {
   const listed = await p.act({
     what: `${name} listed`,
     run: `(() => { const r=[...document.querySelectorAll('#files-roots .files-root')].find(x => /received/i.test(x.textContent||'')); if (r) r.click(); return true; })()`,
-    expect: `[...document.querySelectorAll('#files-table .files-row')].some(r => r.querySelector('.files-cell-name')?.textContent.replace(/^·/, '') === ${JSON.stringify(name)})`,
+    expect: `${ENTRIES}.some(r => ${ENTRY_NAME('r')} === ${JSON.stringify(name)})`,
     within: 30000,
   });
   if (!listed.landed) { console.log(`  FAIL  ${name} not listed in Received files`); failures += 1; continue; }
@@ -119,7 +124,7 @@ for (const name of args) {
   });
   const pulled = await p.act({
     what: `select ${name} (the pane's own selection pull) and wait for it to settle`,
-    run: `(() => { window.__pullT0 = performance.now(); const row = [...document.querySelectorAll('#files-table .files-row')].find(r => r.querySelector('.files-cell-name')?.textContent.replace(/^·/, '') === ${JSON.stringify(name)}); row.click(); return true; })()`,
+    run: `(() => { window.__pullT0 = performance.now(); const row = ${ENTRIES}.find(r => ${ENTRY_NAME('r')} === ${JSON.stringify(name)}); row.click(); return true; })()`,
     expect: `!!files.lastPull && files.copying.size === 0 && !/Copying/.test(files.lastPull.text) && (window.__pullT1 ??= performance.now()) > 0`,
     within: DEADLINE_MS,
   });
