@@ -1109,8 +1109,14 @@ body {
   align-items: center;
   position: relative;
   width: 100%;
-  /* Component 18's one 48px row shape, shared with the Activity pane. */
-  min-height: 48px;
+  /*
+   * 52px, not component 18's 48 — 2026-10-11. The two lines below were 14 + 12 px boxes touching
+   * (1.6 px of ink between the title's descenders and the detail's capitals, and the detail's own
+   * descenders cut 0.7 px by its 12 px box). They are 16 + 2 + 16 now, and the extra 8 px of block
+   * would otherwise come out of the clearance to the divider. Measured by `tile-centre-sweep.mjs`'s
+   * text-block check, which gates it. Single-line Activity rows keep 48.
+   */
+  min-height: 52px;
   padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-tile);
@@ -1183,22 +1189,24 @@ body {
 .recent-tile[data-tone='warning'] { color: var(--warning); }
 .recent-tile[data-tone='failure'] { color: var(--destructive); }
 
-.recent-main { display: flex; flex-direction: column; min-width: 0; }
+/* 2px between the two line boxes: the title's descenders and the detail's capitals need air. */
+.recent-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /*
  * The handoff's description is `13px / 450 / #e7e7ee` and there is **no second line** — its mock
  * rows are one sentence each. Ours keeps a subtitle because `ActivityEvent.detail` is a real field
  * carrying a real sentence (departure O8's note): a `Disconnected` row that dropped it would lose
- * the only explanation the event has. Both lines are tight enough to sit inside 52px.
+ * the only explanation the event has. Both lines sit in 16px boxes so `overflow: hidden` (the
+ * ellipsis) never cuts a descender — a 12px font in a 12px box did, on every g, p and y.
  */
 .recent-text {
   font-size: 13px;
   font-weight: 450;
-  line-height: var(--leading-13);
+  line-height: var(--leading-15);
   color: var(--text-on-control);
 }
 .recent-detail {
   font-size: 12px;
-  line-height: var(--leading-11);
+  line-height: var(--leading-15);
   color: var(--text-body);
 }
 /* Both lines truncate rather than wrapping the row taller than its neighbours. */
