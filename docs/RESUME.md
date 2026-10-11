@@ -1,3 +1,40 @@
+# UX POLISH, SPEED AND TRIAL-DESIGN BATCH — 2026-10-10/11: sections 0–7 done; 16 local commits; nothing pushed, signed or published
+
+**Read first:** `docs/ux-audit-2026-10-10.md` (findings, every string changed, the spacing pass),
+`docs/transfer-speed-2026-10-11.md`, `docs/trial-licence-proposal-2026-10-10.md`; evidence in `docs/testing.md` →
+*UX polish, speed and trial-design batch*; defects **210–216** in `docs/defects.md`.
+
+1. **Fixed, hardware-verified:** stale panes on return (212 — Photos shows new photos/videos on top after a click
+   back to the Mac, scroll kept; Files keeps your folder and redraws a big one in 5 ms while the phone re-reads);
+   window re-fit when moved between displays (213 — you confirmed); Android Send files works through the share flow
+   (214 — end to end, hash equal); the Mac name wraps at large text (216); the new logo on both apps (you confirmed
+   launcher, splash, menu bar).
+2. **Fixed, tests only on hardware:** 210 (a stray `}` that disabled a CSS rule), 211 (Messages banner outliving a
+   reconnect), Calls re-read on return, float/receive window re-fit on display changes; 215 measured in the sweep.
+3. **Copy:** mechanism words out of the main UI on both apps, the phone app named Sidekick on the Mac (Appendix B);
+   security, consent and clipboard-offer wording kept in substance. Full before/after table in the audit doc §3.
+4. **Speed:** no change — Sidekick runs at 97–100 % of the raw link both ways; the link (your phone's Wi-Fi 6
+   hotspot) moved between 1,200 and 600 Mbit/s while measured. 631 MB phone → Mac: 6.8 s at the fast state, 11.9 s at
+   the slow one. The remembered ~2 s was a 96 MiB file or a loopback harness.
+5. **Trial:** design only — signed, time-boxed tokens enforced on the Mac for the beta; a merchant of record for
+   sale; eight decisions listed in the proposal §9. No licence code exists.
+6. **Commits (local):** `9b56a0c` `ef3db00` `fd954cf` `94d1138` `90bfb3c` `37b7175` `5c9e458` `4d65ea0` `390e19d`
+   `f71ffd1` `620ffce` `e2866d0` `3502476` `debfa97` `c004491`, and the commit carrying this entry.
+7. **Fresh totals after the last code change:** Mac **2,040 / 0** (npm exit 0), typechecks exit 0 (test ratchet
+   14 / 14); phone **1,484 / 0** (core 279, app 217, sync-module 684, camera-module 187, mirror-module 65,
+   input-module 52; `--rerun-tasks`, 0 stale result files); scripts 290 / 0; every guard exit 0. Swift not run (no
+   Swift changed).
+8. **Left on your devices:** phone — debug build from `620ffce` (27 grants, both bindings, link 3/3); **screen timeout
+   still at 10 minutes** (you set it for this session); font, density and rotation read and restored. The test
+   photos and video you took for this batch (three photos at 2026-10-10 23:05; a photo and a short video at
+   2026-10-11 00:29) are **kept** — say if they should go. Mac — `dist` built at `e2866d0`; the renderer was
+   reloaded after that build, the main process is the relaunch from the logo build (`main.ts` unchanged since); the
+   packaged app's new icon is in `build/icon.icns` (a development run shows Electron's Dock icon). Every synthetic
+   file from this batch was deleted on both devices (`send-files-test.txt`; `speed-631mb.bin` and its `(2)` copy).
+9. **Your decisions:** the trial's eight (proposal §9); whether to delete the now-unused old icon vectors
+   (`app/src/main/res/drawable/ic_launcher_*.xml`), `tile-44/56@*` and the `--brand-stage*` / `--brand-halo-*`
+   tokens; the earlier owner checklist in `docs/beta-hardware-plan-2026-10-09.md` is unchanged.
+
 # CLEANUP + MAC REDEPLOY — 2026-10-10 evening: test files removed on both devices; `9ccb1b4` is deployed on the Mac
 
 1. **Deleted** (each proven by a doc entry, a recorded hash or a generated name; literal paths; neighbours re-listed):

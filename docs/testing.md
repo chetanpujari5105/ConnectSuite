@@ -29332,3 +29332,101 @@ synthetic when created. Deleted by exact path, folders by `rmdir` (refuses a non
 **Left, not on the list:** Mac `sidekick-pass-stop-200mb.bin` and `(2)`–`(8)` (8 × 200 MiB) and `sidekick-s5-a/b.txt`;
 `~/.s7-run`; the T1 evidence. **The `Documents/Sidekick137` grant is still held** (its folder is gone) — the owner
 removes it in Sidekick → Sync → Folders.
+
+## UX polish, speed and trial-design batch — 2026-10-10/11
+
+Phone SM-S938B (debug build from `620ffce`, installed with `install -r`: 27 grants and both settings bindings
+equal before and after; `link-up.sh` 3/3). Mac: the development `dist`, rebuilt and relaunched after each
+change (identity `A9:59:35:BB…` loaded, no re-pair). Full write-ups: `docs/ux-audit-2026-10-10.md`,
+`docs/transfer-speed-2026-10-11.md`, `docs/trial-licence-proposal-2026-10-10.md`.
+
+### Defect 210 — a stray `}` disabled `.security-text`
+
+Sweep at 1100×700 under View → Zoom In (917×583 CSS): Overview `pageHScroll=true`; the security card's actions
+ended at x = 909 / 933 in a page whose content edge was 906. Live: `flex-grow: 0`, **no** rule naming
+`.security-text` in `document.styleSheets`. The brace-balance test was red on the real tree (*"styles.css: a
+stray } at line 4259"*) and green after; its control fixture sees a stray brace and ignores braces in comments
+and strings. With the rule restored the row needed ~400 px; `e2866d0` lets it wrap (actions right-aligned).
+After: 0 off-edge / 0 clipped / no scroll at 1100×700, 1100×700 at 120 %, 1440×900 — checked by eye on a crop,
+because a geometric "wrapped" reading was fooled by vertical centring.
+
+### Defect 211 — the Messages Disconnected banner outlived the reconnect
+
+Seen in the sweep on the running app: the banner *"as of 20:10"* beside *Connected · 9 ms*. Test red first
+(*"the Disconnected banner outlived the disconnect"*); green after; mutations — no redraw (the banner is checked
+while the refetch is held), no refetch, refetch on every tick — each red. Tests only on the fixed build.
+
+### Defect 212 — panes stale on return (Photos, Files, Calls)
+
+**Photos, before (hardware):** a test photo taken with Photos open → the grid's newest item stayed the 21:51
+video (no route change); route away and back → new items, via a full reload (~1.0 s, scroll and pages lost).
+**After (hardware, 00:29):** one photo and one ~3 s video taken, then a click on the window title → `media.list`
+at 00:29:59.8, three new items on top, `n` 120 → 123, the anchor tile `1000318554` at the same −85 px offset,
+`scrollTop` 600 unchanged. Return cost with nothing new: 600–751 ms (no redraw) vs 995–1,050 ms for a full reload.
+
+**Files (`scripts/files-load-profile.mjs`, window visible), before:**
+
+| Case | phone + wire (`fs.list`) | Mac render (est.) | thumbnails after page |
+|---|---|---|---|
+| return (30-entry folder) | 9–12 ms | 32–249 ms, table rebuilt | — |
+| switch root | 12–16 ms | 4–9 ms | — |
+| open DCIM/Camera (200 of ~17k) | **11,398 ms** cold · 226 · 1,039 | 13–20 ms | 26–78 ms (one run 4,873 ms: a previous folder's batch still queued — recorded, not fixed on one sample) |
+
+**After:** return to a small folder 19–20 ms, table not rebuilt; return to DCIM/Camera after 35 s: **23–25 ms,
+still in Camera** (before: reset to the top of DCIM); reopening Camera after the phone's snapshot expired:
+**rows in 5 ms** from the remembered listing, the phone's re-read (13,800 ms) merged behind it. The first open of
+a huge folder is still bound by Android's document provider (13.6 s for ~17k entries) and is not Sidekick's.
+
+**Calls:** a reconnect alone did not re-read the log (the control in the test); after, a return re-reads it once.
+Tests only. All four test files red on the old code; 11 mutations red (replace instead of merge, no gate,
+thumbnails for all, no first full load, old refresh path, wrong folder, cache never read / written / re-checked,
+Calls gate).
+
+### Defect 213 — the window was not re-fitted on another display
+
+Hardware, two displays (built-in 1512×865, MSI 4K at 1920×1080, both scale 2): the first wiring logged
+`re-fitted 1440x920 at (562,107) → 1440x841 at (72,57)` mid-drag, and the drop then left the window at (14,71),
+bottom 912 in a work area ending at 898. With the settle (450 ms after the last `moved`) and *arrived on another
+display → held inside*, the owner dragged it again and confirmed it fits fully. Unit tests use the work areas
+measured on this Mac (`windowGeometry.test.ts`); 5 mutations red. Float and receive windows: tests and review only.
+
+### Defect 214 — Send files greyed under a false absence
+
+On the device after `4d65ea0`: the button is lit, the reason line gone. A synthetic file
+(`Download/SidekickSendTest/send-files-test.txt`, 65 B, SHA-256 `fa52fb0d…`) → *Send files* → Android's picker →
+the owner picked it → the Mac's receive card → Accept → `received 65 bytes, flushed, verified, published` →
+`~/Downloads/Sidekick/send-files-test.txt`, SHA-256 equal. Both copies deleted afterwards; the share flow left no
+private copy (`files/shared` empty).
+
+### Defect 215 — Calls cut phone numbers at narrow widths
+
+1100×700: log panel 240 px, row 195 px, name 69 px for a 107 px number. After `390e19d`: 121 px for 121, no clip;
+the sweep reads 0 / 0 at 1100×700 and 1440×900. The `incoming · duration` line takes the ellipsis; the row's
+`title` carries the full name.
+
+### Defect 216 — the Mac's name truncated at large text (Android)
+
+Before: *Chetans-MacBoo…* at font scale 1.3. After `620ffce`: *Chetans-MacBook- / Pro* at 1.3× and at density
+640 (360 dp). Each setting was read first and restored (font 1.0, density 600, rotation locked at 0); an earlier
+attempt changed nothing because zsh does not split an unquoted `$A` — its captures were discarded.
+
+### The rest of the batch, with its readings
+
+- **Sweep:** every pane × 1100×700, 1440×900, 1920×1050, 1100×700 at 120 %, both themes — after the fixes 0
+  controls past the edge, 0 text clipped without an ellipsis, 0 horizontal scroll; 1440×900 at 120 % (the
+  smallest zoom the app lets a person reach) likewise. First run's 49 *clipped* on Messages were
+  screen-reader-only spans — excluded, said in the instrument.
+- **Focus rings:** forced `:focus-visible` over 443 controls in seven panes, 0 without a ring; control: 13 of
+  13 Settings buttons without a ring when not forced.
+- **Android labels:** 35 clickable nodes over five tabs, 0 unlabelled (a first read on the launcher's tree and a
+  first read with tile titles below the fold were caught and redone). Landscape lays out and scrolls.
+- **Copy (section 3):** every changed string, before and after: `docs/ux-audit-2026-10-10.md` §3.
+  `plainCopy.test.ts` is red on the old copy for mechanism words and for the old phone-app name.
+- **Logo (section 5):** one source, `LOGOS/head logo with outline.png`, cut out of its black background by flood
+  fill (inside 744,579 px = 47.3 %, visible bbox 1559×834); every size downscaled from it. The owner confirmed
+  the launcher icon, the splash and the menu-bar icon show the mask; the sidebar and Settings card checked in
+  both themes.
+- **Transfer speed (section 6):** Sidekick at 97–100 % of the raw link in both directions, at two link states
+  (PHY 1,200 and 600 Mbit/s); nothing changed. Synthetic 631 MB file `96825b90…`, all copies deleted.
+- **Two displays, zoom, Spaces:** fullscreen and Spaces are left to macOS by design (`refitMainWindow` skips a
+  fullscreen or minimised window; a Space change does not move a window) — not separately exercised.
