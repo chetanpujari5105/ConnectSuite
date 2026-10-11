@@ -1,3 +1,4 @@
+import type { TrialCheck } from './main/trial';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AppEntry,
@@ -290,6 +291,19 @@ contextBridge.exposeInMainWorld('connect', {
   onAppearance: (
     callback: (state: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' }) => void,
   ) => ipcRenderer.on('appearance', (_event, state) => callback(state)),
+
+  /**
+   * The beta trial (2026-10-12, `src/main/trial.ts`). The token is checked on this Mac; nothing is sent
+   * anywhere. The verdict and every sentence come from the main process; the renderer only draws them.
+   */
+  trialStatus: (): Promise<{ ok: boolean; data: TrialCheck }> => ipcRenderer.invoke('trial-status'),
+  trialEnter: (text: string): Promise<{ ok: boolean; message: string; data: TrialCheck }> =>
+    ipcRenderer.invoke('trial-enter', text),
+  trialOpenFile: (): Promise<{ ok: boolean; cancelled?: boolean; message: string; data: TrialCheck }> =>
+    ipcRenderer.invoke('trial-open-file'),
+  trialNoticeShown: (days: 7 | 1): Promise<unknown> => ipcRenderer.invoke('trial-notice-shown', days),
+  onTrialChanged: (callback: (verdict: TrialCheck) => void) =>
+    ipcRenderer.on('trial-changed', (_event, verdict) => callback(verdict)),
 
   notifSoundGet: (): Promise<boolean> => ipcRenderer.invoke('notif-sound-get'),
   notifSoundSet: (on: boolean): Promise<boolean> => ipcRenderer.invoke('notif-sound-set', on),

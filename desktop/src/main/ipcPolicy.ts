@@ -59,6 +59,11 @@ export const IPC_POLICY: Readonly<Record<string, ChannelPolicy>> = {
   // ---- shell, appearance, status --------------------------------------------------------------
   'appearance-get': p(ALL, 'read'),
   'appearance-set': p(M, 'action', [oneOf('system', 'light', 'dark')]),
+  // ---- beta trial (2026-10-12): checked on this Mac, nothing sent ---------------------------------
+  'trial-status': p(M, 'read'),
+  'trial-enter': p(M, 'action', [str({ min: 1, max: 16_384 })]),
+  'trial-open-file': p(M, 'action'),
+  'trial-notice-shown': p(M, 'action', [oneOf(7, 1)]),
   'menu-routes': p(M, 'action', [arr(route, { max: 64 }), opt(arr(route, { max: 64 }))]),
   'route-changed': p(M, 'window', [str({ min: 1, max: 64 })]),
   status: p(M, 'read'),

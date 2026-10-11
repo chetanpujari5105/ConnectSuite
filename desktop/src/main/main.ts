@@ -21,7 +21,9 @@ import {
   type CallBannerAction,
   type CallBannerView,
 } from '../shared/callBanner';
-import { loadIdentity, startOverIdentity, type Identity } from './identity';
+import { SAFE_STORAGE, loadIdentity, startOverIdentity, type Identity } from './identity';
+import { Trial, trialEnforced, type TrialCheck } from './trial';
+import { TRIAL_PUBLIC_KEY } from './trialKey';
 import { blockedPrompt } from './identityStore';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
@@ -56,7 +58,7 @@ const { openableUrl } = require('../shared/clipLink') as {
 };
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, promises as fsp } from 'node:fs';
+import { createReadStream, existsSync, promises as fsp, readFileSync, statSync } from 'node:fs';
 import { BulkClient } from './bulk';
 import { pullPartPathFor } from '../shared/transferFiles';
 import { activity } from './activity';
@@ -993,6 +995,87 @@ nativeTheme.on('updated', () => {
   broadcastTheme();
 });
 
+/*
+ * ---- The beta trial (2026-10-12, `trial.ts`, `docs/trial-licence-summary-2026-10-11.md`) ----------------
+ *
+ * Checked on this Mac only: nothing here sends anything anywhere. A packaged build always checks; a
+ * development build skips only with the `skipTrial` switch named. The verdict gates the link before
+ * every connection attempt (`LinkClient`'s `gate`) and is what the renderer's screens draw.
+ */
+let trialInstance: Trial | null = null;
+function trial(): Trial {
+  if (!trialInstance) {
+    const enforced = trialEnforced({ packaged: app.isPackaged, skipSwitch: !app.isPackaged && debugSwitches().skipTrial });
+    trialInstance = new Trial({
+      dir: app.getPath('userData'),
+      box: SAFE_STORAGE,
+      publicKey: TRIAL_PUBLIC_KEY,
+      enforced,
+      log: (level, line) => (level === 'warn' ? log.warn('trial', line) : log.info('trial', line)),
+    });
+    const v = trialInstance.check();
+    log.info('trial', `beta access: ${v.state} — ${v.line} (checked: ${enforced}; public key in this build: ${TRIAL_PUBLIC_KEY !== null}; nothing is sent anywhere)`);
+  }
+  return trialInstance;
+}
+
+/** True when the gate, not the person, stopped the link — so only then may the trial start it again. */
+let trialStoppedLink = false;
+let lastTrialSent = '';
+
+function trialGate(): { allowed: boolean; reason: string } {
+  const v = publishTrial();
+  if (v.blocks) trialStoppedLink = true;
+  return { allowed: !v.blocks, reason: v.line };
+}
+
+/** The verdict now, sent to the main window when it changed. */
+function publishTrial(): TrialCheck {
+  const v = trial().check();
+  const key = `${v.state}|${v.daysLeft}|${v.notice?.days ?? ''}|${v.notAfter ?? ''}`;
+  if (key !== lastTrialSent) {
+    lastTrialSent = key;
+    sendAll('trial-changed', v);
+  }
+  return v;
+}
+
+/** After a token is accepted, or the clock or the start date comes right: resume what the gate stopped. */
+function resumeLinkAfterTrial(v: TrialCheck): void {
+  if (v.blocks || !trialStoppedLink || !link || !store.get('autoConnect')) return;
+  trialStoppedLink = false;
+  log.info('trial', 'beta access is valid again — starting the link the beta check had stopped');
+  link.start();
+}
+
+function enterTrialToken(text: string): { ok: boolean; message: string; data: TrialCheck } {
+  const result = trial().enter(text);
+  const v = publishTrial();
+  if (result.ok) resumeLinkAfterTrial(v);
+  return { ok: result.ok, message: result.message, data: v };
+}
+
+ipc.handle('trial-status', () => ({ ok: true, data: publishTrial() }));
+ipc.handle('trial-enter', (_event, text: unknown) => enterTrialToken(String(text)));
+ipc.handle('trial-open-file', async () => {
+  const picked = await dialog.showOpenDialog({
+    title: 'Open a Sidekick beta token',
+    properties: ['openFile'],
+    filters: [{ name: 'Sidekick beta token', extensions: ['sidekick-token', 'txt'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  const path = picked.filePaths[0];
+  if (picked.canceled || !path) return { ok: false, cancelled: true, message: '', data: publishTrial() };
+  // A token is a few hundred bytes; anything far larger is not one, and is not read into memory whole.
+  if (statSync(path).size > 16_384) {
+    return { ok: false, message: 'That file is too large to be a Sidekick beta token.', data: publishTrial() };
+  }
+  return enterTrialToken(readFileSync(path, 'utf8'));
+});
+ipc.handle('trial-notice-shown', (_event, days: unknown) => {
+  trial().noticeShown(days === 1 ? 1 : 7);
+  return { ok: true, data: publishTrial() };
+});
+
 ipc.handle('appearance-get', () => ({
   ok: true,
   data: { appearance: storedAppearance(), theme: currentTheme() },
@@ -1381,8 +1464,14 @@ app.whenReady().then(() => {
     identity,
     () => rePairPending,
     () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }),
-    pairDecoy ? { candidates: () => withPairDecoy(() => link?.isPairingArmed() ?? false, discoverCandidates) } : {},
+    {
+      ...(pairDecoy ? { candidates: () => withPairDecoy(() => link?.isPairingArmed() ?? false, discoverCandidates) } : {}),
+      // The beta trial, before every connection attempt — never against a running session.
+      gate: () => trialGate(),
+    },
   );
+  // The trial re-checks every hour: a date that comes right, a start date reached, a notice due.
+  setInterval(() => resumeLinkAfterTrial(publishTrial()), 60 * 60_000).unref();
   // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).
   void files.sweepResumeRecords().then((n) => log.info('files', `resume records: ${n} expired at start (limit 7 days, 16 records)`));
   video = new VideoClient(identity, () => link?.peerFingerprint() ?? null);

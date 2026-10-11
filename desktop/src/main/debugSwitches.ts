@@ -152,6 +152,14 @@ export interface DebugSwitches {
    * first. It weakens no guard; it lets the guard be read on hardware. Forced off in a packaged build.
    */
   pairDecoyFirst: boolean;
+  /**
+   * The beta trial's development gate (2026-10-12, `src/main/trial.ts`): a **development** build with this
+   * switch named does not check beta access, so the owner's own development app keeps working without a
+   * token. `trialEnforced` ignores it in a packaged build — a packaged Sidekick always checks, and
+   * `trial.test.ts` proves that over the packaged configuration. Off by default: without it, a
+   * development build checks exactly as a packaged one does.
+   */
+  skipTrial: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -171,6 +179,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'webcamSpike',
   'callBanner',
   'pairDecoyFirst',
+  'skipTrial',
 ];
 
 function read(): DebugSwitches {
@@ -191,6 +200,7 @@ function read(): DebugSwitches {
     webcamSpike: false,
     callBanner: false,
     pairDecoyFirst: false,
+    skipTrial: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

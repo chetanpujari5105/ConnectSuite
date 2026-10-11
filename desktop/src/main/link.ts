@@ -40,6 +40,13 @@ export const PAIR_MAX_FAILURES = 8;
 export interface LinkClientOptions {
   candidates?: () => AsyncIterable<Candidate>;
   now?: () => number;
+  /**
+   * The beta trial's gate (2026-10-12, `trial.ts`): consulted before every connection attempt, never
+   * against a session already running — so access that ends mid-transfer, mid-call or mid-mirroring
+   * ends at the next connect, not in the middle of the task. A refusal stops the client; entering a
+   * token starts it again (`main.ts`).
+   */
+  gate?: () => { allowed: boolean; reason: string };
 }
 
 /**
@@ -356,6 +363,16 @@ export class LinkClient extends EventEmitter {
 
   private async attempt(): Promise<void> {
     if (!this.running || this.connecting || this.isConnected()) return;
+    const gate = this.options.gate?.();
+    if (gate && !gate.allowed) {
+      // Stopped rather than retried: nothing changes by waiting except the clock, and the trial's own
+      // timer (and a token being entered) is what starts the link again.
+      log.info('link', `Not connecting — beta access: ${gate.reason}`);
+      this.running = false;
+      this.clearTimers();
+      this.setPhase('idle');
+      return;
+    }
     this.connecting = true;
     this.setPhase(this.lastFailure ? 'reconnecting' : 'searching');
 

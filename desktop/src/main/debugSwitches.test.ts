@@ -56,6 +56,9 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // Added 2026-09-26 as the request for share.file 3; since 2026-09-29 an unpackaged Mac advertises 3 by
       // default and this is the opposite, off by default (asserted below): hold at share.file 2 for skew tests.
       'shareV3Off',
+      // Added 2026-10-12 for the beta trial, off by default (asserted below): a DEVELOPMENT build named
+      // with it skips the beta check. trialEnforced ignores it when packaged (trial.test.ts).
+      'skipTrial',
       'stallCallEnded',
       'stallRemoved',
       // Added 2026-10-04 for Camera v2's wiring, off by default (asserted below) and forced off in a

@@ -30,7 +30,8 @@ export interface Identity {
  */
 export type IdentityResult = { kind: 'ready'; identity: Identity } | { kind: 'blocked'; reason: string; dir: string };
 
-const SAFE_STORAGE: SealingBox = {
+/** Exported for the beta trial's clock mark (`trial.ts`), which seals with the same box. */
+export const SAFE_STORAGE: SealingBox = {
   available: () => safeStorage.isEncryptionAvailable(),
   seal: (text) => safeStorage.encryptString(text),
   open: (data) => safeStorage.decryptString(data),
