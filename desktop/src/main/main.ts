@@ -153,6 +153,7 @@ import { CameraController, openCameraSocket } from './camera';
 import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
 import { wireWebcamSpike, type SpikeWiring } from './webcamSpike';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
+import { disconnectActivityDetail, type StopCause } from '../shared/disconnectActivity';
 import { FloatMirrorWindow } from './float';
 import { armIfAsked, armPairingCode } from './pairingArm';
 import { fitWindow, DESIGN, zoomStep, zoomFactorFor, refitWindow, type ZoomDirection } from '../shared/windowGeometry';
@@ -200,8 +201,12 @@ let tray: Tray | null = null;
  */
 let notifierWasConnected = false;
 let link: LinkClient | null = null;
-/** Set by the Disconnect command, read once by the next Activity "Disconnected" row. */
-let userStoppedLink = false;
+/**
+ * Why this Mac is stopping the link, when it is the one stopping it: set by the Disconnect commands
+ * (`user`) and by the quit teardown (`quit`), read once by the next Activity "Disconnected" row.
+ * `null` means the session ended without the Mac asking, and the link's own sentence stands.
+ */
+let stopCause: StopCause | null = null;
 /**
  * The rename re-pair is still owed: ConnectSuite left an identity and Sidekick has not yet connected
  * on its own. Decided once and persisted (`legacyData.ts` `decideRePair`); cleared by the first
@@ -896,7 +901,7 @@ function refreshTray(): void {
         label: connected ? 'Disconnect' : 'Connect',
         click: () => {
           if (!connected) return link?.start();
-          userStoppedLink = true;
+          stopCause = 'user';
           return link?.stop('tray');
         },
       },
@@ -1954,11 +1959,9 @@ app.whenReady().then(() => {
         activity.record(
           'system',
           'Disconnected',
-          userStoppedLink
-            ? 'You disconnected the phone from this Mac'
-            : (status.lastError ?? `now ${status.phase}`),
+          disconnectActivityDetail(stopCause, status),
         );
-        userStoppedLink = false;
+        stopCause = null;
       }
     }
     // The replay cutoff is armed on the transition INTO connected, never on every status tick —
@@ -2287,6 +2290,8 @@ installQuitCoordinator({
   ],
   teardown: () => {
     video?.close('app quit');
+    // Named before the stop: the status callback that records the Activity row runs inside it.
+    stopCause = 'quit';
     link?.stop('app quit');
   },
   log,
@@ -3899,7 +3904,7 @@ ipc.handle('disconnect', () => {
   // Noted so the Activity row can say who ended the session. Without it a Disconnect the user
   // pressed is recorded with the link classifier's generic "The connection to your phone failed",
   // which is a failure sentence about something nobody failed at.
-  userStoppedLink = true;
+  stopCause = 'user';
   link?.stop('user disconnected');
 });
 ipc.handle('retry-now', () => link?.retryNow('user'));
