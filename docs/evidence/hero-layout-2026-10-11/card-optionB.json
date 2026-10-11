@@ -1,0 +1,307 @@
+[
+  {
+    "vw": 1100,
+    "vh": 700,
+    "labels": [
+      "Connection",
+      "Address",
+      "Security",
+      "Latency"
+    ],
+    "card": {
+      "top": 140,
+      "bottom": 442,
+      "left": 260,
+      "right": 1061,
+      "h": 302,
+      "w": 801
+    },
+    "phone": {
+      "top": 161,
+      "bottom": 421,
+      "left": 281,
+      "right": 429,
+      "h": 260,
+      "w": 148
+    },
+    "head": {
+      "top": 203,
+      "bottom": 263
+    },
+    "facts": {
+      "top": 287,
+      "bottom": 379
+    },
+    "dlBox": {
+      "top": 263,
+      "bottom": 379,
+      "left": 453,
+      "right": 1040,
+      "h": 116,
+      "w": 587
+    },
+    "gapAboveFacts": 24,
+    "gapBelowFacts": 42,
+    "gapCardTopToHead": 42,
+    "phoneCentre": 291,
+    "headCentreMinusPhone": -58,
+    "factsCentreMinusPhone": 42,
+    "columnCentreMinusPhone": 0,
+    "colAlign": {
+      "rowTopDelta": [
+        0,
+        0
+      ],
+      "colLeftDelta": [
+        0,
+        0
+      ]
+    },
+    "size": "1100x700",
+    "theme": "dark"
+  },
+  {
+    "vw": 1440,
+    "vh": 900,
+    "labels": [
+      "Connection",
+      "Address",
+      "Security",
+      "Latency"
+    ],
+    "card": {
+      "top": 140,
+      "bottom": 442,
+      "left": 260,
+      "right": 960,
+      "h": 302,
+      "w": 700
+    },
+    "phone": {
+      "top": 161,
+      "bottom": 421,
+      "left": 281,
+      "right": 429,
+      "h": 260,
+      "w": 148
+    },
+    "head": {
+      "top": 203,
+      "bottom": 263
+    },
+    "facts": {
+      "top": 287,
+      "bottom": 379
+    },
+    "dlBox": {
+      "top": 263,
+      "bottom": 379,
+      "left": 453,
+      "right": 939,
+      "h": 116,
+      "w": 486
+    },
+    "gapAboveFacts": 24,
+    "gapBelowFacts": 42,
+    "gapCardTopToHead": 42,
+    "phoneCentre": 291,
+    "headCentreMinusPhone": -58,
+    "factsCentreMinusPhone": 42,
+    "columnCentreMinusPhone": 0,
+    "colAlign": {
+      "rowTopDelta": [
+        0,
+        0
+      ],
+      "colLeftDelta": [
+        0,
+        0
+      ]
+    },
+    "size": "1440x900",
+    "theme": "dark"
+  },
+  {
+    "vw": 1480,
+    "vh": 900,
+    "labels": [
+      "Connection",
+      "Address",
+      "Security",
+      "Latency"
+    ],
+    "card": {
+      "top": 140,
+      "bottom": 442,
+      "left": 260,
+      "right": 1000,
+      "h": 302,
+      "w": 740
+    },
+    "phone": {
+      "top": 161,
+      "bottom": 421,
+      "left": 281,
+      "right": 429,
+      "h": 260,
+      "w": 148
+    },
+    "head": {
+      "top": 203,
+      "bottom": 263
+    },
+    "facts": {
+      "top": 287,
+      "bottom": 379
+    },
+    "dlBox": {
+      "top": 263,
+      "bottom": 379,
+      "left": 453,
+      "right": 979,
+      "h": 116,
+      "w": 526
+    },
+    "gapAboveFacts": 24,
+    "gapBelowFacts": 42,
+    "gapCardTopToHead": 42,
+    "phoneCentre": 291,
+    "headCentreMinusPhone": -58,
+    "factsCentreMinusPhone": 42,
+    "columnCentreMinusPhone": 0,
+    "colAlign": {
+      "rowTopDelta": [
+        0,
+        0
+      ],
+      "colLeftDelta": [
+        0,
+        0
+      ]
+    },
+    "size": "1480x900",
+    "theme": "dark"
+  },
+  {
+    "vw": 1920,
+    "vh": 1050,
+    "labels": [
+      "Connection",
+      "Address",
+      "Security",
+      "Latency"
+    ],
+    "card": {
+      "top": 140,
+      "bottom": 442,
+      "left": 260,
+      "right": 1440,
+      "h": 302,
+      "w": 1180
+    },
+    "phone": {
+      "top": 161,
+      "bottom": 421,
+      "left": 281,
+      "right": 429,
+      "h": 260,
+      "w": 148
+    },
+    "head": {
+      "top": 203,
+      "bottom": 263
+    },
+    "facts": {
+      "top": 287,
+      "bottom": 379
+    },
+    "dlBox": {
+      "top": 263,
+      "bottom": 379,
+      "left": 453,
+      "right": 1419,
+      "h": 116,
+      "w": 966
+    },
+    "gapAboveFacts": 24,
+    "gapBelowFacts": 42,
+    "gapCardTopToHead": 42,
+    "phoneCentre": 291,
+    "headCentreMinusPhone": -58,
+    "factsCentreMinusPhone": 42,
+    "columnCentreMinusPhone": 0,
+    "colAlign": {
+      "rowTopDelta": [
+        0,
+        0
+      ],
+      "colLeftDelta": [
+        0,
+        0
+      ]
+    },
+    "size": "1920x1050",
+    "theme": "dark"
+  },
+  {
+    "vw": 917,
+    "vh": 583,
+    "labels": [
+      "Connection",
+      "Address",
+      "Security",
+      "Latency"
+    ],
+    "card": {
+      "top": 140,
+      "bottom": 442,
+      "left": 260,
+      "right": 878,
+      "h": 302,
+      "w": 618
+    },
+    "phone": {
+      "top": 161,
+      "bottom": 421,
+      "left": 281,
+      "right": 429,
+      "h": 260,
+      "w": 148
+    },
+    "head": {
+      "top": 203,
+      "bottom": 263
+    },
+    "facts": {
+      "top": 287,
+      "bottom": 379
+    },
+    "dlBox": {
+      "top": 263,
+      "bottom": 379,
+      "left": 453,
+      "right": 857,
+      "h": 116,
+      "w": 404
+    },
+    "gapAboveFacts": 24,
+    "gapBelowFacts": 42,
+    "gapCardTopToHead": 42,
+    "phoneCentre": 291,
+    "headCentreMinusPhone": -58,
+    "factsCentreMinusPhone": 42,
+    "columnCentreMinusPhone": 0,
+    "colAlign": {
+      "rowTopDelta": [
+        0,
+        0
+      ],
+      "colLeftDelta": [
+        0,
+        0
+      ]
+    },
+    "size": "1100x700@1.2",
+    "theme": "dark"
+  }
+]

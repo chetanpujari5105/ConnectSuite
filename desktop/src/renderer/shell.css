@@ -1299,6 +1299,8 @@ body {
   position: relative;
   z-index: 1;
   flex: none;
+  /* Centred so the narrow step's 210px phone stays on the column's centre; at 260 it fills the card. */
+  align-self: center;
   width: 148px;
   height: 260px;
   padding: 5px;
@@ -1379,7 +1381,16 @@ body {
 }
 .hero[data-state='down'] .hero-phone-badge { display: flex; }
 
-/* The facts column: device name 21/600, the status pill, then the 2 × 2 detail grid. */
+/*
+ * The facts column: device name 21/600, the status pill, then the 2 × 2 detail grid — **one block,
+ * centred on the phone illustration** (2026-10-11, reported twice). The grid used to be pushed to
+ * the card's bottom by `margin-top: auto`, which left 102 px of empty card under the pill and 0 px
+ * under the last row, the facts' centre 84 px below the phone's. Now the column is a vertical flex
+ * that centres its whole content in the card's height, the grid sits a fixed `--space-10` under the
+ * pill, and the title and pill stay first. `safe` so a column taller than the card (larger text)
+ * starts at the top instead of being clipped above it. Gated by `scripts/tile-centre-sweep.mjs`
+ * (`heroLayout`): pill-to-facts 24 px, column centre on the illustration's, both ± 1 px.
+ */
 .hero-facts {
   position: relative;
   z-index: 1;
@@ -1388,7 +1399,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding-top: var(--space-2);
+  justify-content: safe center;
 }
 
 .hero-name {
@@ -1434,8 +1445,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-9) var(--space-10);
   width: 100%;
-  margin: auto 0 0;
-  padding-top: var(--space-10);
+  margin: var(--space-10) 0 0;
 }
 
 /*

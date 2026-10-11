@@ -43,6 +43,19 @@
  *    purpose (`align-items: start`); the second line is a note under the title, and a step list's
  *    marks align to the first line in every checklist idiom.
  *
+ * ### The facts block's place in the card (added 2026-10-11, second report)
+ *
+ * The tiles were centred on their text and the owner still saw the card as wrong — because the
+ * block they sit in was pinned to the card's bottom by `margin-top: auto`: 102 px of empty card
+ * between the Connected pill and the first row, 0 px under the last, the facts' centre 84 px below
+ * the phone illustration's. A tile-to-text check cannot see that, so Overview also records
+ * `heroLayout` and the verdict gates it:
+ *  - the gap from the pill's bottom to the first fact row is `HERO_FACTS_GAP_PX` (± tolerance);
+ *  - the column (title top to last fact's bottom) is centred on the illustration (± tolerance);
+ *  - the two fact columns share row tops and left edges (± tolerance).
+ * Both halves are needed: a column centred on the phone with the facts still pushed away from the
+ * pill passes the second rule and fails the first, and the before build failed both.
+ *
  * ### Control
  *
  * Overview must yield the four hero fact pairs (Connection, Address, Security, Latency) at every
@@ -70,6 +83,9 @@ export const EXCLUDED = Object.freeze([
   { selector: '.pair-step-mark', why: 'pairing checklist marks align to the step title line by design' },
 ]);
 
+/** The designed space between the status pill and the first fact row — `--space-10`. */
+export const HERO_FACTS_GAP_PX = 24;
+
 /** The four Overview facts the control requires. */
 export const CONTROL_LABELS = Object.freeze(['Connection', 'Address', 'Security', 'Latency']);
 
@@ -79,7 +95,7 @@ export const CONTROL_LABELS = Object.freeze(['Connection', 'Address', 'Security'
  * `readings`: [{ screen, size, theme, pairs: [{ where, text, box, optical }] }]
  * Returns { ok, refused, failures, worst } — `refused` when the control did not hold.
  */
-export function verdict(readings, tolerance = TOLERANCE_PX) {
+export function verdict(readings, tolerance = TOLERANCE_PX, { requireLayout = true } = {}) {
   const failures = [];
   const refused = [];
   let worst = 0;
@@ -89,6 +105,15 @@ export function verdict(readings, tolerance = TOLERANCE_PX) {
       const hero = r.pairs.filter((p) => p.where.includes('hero-details')).map((p) => p.text.split(' / ')[0]);
       const missing = CONTROL_LABELS.filter((l) => !hero.includes(l));
       if (missing.length) refused.push(`${r.size} ${r.theme}: control failed — hero facts not found: ${missing.join(', ')}`);
+      // `undefined` is an archived run recorded before this field existed; `null` is a live scan
+      // that looked and could not read the card, which is no reading.
+      if (r.heroLayout === null || (r.heroLayout === undefined && requireLayout)) {
+        refused.push(`${r.size} ${r.theme}: control failed — hero layout not read`);
+      } else if (r.heroLayout) {
+        for (const f of heroLayoutFailures(r.heroLayout, tolerance)) {
+          failures.push({ screen: r.screen, size: r.size, theme: r.theme, where: 'hero layout', text: f.rule, box: f.off, optical: f.off });
+        }
+      }
     }
     for (const p of r.pairs) {
       const off = Math.max(Math.abs(p.optical), Math.abs(p.box));
@@ -97,6 +122,21 @@ export function verdict(readings, tolerance = TOLERANCE_PX) {
     }
   }
   return { ok: failures.length === 0 && refused.length === 0, refused, failures, worst: +worst.toFixed(2) };
+}
+
+/**
+ * The facts block's place in the hero card. `layout`: { gapAbove, columnMinusPhone, rowTopDelta[],
+ * colLeftDelta[] } in CSS px. Returns one entry per broken rule, with how far off it is.
+ */
+export function heroLayoutFailures(layout, tolerance = TOLERANCE_PX) {
+  const out = [];
+  const gapOff = layout.gapAbove - HERO_FACTS_GAP_PX;
+  if (Math.abs(gapOff) > tolerance) out.push({ rule: `pill-to-facts gap ${layout.gapAbove} px, designed ${HERO_FACTS_GAP_PX}`, off: +gapOff.toFixed(2) });
+  if (Math.abs(layout.columnMinusPhone) > tolerance) out.push({ rule: `column centre ${layout.columnMinusPhone} px from the illustration's`, off: layout.columnMinusPhone });
+  for (const d of [...layout.rowTopDelta, ...layout.colLeftDelta]) {
+    if (Math.abs(d) > tolerance) { out.push({ rule: `fact columns out of line by ${d} px`, off: d }); break; }
+  }
+  return out;
 }
 
 /** Evaluated in the page. Returns { screen, vw, dpr, pairs, excludedSeen }. */
@@ -153,7 +193,27 @@ export const SCAN = (excluded) => `(() => {
       break;
     }
   }
-  return { screen: shell.screen, landed: !!sec && vis(sec), vw: innerWidth, dpr: devicePixelRatio, pairs, excludedSeen };
+  let heroLayout;
+  if (shell.screen === 'overview') {
+    heroLayout = null;
+    const card = document.getElementById('hero-card');
+    const phone = card && card.querySelector('.hero-phone');
+    const name = document.getElementById('hero-name');
+    const chip = document.getElementById('hero-chip');
+    const cells = [...document.querySelectorAll('#hero-facts > .detail')].filter(vis).map((d) => d.getBoundingClientRect());
+    if (card && vis(card) && phone && vis(phone) && name && chip && cells.length === 4) {
+      const f = (x) => +x.toFixed(2);
+      const p = phone.getBoundingClientRect(), n = name.getBoundingClientRect(), k = chip.getBoundingClientRect();
+      const factsTop = Math.min(...cells.map((c) => c.top)), factsBottom = Math.max(...cells.map((c) => c.bottom));
+      heroLayout = {
+        gapAbove: f(factsTop - k.bottom),
+        columnMinusPhone: f((n.top + factsBottom) / 2 - (p.top + p.bottom) / 2),
+        rowTopDelta: [f(cells[1].top - cells[0].top), f(cells[3].top - cells[2].top)],
+        colLeftDelta: [f(cells[2].left - cells[0].left), f(cells[3].left - cells[1].left)],
+      };
+    }
+  }
+  return { screen: shell.screen, landed: !!sec && vis(sec), vw: innerWidth, dpr: devicePixelRatio, pairs, excludedSeen, heroLayout };
 })()`;
 
 const ALL_ROUTES = ['overview', 'mirror', 'files', 'photos', 'messages', 'notifications', 'clipboard', 'calls',
@@ -214,7 +274,7 @@ async function main() {
           const r = await ev(SCAN(EXCLUDED));
           if (!r.landed) { readings.push({ screen: route, size, theme, refused: 'pane not visible — no reading' }); continue; }
           for (const [k, v] of Object.entries(r.excludedSeen)) excludedTotals[k] += v;
-          readings.push({ screen: route, size, theme, vw: r.vw, dpr: r.dpr, pairs: r.pairs });
+          readings.push({ screen: route, size, theme, vw: r.vw, dpr: r.dpr, pairs: r.pairs, ...(r.heroLayout !== undefined ? { heroLayout: r.heroLayout } : {}) });
         }
       }
     }
@@ -227,6 +287,10 @@ async function main() {
     if (r.refused) { console.log(`REFUSED ${r.screen} ${r.size} ${r.theme}: ${r.refused}`); continue; }
     if (!r.pairs.length) continue;
     console.log(`${r.screen} ${r.size} ${r.theme} (${r.pairs.length} pairs, vw ${r.vw})`);
+    if (r.heroLayout) {
+      const L = r.heroLayout; const bad = heroLayoutFailures(L).length ? '  ✗' : '';
+      console.log(`  hero layout: pill→facts ${L.gapAbove} px (designed ${HERO_FACTS_GAP_PX}), column−illustration ${L.columnMinusPhone} px, rows ${L.rowTopDelta.join('/')}, cols ${L.colLeftDelta.join('/')}${bad}`);
+    }
     for (const p of r.pairs) {
       const bad = Math.max(Math.abs(p.optical), Math.abs(p.box)) > TOLERANCE_PX ? '  ✗' : '';
       console.log(`  box ${p.box.toFixed(2).padStart(6)}  optical ${p.optical.toFixed(2).padStart(6)}  ${p.where.split('>').slice(-2).join('>')} | ${p.text}${bad}`);
