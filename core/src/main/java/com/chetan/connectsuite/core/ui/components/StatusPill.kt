@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.chetan.connectsuite.core.ui.Radius
 import com.chetan.connectsuite.core.ui.SidekickColors
@@ -55,6 +56,21 @@ private val StatusKind.edge: Color
         StatusKind.Neutral -> SidekickColors.border
     }
 
+/**
+ * The pill's padding. A pure decision, so a JVM test can call the rule the composable uses.
+ *
+ * **Without its background a pill has no padding at all** (2026-10-11). The padding is the pill's
+ * inside; with nothing drawn it is empty box above and below the text, and a row that centres
+ * against that box centres on the box rather than on the letters — the "Your Mac" card's tile sat
+ * 4.13 dp below its three lines of text on the SM-S938B because of the 8 dp under "Connected".
+ */
+object StatusPillMetrics {
+    data class Padding(val horizontal: Dp, val vertical: Dp)
+
+    fun padding(showBackground: Boolean): Padding =
+        if (showBackground) Padding(horizontal = Space.md, vertical = Space.sm) else Padding(0.dp, 0.dp)
+}
+
 /** A dot and a word: the smallest honest statement of a state. */
 @Composable
 fun StatusPill(
@@ -75,7 +91,10 @@ fun StatusPill(
                     Modifier
                 },
             )
-            .padding(horizontal = if (showBackground) Space.md else 0.dp, vertical = Space.sm),
+            .padding(
+                horizontal = StatusPillMetrics.padding(showBackground).horizontal,
+                vertical = StatusPillMetrics.padding(showBackground).vertical,
+            ),
         horizontalArrangement = Arrangement.spacedBy(Space.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
