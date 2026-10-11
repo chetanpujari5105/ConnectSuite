@@ -14,6 +14,7 @@ const {
   multiSelectionSummary,
   downloadWallHome,
   wallHomeVisibility,
+  overviewSendState,
 } = require('./filesRoots.ts');
 
 /**
@@ -319,4 +320,43 @@ test('the renderer sets each home once, and both from the shared decision', () =
   assert.equal(count('showsState'), 0, 'the old renderer-local condition must not come back');
   // Control: the scan can see these strings at all.
   assert.ok(count('this.stateEl.hidden') > 0 && count('this.wallEl.hidden') > 0);
+});
+
+// ---- Overview's Send files (2026-10-11) ----
+
+const linkUp = { connected: true, advertised: true, unavailableReason: null, push: true, sending: false };
+
+test('Overview Send files: enabled on a connected phone that said it receives, with no reason', () => {
+  assert.deepEqual(overviewSendState(linkUp), { enabled: true, reason: null });
+});
+
+test('Overview Send files: not yet asked is enabled — never greyed on a guess', () => {
+  // The roots ack is fetched when Files opens; before that nothing has said "no".
+  assert.deepEqual(overviewSendState({ ...linkUp, push: null }), { enabled: true, reason: null });
+});
+
+test('Overview Send files: each "cannot" is disabled with its own reason', () => {
+  const down = overviewSendState({ ...linkUp, connected: false, advertised: false });
+  assert.equal(down.enabled, false);
+  assert.match(down.reason!, /connect/i, 'not connected says so, not "unavailable"');
+
+  const phoneSays = 'Files needs the storage permission on the phone.';
+  assert.deepEqual(overviewSendState({ ...linkUp, advertised: false, unavailableReason: phoneSays }), { enabled: false, reason: phoneSays });
+  const noReason = overviewSendState({ ...linkUp, advertised: false });
+  assert.equal(noReason.enabled, false);
+  assert.ok(noReason.reason && noReason.reason.length > 0);
+
+  const noPush = overviewSendState({ ...linkUp, push: false });
+  assert.equal(noPush.enabled, false);
+  assert.match(noPush.reason!, /does not accept files/);
+
+  const busy = overviewSendState({ ...linkUp, sending: true });
+  assert.equal(busy.enabled, false);
+  assert.match(busy.reason!, /Files/);
+});
+
+test('Overview Send files: not connected outranks everything — a stale capability list is not a reason', () => {
+  const r = overviewSendState({ connected: false, advertised: true, unavailableReason: null, push: true, sending: false });
+  assert.equal(r.enabled, false);
+  assert.match(r.reason!, /connect/i);
 });

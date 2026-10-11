@@ -65,8 +65,11 @@ class FakeBridge {
   sendResults: Array<{ ok: boolean; reason?: string; code?: string; sentAs?: string }> = [];
   /** Called when a send is agreed, so a test can play the phone's events against the right id. */
   onAgreed: ((source: string) => void) | null = null;
-  async fsSend(options: { source: string }) {
+  /** Where each send was aimed — root and folder — in order. */
+  readonly sentTo: string[] = [];
+  async fsSend(options: { source: string; rootId?: string; path?: string }) {
     this.sent.push(options.source);
+    this.sentTo.push(`${options.rootId}/${options.path}`);
     this.onAgreed?.(options.source);
     return this.sendResults.shift() ?? { ok: true };
   }
@@ -1297,6 +1300,100 @@ test('a folder opened again is drawn at once from what was shown, then re-checke
     release();
     await tick();
     assert.deepEqual(names(), ['new.jpg', 'one.jpg', 'two.jpg'], 'the re-check did not merge the new file');
+  } finally {
+    pane.restore();
+  }
+});
+
+// ---- Overview's Send files (2026-10-11) ----
+
+/**
+ * The Overview button is a second door to **the same** [pickAndOffer] the toolbar's Send to phone…
+ * calls — not a copy of it. The spy replaces the method on the instance, so a wiring that reached the
+ * picker any other way (a second implementation, a direct bridge call) leaves the count at zero.
+ */
+test('Overview Send files: routes to Files and calls the Files pane’s own pickAndOffer, aimed at Received files', async () => {
+  const pane = mount();
+  try {
+    pane.view.setAdvertised(true, null);
+    pane.bridge.roots = [TREE, DOWNLOADS, APP];
+    pane.bridge.push = true;
+    pane.view.setPhoneName('Samsung SM-S938B');
+    pane.bridge.picked = [{ source: '/m/a.txt', name: 'a.txt', size: 12 }];
+
+    const view = pane.view as unknown as { pickAndOffer(): Promise<void> };
+    const original = view.pickAndOffer.bind(view);
+    let calls = 0;
+    view.pickAndOffer = async () => {
+      calls += 1;
+      return original();
+    };
+
+    const wire = (globalThis as Record<string, unknown>).wireOverviewSend as (
+      b: FakeElement, v: unknown, route: (id: string) => void,
+    ) => void;
+    assert.equal(typeof wire, 'function', 'files.ts exposes the Overview wiring');
+    const button = el('button');
+    const routed: string[] = [];
+    wire(button, pane.view, (id) => routed.push(id));
+
+    button.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+
+    assert.deepEqual(routed, ['files'], 'the person sees the card and the progress where they live');
+    assert.equal(calls, 1, 'the Files pane’s own pickAndOffer, once');
+    assert.deepEqual(pane.bridge.sent, [], 'a confirmation, not a send');
+    const text = pane.detail.textContent;
+    assert.ok(text.includes('Send 1 file to Samsung SM-S938B?'), text);
+    assert.ok(text.includes('Received files'), 'the destination is named on the card');
+    // Only the destination was listed: the granted tree (the pane's usual first pick) was never read.
+    assert.equal(pane.bridge.calls.filter((c) => c === 'fsList').length, 1, pane.bridge.calls.join(','));
+
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sentTo, ['downloads:connectsuite/']);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Overview Send files: a disabled button does nothing', async () => {
+  const pane = mount();
+  try {
+    let calls = 0;
+    (pane.view as unknown as { pickAndOffer(): Promise<void> }).pickAndOffer = async () => { calls += 1; };
+    const wire = (globalThis as Record<string, unknown>).wireOverviewSend as (
+      b: FakeElement, v: unknown, route: (id: string) => void,
+    ) => void;
+    const button = el('button');
+    (button as unknown as { disabled: boolean }).disabled = true;
+    const routed: string[] = [];
+    wire(button, pane.view, (id) => routed.push(id));
+    button.click();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(calls, 0);
+    assert.deepEqual(routed, []);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Overview Send files: the pane reports whether it can take a send — the phone’s push answer and a batch in flight', async () => {
+  const pane = mount();
+  try {
+    const states: Array<{ push: boolean | null; sending: boolean }> = [];
+    (pane.view as unknown as { onSendStateChanged: unknown }).onSendStateChanged = (s: { push: boolean | null; sending: boolean }) => states.push(s);
+    await readyToSend(pane);
+    assert.deepEqual(states.at(-1), { push: true, sending: false });
+    pane.bridge.picked = [{ source: '/m/v.mov', name: 'v.mov', size: 1000 }];
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(states.at(-1), { push: true, sending: true }, 'a batch in flight');
+
+    pane.bridge.push = false;
+    await pane.view.refresh();
+    assert.equal(states.at(-1)!.push, false, 'the phone said no');
   } finally {
     pane.restore();
   }

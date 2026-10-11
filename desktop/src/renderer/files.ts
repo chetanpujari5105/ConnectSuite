@@ -163,6 +163,19 @@ class FilesView {
   private pushAvailable = false;
 
   /**
+   * `pushAvailable` as a three-way answer for Overview's **Send files**: `null` until a roots ack
+   * has said anything, so a pane that has never been opened is not read as a phone that said no.
+   */
+  private pushAnswered: boolean | null = null;
+
+  /** Told whether this pane can take a send now, for Overview's **Send files**. Called on change. */
+  onSendStateChanged: ((state: { push: boolean | null; sending: boolean }) => void) | null = null;
+  private lastSendState = '';
+
+  /** A root kind the next [refresh] opens instead of its usual first pick — set by [sendToReceivedFiles]. */
+  private preferKind: string | null = null;
+
+  /**
    * Files chosen and not yet confirmed. **Nothing moves until Send is pressed** — the card names the
    * phone, the folder, the count and the total first, for a drop and for the picker alike.
    */
@@ -382,8 +395,14 @@ class FilesView {
     this.roots = result.data?.roots ?? [];
     this.grantHint = result.data?.grantHint ?? null;
     this.pushAvailable = pushOffered(result.data?.push);
+    this.pushAnswered = this.pushAvailable;
     this.fetch = { kind: 'ready', roots: this.roots, grantHint: this.grantHint };
-    if (this.selectedRoot === null || !this.roots.some((r) => r.rootId === this.selectedRoot)) {
+    const preferred = this.preferKind === null ? undefined : this.roots.find((r) => r.kind === this.preferKind);
+    this.preferKind = null;
+    if (preferred) {
+      // Asked for by name (Overview's Send files): the one folder that is wanted is the only one listed.
+      this.selectedRoot = preferred.rootId;
+    } else if (this.selectedRoot === null || !this.roots.some((r) => r.rootId === this.selectedRoot)) {
       // Prefer a granted tree over the app-private root: `ConnectSuite`'s own folder is always
       // present and is almost never what someone opened this pane to look at.
       this.selectedRoot = (this.roots.find((r) => r.kind === 'tree') ?? this.roots[0])?.rootId
@@ -431,6 +450,7 @@ class FilesView {
     this.roots = roots.data?.roots ?? [];
     this.grantHint = roots.data?.grantHint ?? null;
     this.pushAvailable = pushOffered(roots.data?.push);
+    this.pushAnswered = this.pushAvailable;
     this.fetch = { kind: 'ready', roots: this.roots, grantHint: this.grantHint };
     if (!this.roots.some((r) => r.rootId === rootId)) {
       // The folder's root is gone (a grant removed on the phone): the full path picks another.
@@ -678,6 +698,31 @@ class FilesView {
   }
 
   /**
+   * Overview's **Send files** (2026-10-11): this pane's own [pickAndOffer] — the picker the person
+   * chooses in (S4), the same confirmation card, the same batch, progress, cancel, resume and
+   * verdict — aimed at **Received files** (`Download/ConnectSuite`), the destination that needs no
+   * grant and is writable on every phone, because a button outside this pane has no open folder to
+   * mean. The card names it before anything moves.
+   *
+   * A pane never opened is loaded with that root as its pick, so the picker is not held behind a
+   * listing of some other folder. If the pane cannot send (failed, not offered, push refused),
+   * [pickAndOffer] does nothing and the pane on screen says why.
+   */
+  async sendToReceivedFiles(): Promise<void> {
+    if (this.fetch.kind !== 'ready') {
+      this.preferKind = 'downloads';
+      await this.refresh();
+      this.preferKind = null;
+    }
+    const received = this.roots.find((r) => r.kind === 'downloads');
+    if (received && (this.selectedRoot !== received.rootId || this.path !== '')) {
+      this.selectedRoot = received.rootId;
+      void this.openPath('');
+    }
+    await this.pickAndOffer();
+  }
+
+  /**
    * A drop becomes an offer, not a send.
    *
    * **Defect 132:** `file.path` does not exist in Electron ≥ 32, so every drop used to end in
@@ -724,6 +769,15 @@ class FilesView {
     this.pendingSend = unique;
     this.pendingSkipped = skipped;
     this.render();
+  }
+
+  /** Tells Overview whether a send can start — on change only, since this runs on every render. */
+  private reportSendState(): void {
+    const state = { push: this.pushAnswered, sending: this.batch !== null && !sendBatchSettled(this.batch) };
+    const key = `${state.push}|${state.sending}`;
+    if (key === this.lastSendState) return;
+    this.lastSendState = key;
+    this.onSendStateChanged?.(state);
   }
 
   /** Only a ready pane over a writable folder, on a phone that serves push, can be sent to. */
@@ -1118,6 +1172,7 @@ class FilesView {
 
   private render(): void {
     const view = filesPaneView(this.fetch, this.pushAvailable);
+    this.reportSendState();
 
     /*
      * M6 — advertised, and one direction degraded. A **compact** state block over a working pane
@@ -2389,6 +2444,26 @@ function filesBridgeFrom(connect: FilesConnect): FilesBridge {
     fsThumbs: (options) => connect.fsThumbs(options),
   };
 }
+
+/**
+ * Overview's **Send files** button, wired to the Files pane's own send (`sendToReceivedFiles`, which
+ * is [FilesView.pickAndOffer]) — a second door, not a second implementation. Here rather than in
+ * `renderer.ts` so `filesView.test.ts` can press it. The send starts before the route so the pane's
+ * first load is aimed at Received files rather than at whatever it would have opened.
+ */
+function wireOverviewSend(
+  button: HTMLElement,
+  view: Pick<FilesView, 'sendToReceivedFiles'>,
+  route: (id: string) => void,
+): void {
+  button.addEventListener('click', () => {
+    if ((button as HTMLButtonElement).disabled) return;
+    const sending = view.sendToReceivedFiles();
+    route('files');
+    void sending;
+  });
+}
+(globalThis as Record<string, unknown>).wireOverviewSend = wireOverviewSend;
 
 /**
  * The Files pane's event subscriptions, on the view the page built. A send is drawn from the phone's

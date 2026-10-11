@@ -278,8 +278,11 @@
                   <button type="button" id="hero-mirror" class="button primary-action hero-pill-action">
                     <span id="hero-mirror-label">Start mirroring</span><span class="mono hero-key" id="hero-mirror-key">⌘⇧M</span>
                   </button>
+                  <button type="button" id="hero-send" class="button hero-pill-action" aria-describedby="hero-send-why">Send files</button>
                   <button type="button" id="hero-info" class="button hero-pill-action">Device info</button>
-                  <button type="button" id="hero-activity" class="button hero-pill-action">View activity</button>
+                  <!-- Why Send files is disabled, when it is: spoken through aria-describedby, and the
+                       same sentence is the button's tooltip. Empty while it is enabled. -->
+                  <span id="hero-send-why" class="visually-hidden"></span>
                 </div>
 
                 <!--

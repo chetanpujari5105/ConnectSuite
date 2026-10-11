@@ -473,6 +473,23 @@ const el = <T extends HTMLElement>(id: string): T => document.getElementById(id)
  */
 let canMirror = false;
 let mirrorSession: MirrorSession = 'idle';
+/**
+ * Overview's **Send files**: enabled or disabled with its reason, from `overviewSendState`
+ * (shared/filesRoots.ts, where it is tested) — the link's facts from `render`, the phone's push
+ * answer and a batch in flight from the Files pane. The reason is the tooltip and, through
+ * `aria-describedby`, what a screen reader hears after the name.
+ */
+let heroSendLink = { connected: false, advertised: false, unavailableReason: null as string | null };
+let heroSendPane: { push: boolean | null; sending: boolean } = { push: null, sending: false };
+function paintHeroSend(): void {
+  const state = overviewSendState({ ...heroSendLink, ...heroSendPane });
+  const button = el<HTMLButtonElement>('hero-send');
+  button.disabled = !state.enabled;
+  if (state.reason) button.title = state.reason;
+  else button.removeAttribute('title');
+  el('hero-send-why').textContent = state.reason ?? '';
+}
+
 function paintMirrorButtons(): void {
   const b = mirrorButtons(canMirror, mirrorSession);
   const start = el<HTMLButtonElement>('mirror-start');
@@ -588,6 +605,13 @@ function render(status: RendererStatus | null): void {
     status?.capabilities?.includes('files') ?? false,
     reasons.get('files') ?? null,
   );
+  // Overview's Send files reads the same three facts, at the same moment, plus the pane's own answer.
+  heroSendLink = {
+    connected: status?.phase === 'connected',
+    advertised: status?.capabilities?.includes('files') ?? false,
+    unavailableReason: reasons.get('files') ?? null,
+  };
+  paintHeroSend();
   // The media remote rides the notification-listener grant, so this lights together with
   // `notifications` — one grant, two features. See docs/protocol.md.
   // Defect 85. Two facts, kept apart on purpose: `connected` is the phase and `advertised` is the
@@ -1293,6 +1317,12 @@ shell.onRoute((id) => {
  * recorded in Activity and acknowledged by the toast, which is what a moment gets.
  */
 if (files) files.onWorkChanged = (work) => shell.setWork(work);
+if (files) {
+  files.onSendStateChanged = (state) => {
+    heroSendPane = state;
+    paintHeroSend();
+  };
+}
 // Feature B (2026-09-23) and fs.blocks: the pane's event subscriptions — see wireFilesEvents.
 if (files) wireFilesEvents(connect, files);
 
@@ -1794,8 +1824,8 @@ el('recent-all').append(iconSvg('chevron', 14));
 // page is a copy of geometry that `icons.test.ts` cannot see. `prepend` so the label stays the
 // element's first text and the accessible name is unchanged.
 el('hero-mirror').prepend(iconSvg('mirror', 15));
+el('hero-send').prepend(iconSvg('upload', 15));
 el('hero-info').prepend(iconSvg('info', 15));
-el('hero-activity').prepend(iconSvg('activity', 15));
 // The card is redrawn when the screen is opened rather than on a timer: it is five rows off a
 // store the main process already holds, and a dashboard that silently refetches every second is a
 // cost with nothing behind it.
@@ -2602,9 +2632,13 @@ el('hero-mirror').addEventListener('click', () => {
   void mirror.start(selectedQuality());
 });
 el('hero-info').addEventListener('click', () => shell.route('settings', 'connection'));
-// The pill row's third action — brief-chosen, since the handoff only draws two. Same destination
-// `#recent-all` already routes to; not a second copy of that decision, just a second door to it.
-el('hero-activity').addEventListener('click', () => shell.route('activity'));
+/*
+ * **Send files** — the pill row's second action since 2026-10-11, replacing *View activity* (Recent
+ * activity's **View all** and the sidebar still reach that pane). It is the Files pane's own send —
+ * `wireOverviewSend` in files.ts calls the same `pickAndOffer` as **Send to phone…** — so the
+ * picker, the confirmation card, the progress, cancel, resume and the verdict are all that pane's.
+ */
+if (files) wireOverviewSend(el('hero-send'), files, (id) => shell.route(id));
 
 /*
  * **The hero has no overflow menu — removed 2026-09-16, departure O16.**

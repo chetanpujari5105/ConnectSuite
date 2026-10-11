@@ -197,6 +197,33 @@ function pushOffered(raw: unknown): boolean {
   return raw === true;
 }
 
+/**
+ * Overview's **Send files** button (2026-10-11): whether it may be pressed, and if not, the reason —
+ * one short sentence, spoken and shown on hover.
+ *
+ * `push` is `null` until a roots ack has answered (Files fetches on open), and **unknown is enabled**:
+ * nothing has said "no", and a button greyed on a guess is the false *isn't available* this must
+ * never draw. Pressing it opens Files, which asks, and says so there if the answer is no — and from
+ * then on this reads `false`. Not connected comes first, because a capability list read on a dropped
+ * link would report a connection problem as a permission one (defect 85's two facts).
+ */
+function overviewSendState(input: {
+  connected: boolean;
+  advertised: boolean;
+  unavailableReason: string | null;
+  push: boolean | null;
+  sending: boolean;
+}): { enabled: boolean; reason: string | null } {
+  if (!input.connected) return { enabled: false, reason: 'Connect your phone to send it files.' };
+  if (!input.advertised) {
+    // The phone's own sentence, verbatim — it knows which grant is missing and this side does not.
+    return { enabled: false, reason: input.unavailableReason ?? 'This phone isn’t offering Files right now.' };
+  }
+  if (input.push === false) return { enabled: false, reason: 'This phone does not accept files from this Mac.' };
+  if (input.sending) return { enabled: false, reason: 'Files are already on their way. Progress is in Files.' };
+  return { enabled: true, reason: null };
+}
+
 /** The view for a fetch state. Pure, total, and the only place this copy exists. */
 function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView {
   const degraded = !pushAvailable;
@@ -468,6 +495,7 @@ function wallHomeVisibility(home: WallHome): { stateCard: boolean; railLine: boo
   g.ADDED_ON_THE_PHONE = ADDED_ON_THE_PHONE;
   g.RECEIVED_FILES_ALWAYS_WORKS = RECEIVED_FILES_ALWAYS_WORKS;
   g.rootName = rootName;
+  g.overviewSendState = overviewSendState;
 }
 
 if (typeof module !== 'undefined') {
@@ -486,5 +514,6 @@ if (typeof module !== 'undefined') {
     ADDED_ON_THE_PHONE,
     RECEIVED_FILES_ALWAYS_WORKS,
     rootName,
+    overviewSendState,
   };
 }
