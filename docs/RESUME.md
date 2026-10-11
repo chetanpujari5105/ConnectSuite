@@ -1,4 +1,4 @@
-# SEND FILES, SPACING, RC `8f8ecbb`, BETA DOCS — 2026-10-11 night: 5 local commits; nothing pushed, signed or published
+# SEND FILES, SPACING, RC `8f8ecbb`, BETA DOCS — 2026-10-11 night: 6 local commits; nothing pushed, signed or published
 
 1. **Committed (owner-approved):** `c013ff8` the Overview row Start mirroring · **Send files** · Device info
    (Send files = the Files pane's own `pickAndOffer`, aimed at Received files; View activity removed);
@@ -6,12 +6,10 @@
    `8b1c4d8` `tile-centre-sweep.mjs` gates text-block spacing + evidence `docs/evidence/recent-spacing-2026-10-11/`;
    `8f8ecbb` design-departures V4; plus this docs commit. Mac 2,054 / 0, scripts 308 / 0, all 16 hooks allowed
    every commit. The owner's uncommitted edits in 12 files are untouched.
-2. **Send files hardware check is NOT done.** The owner reported sending the two synthetic files. Both logs
-   (Mac and phone, rotated file included) show only one push since 23:00, `-a4SbfD_SeSbHeFk.mp4`
-   (7,656,651 bytes, `verified=true`), and neither `.bin` is on the phone. Sources kept:
-   `~/Desktop/sidekick-send-test-2026-10-11/send-{small,100mb}-2026-10-11.bin` (sha256 `dbfe7be8…0748`,
-   `a852b0f4…8139`). Next: the owner presses Send files and picks both; then hash both ends, compare with a Files
-   send, delete by literal path.
+2. **Send files hardware check passed** (23:57–23:58): both synthetic files sent from the Overview button, the
+   phone `verified=true` for each, and `sha256sum` on the phone equal to the Mac sources (4 KiB `dbfe7be8…0748`,
+   100 MiB `a852b0f4…8139`, 240.8 Mbit/s). All synthetic copies deleted by literal path (Desktop sources and
+   folder, the copy-back in `~/Downloads/Sidekick`, the two phone MediaStore rows); nothing else touched.
 3. **Release candidate `8f8ecbb`** (unsigned, ad-hoc, isolated build, nothing launched):
    `~/.connectsuite-evidence-private/rc-8f8ecbb/` with SHA256SUMS; `rc-34362e1/` kept. arm64 `.dmg`
    `2dd74a2a…b92b`, APK `53802a45…dc0f`. Static checks all pass (fuses `000011011`, quarantine key, ASAR
@@ -22,7 +20,7 @@
    privacy/Data-safety draft re-checked against `8f8ecbb` (Tailscale sentence softened, no in-app permission
    page), `docs/trial-licence-summary-2026-10-11.md`, `docs/beta-launch-checklist-2026-10-11.md` (19 steps).
    Statements still to confirm: release-candidate record §5 (13) and §6 (9).
-5. **Next:** checklist step 1 (the two sends), then the owner's trial decision (step 2).
+5. **Next:** the owner's trial decision (checklist step 2), then publisher details (step 5).
 
 # CARD LAYOUT, PHONE TILE, QUIT WORDING, RAW SPEED — 2026-10-11 late afternoon: 4 local commits; nothing pushed, signed or published
 

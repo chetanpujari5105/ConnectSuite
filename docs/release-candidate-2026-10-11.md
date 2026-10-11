@@ -62,21 +62,25 @@ passes. The Intel framework carries the signature it arrived with. **The Intel a
 | New logo | `mipmap/ic_launcher_mask`, all five densities, **pixel-identical** to the source PNGs (resolved through the resource table — release renames and recompresses, so a byte comparison reads 0 and is the wrong instrument) |
 | New strings | *Scan pairing code*, *Paired Macs*, *Connect your Mac*, *Scan the code* in the dex |
 
-## 4. The Send files hardware check (Mac → phone) — **not yet done**
+## 4. The Send files hardware check (Mac → phone) — **passed, 2026-10-11 23:57–23:58**
 
-The owner reported sending the 4 KiB and 100 MiB synthetic files from the new button. **Two independent logs
-show they were not sent:** from 23:00 to 23:31 the Mac's log and the phone's log (including its rotated file)
-record exactly one push to the phone — `-a4SbfD_SeSbHeFk.mp4`, 7,656,651 bytes, 23:22:08, into Received files,
-`verified=true` — and neither `.bin` is in `Download/ConnectSuite` (control: that folder listed two `.mp4`). The
-synthetic sources are kept until the check runs:
+A first report of the sends at 23:31 was not borne out by either log (one unrelated `.mp4` push only, neither
+`.bin` on the phone), so the check was re-run. The owner pressed **Send files** on Overview and chose both
+synthetic files. Mac log: `hashed … before sending`, then `pushed … to downloads:connectsuite/` for each,
+the same lines as a send from Files, because it is the same function. The phone's log:
+`received … into Received files … verified=true (agreed in advance and matched)` for both. The owner confirmed
+the card and the progress.
 
-| File | Bytes | SHA-256 |
-|---|---|---|
-| `~/Desktop/sidekick-send-test-2026-10-11/send-small-2026-10-11.bin` | 4,096 | `dbfe7be853d0eb741e209b4d4e0307bf8bcbc5cb8a3422b3c37581d2a1e30748` |
-| `~/Desktop/sidekick-send-test-2026-10-11/send-100mb-2026-10-11.bin` | 104,857,600 | `a852b0f4e75e5fab5139cc43edc0b064eb485e0c633530a6ca171037c3508139` |
+| File | Bytes | Mac source | Phone copy (`sha256sum` on the phone) | Throughput (phone) |
+|---|---|---|---|---|
+| `send-small-2026-10-11.bin` | 4,096 | `dbfe7be853d0eb741e209b4d4e0307bf8bcbc5cb8a3422b3c37581d2a1e30748` | identical | 8 ms |
+| `send-100mb-2026-10-11.bin` | 104,857,600 | `a852b0f4e75e5fab5139cc43edc0b064eb485e0c633530a6ca171037c3508139` | identical | 3,483 ms, 240.8 Mbit/s |
 
-The mp4 push itself is a valid reading of the send path (same function either way), but nothing records
-whether it came from the Overview button or from Files.
+The small file was also copied back to the Mac at 23:59:09 (`~/Downloads/Sidekick/`, `verified=true`, same
+hash). **Deleted by literal path afterwards:** both sources and their folder on the Desktop, the copy-back in
+`~/Downloads/Sidekick/`, and on the phone MediaStore rows `1000319305` and `1000319304` (file and row together,
+through the pinned `adb`). Read after: 0 matches on the Mac (24 other received files untouched); the phone's
+folder and MediaStore list exactly the two `.mp4` files that were there before.
 
 ## 5. Tester guide — statements the owner still has to confirm
 
