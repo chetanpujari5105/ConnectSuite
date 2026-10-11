@@ -1,0 +1,166 @@
+{
+  "synthetic": true,
+  "size": "1480x900",
+  "theme": "dark",
+  "report": {
+    "worst": {
+      "card": {
+        "y": 514,
+        "h": 281
+      },
+      "rows": [
+        {
+          "h": 52,
+          "titleEllipsed": false,
+          "detailEllipsed": false,
+          "mainRight": 733,
+          "metaLeft": 745,
+          "meta": "Samsung Galaxy S25 Ultra of a very long owner name"
+        },
+        {
+          "h": 52,
+          "titleEllipsed": false,
+          "detailEllipsed": true,
+          "mainRight": 935,
+          "metaLeft": 947,
+          "meta": ""
+        },
+        {
+          "h": 52,
+          "titleEllipsed": false,
+          "detailEllipsed": false,
+          "mainRight": 870,
+          "metaLeft": 882,
+          "meta": "v2.0.0"
+        },
+        {
+          "h": 52,
+          "titleEllipsed": false,
+          "detailEllipsed": false,
+          "mainRight": 935,
+          "metaLeft": 947,
+          "meta": ""
+        }
+      ],
+      "empty": null,
+      "pairs": [
+        {
+          "text": "Connected / Successfully connected to your phone",
+          "optical": -0.17,
+          "box": 0,
+          "spacing": {
+            "inkGap": 6.63,
+            "boxGap": 2,
+            "top": 12.84,
+            "bottom": 10.26,
+            "descClip": 0.58,
+            "clipFirst": 0.58,
+            "clipLast": 1.26,
+            "divider": true,
+            "rowH": 52
+          },
+          "failures": []
+        },
+        {
+          "text": "Sent to phone — a deliberately long title that must ellipsis",
+          "optical": -0.17,
+          "box": 0,
+          "spacing": {
+            "inkGap": 6.63,
+            "boxGap": 2,
+            "top": 12.84,
+            "bottom": 10.26,
+            "descClip": 0.58,
+            "clipFirst": 0.58,
+            "clipLast": 1.26,
+            "divider": true,
+            "rowH": 52
+          },
+          "failures": []
+        },
+        {
+          "text": "Sidekick started / Application launched",
+          "optical": -0.17,
+          "box": 0,
+          "spacing": {
+            "inkGap": 6.63,
+            "boxGap": 2,
+            "top": 12.84,
+            "bottom": 10.26,
+            "descClip": 0.58,
+            "clipFirst": 0.58,
+            "clipLast": 1.26,
+            "divider": true,
+            "rowH": 52
+          },
+          "failures": []
+        },
+        {
+          "text": "Sent to phone / 509 B, automatically",
+          "optical": -0.17,
+          "box": 0,
+          "spacing": {
+            "inkGap": 6.63,
+            "boxGap": 2,
+            "top": 12.84,
+            "bottom": 10.26,
+            "descClip": 0.58,
+            "clipFirst": 0.58,
+            "clipLast": 1.26,
+            "divider": false,
+            "rowH": 52
+          },
+          "failures": []
+        }
+      ]
+    },
+    "one": {
+      "card": {
+        "y": 514,
+        "h": 125
+      },
+      "rows": [
+        {
+          "h": 52,
+          "titleEllipsed": false,
+          "detailEllipsed": false,
+          "mainRight": 935,
+          "metaLeft": 947,
+          "meta": ""
+        }
+      ],
+      "empty": null,
+      "pairs": [
+        {
+          "text": "Sent to phone / 509 B, automatically",
+          "optical": -0.17,
+          "box": 0,
+          "spacing": {
+            "inkGap": 6.63,
+            "boxGap": 2,
+            "top": 12.84,
+            "bottom": 10.26,
+            "descClip": 0.58,
+            "clipFirst": 0.58,
+            "clipLast": 1.26,
+            "divider": false,
+            "rowH": 52
+          },
+          "failures": []
+        }
+      ]
+    },
+    "empty": {
+      "card": {
+        "y": 514,
+        "h": 129.1484375
+      },
+      "rows": [],
+      "empty": {
+        "text": "Nothing yet. Transfers, calls and clipboard syncs appear here as they happen.",
+        "h": 56.1484375
+      },
+      "pairs": []
+    }
+  }
+}

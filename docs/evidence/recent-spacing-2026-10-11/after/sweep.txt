@@ -1,0 +1,180 @@
+overview 1100x700 dark (10 pairs, vw 1100)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 22%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 7 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 41.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 72
+overview 1440x900 dark (10 pairs, vw 1440)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 22%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 9 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 25.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 56
+overview 1920x1050 dark (10 pairs, vw 1920)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 22%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 8 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 25.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 56
+overview 1100x700@1.2 dark (10 pairs, vw 917)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 22%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 7 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 41.58  box gap 4  top 4.93  bottom 45.85  descender clip 1.68 (lines 1.68/1.85)  row 116
+overview 1100x700 light (10 pairs, vw 1100)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 22%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 16 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 41.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 72
+overview 1440x900 light (10 pairs, vw 1440)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 21%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 9 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 25.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 56
+overview 1920x1050 light (10 pairs, vw 1920)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 21%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 7 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 25.58  box gap 4  top 4.93  bottom 1.85  descender clip 1.68 (lines 1.68/1.85)  row 56
+overview 1100x700@1.2 light (10 pairs, vw 917)
+  hero layout: pill→facts 24 px (designed 24), column−illustration 0 px, rows 0/0, cols 0/0
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 21%
+      spacing: ink gap 5.73  box gap 3  top 13.54  bottom 10.64 (divider)  descender clip 0.75 (lines 0.75/-)  row 51
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+      spacing: ink gap 8.34  box gap 2  top 3.94  bottom 1.43  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 22 ms
+      spacing: ink gap 7.51  box gap 2  top 4.19  bottom 1.3  descender clip n/a (lines -/-)  row 36
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sent to phone / 509 B, automatically
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Sidekick started / Application launched
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26 (divider)  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.17  button.recent-row>span.recent-tile | Disconnected / Sidekick was closed on this Mac
+      spacing: ink gap 6.63  box gap 2  top 12.84  bottom 10.26  descender clip 0.58 (lines 0.58/1.26)  row 52
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+      spacing: ink gap 41.58  box gap 4  top 4.93  bottom 45.85  descender clip 1.68 (lines 1.68/1.85)  row 116
+
+80 pairs over 152 pane readings; worst |offset| 0.47 px; tolerance 1 px
+excluded: .pair-step-mark ×32 (pairing checklist marks align to the step title line by design)
+PASS

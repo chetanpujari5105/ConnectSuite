@@ -56,6 +56,15 @@
  * Both halves are needed: a column centred on the phone with the facts still pushed away from the
  * pill passes the second rule and fails the first, and the before build failed both.
  *
+ * ### The text block's spacing (added 2026-10-11, third report)
+ *
+ * Every pair also records `spacing`: the clear ink between the first line's descenders and the last
+ * line's capitals (`inkGap`), the line boxes' own gap, the ink's clearance to the row's top and
+ * bottom edges (and whether that bottom edge is a divider), and `descClip` — how far a clipping
+ * line's descenders sit inside its box. The verdict gates two of them: `inkGap ≥ MIN_INK_GAP_PX`
+ * and no clipped descenders. The Recent activity rows failed both (1.63 px; −0.74 px) and every
+ * other pair passed both, at the first reading.
+ *
  * ### Control
  *
  * Overview must yield the four hero fact pairs (Connection, Address, Security, Latency) at every
@@ -85,6 +94,26 @@ export const EXCLUDED = Object.freeze([
 
 /** The designed space between the status pill and the first fact row — `--space-10`. */
 export const HERO_FACTS_GAP_PX = 24;
+
+/**
+ * The text block's own spacing (added 2026-10-11, third report): the clear ink between the first
+ * line's descenders and the last line's capitals. The Recent activity rows read **1.63 px** — two
+ * 14/12 px line boxes touching — while every other two-line block in the app reads 5.7 px or more.
+ */
+export const MIN_INK_GAP_PX = 3;
+
+/**
+ * The spacing failures of one pair, one entry per broken rule. `spacing` is absent on runs recorded
+ * before the field existed, and those are not asked. A line whose box clips (`overflow` not visible)
+ * must hold its own descenders: `descClip` is box bottom minus descender bottom, negative = cut off.
+ */
+export function spacingFailures(spacing) {
+  if (!spacing) return [];
+  const out = [];
+  if (spacing.inkGap < MIN_INK_GAP_PX) out.push({ rule: `${spacing.inkGap} px of ink between the lines, minimum ${MIN_INK_GAP_PX}`, off: +(spacing.inkGap - MIN_INK_GAP_PX).toFixed(2) });
+  if (spacing.descClip !== null && spacing.descClip !== undefined && spacing.descClip < 0) out.push({ rule: `descenders cut ${-spacing.descClip} px by their line's box`, off: spacing.descClip });
+  return out;
+}
 
 /** The four Overview facts the control requires. */
 export const CONTROL_LABELS = Object.freeze(['Connection', 'Address', 'Security', 'Latency']);
@@ -119,6 +148,9 @@ export function verdict(readings, tolerance = TOLERANCE_PX, { requireLayout = tr
       const off = Math.max(Math.abs(p.optical), Math.abs(p.box));
       worst = Math.max(worst, off);
       if (off > tolerance) failures.push({ screen: r.screen, size: r.size, theme: r.theme, ...p });
+      for (const f of spacingFailures(p.spacing)) {
+        failures.push({ screen: r.screen, size: r.size, theme: r.theme, where: p.where, text: `${p.text} — ${f.rule}`, box: p.box, optical: p.optical, spacing: true });
+      }
     }
   }
   return { ok: failures.length === 0 && refused.length === 0, refused, failures, worst: +worst.toFixed(2) };
@@ -152,6 +184,10 @@ export const SCAN = (excluded) => `(() => {
     el.appendChild(m); const b = m.getBoundingClientRect().bottom; m.remove(); return b;
   };
   const capH = (el) => { const cs = getComputedStyle(el); cv.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; return cv.measureText('H').actualBoundingBoxAscent; };
+  // The font's own descender band (g, j, p, q, y), from the engine drawing the page, like capH.
+  const descH = (el) => { const cs = getComputedStyle(el); cv.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; return cv.measureText('gjpqy').actualBoundingBoxDescent; };
+  // The row's bottom edge is a divider when the row draws one: a 1 px ::after or a bottom border.
+  const divided = (row) => { const a = getComputedStyle(row, '::after'); return (a.content !== 'none' && a.display !== 'none' && parseFloat(a.height) <= 1.5 && a.position === 'absolute') || parseFloat(getComputedStyle(row).borderBottomWidth) > 0; };
   const path = (el) => { const p = []; for (let n = el, i = 0; n && i < 4; n = n.parentElement, i++) p.unshift(n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (typeof n.className === 'string' && n.className ? '.' + n.className.split(' ')[0] : '')); return p.join('>'); };
   const pairs = [];
   const excludedSeen = {};
@@ -186,10 +222,30 @@ export const SCAN = (excluded) => `(() => {
       const t = tile.getBoundingClientRect(), s = sib.getBoundingClientRect();
       const tc = (t.top + t.bottom) / 2;
       const optTop = baseline(first) - capH(first), optBottom = baseline(last);
+      // The text block's spacing, in ink: the clear space between the first line's descenders and
+      // the last line's cap tops, from the last line's descenders to the row's bottom edge (and the
+      // first line's cap tops to its top edge), and how far each line's descenders sit inside its
+      // own box when that box clips (negative = cut off).
+      const fb = first.getBoundingClientRect(), lb = last.getBoundingClientRect(), rr = row.getBoundingClientRect();
+      const firstBase = baseline(first), lastBase = baseline(last);
+      const clipOf = (el, base) => getComputedStyle(el).overflowY === 'visible' ? null : +(el.getBoundingClientRect().bottom - (base + descH(el))).toFixed(2);
+      const clipFirst = clipOf(first, firstBase), clipLast = clipOf(last, lastBase);
+      const clips = [clipFirst, clipLast].filter((c) => c !== null);
+      const spacing = {
+        inkGap: +((lastBase - capH(last)) - (firstBase + descH(first))).toFixed(2),
+        boxGap: +(lb.top - fb.bottom).toFixed(2),
+        top: +((firstBase - capH(first)) - rr.top).toFixed(2),
+        bottom: +(rr.bottom - (lastBase + descH(last))).toFixed(2),
+        descClip: clips.length ? Math.min(...clips) : null,
+        clipFirst, clipLast,
+        divider: divided(row),
+        rowH: +rr.height.toFixed(2),
+      };
       pairs.push({ where: path(tile), text: (first.textContent.trim() + ' / ' + last.textContent.trim()).replace(/\\s+/g, ' ').slice(0, 60),
         tileCentre: +tc.toFixed(2),
         box: +(tc - (s.top + s.bottom) / 2).toFixed(2),
-        optical: +(tc - (optTop + optBottom) / 2).toFixed(2) });
+        optical: +(tc - (optTop + optBottom) / 2).toFixed(2),
+        spacing });
       break;
     }
   }
@@ -294,6 +350,11 @@ async function main() {
     for (const p of r.pairs) {
       const bad = Math.max(Math.abs(p.optical), Math.abs(p.box)) > TOLERANCE_PX ? '  ✗' : '';
       console.log(`  box ${p.box.toFixed(2).padStart(6)}  optical ${p.optical.toFixed(2).padStart(6)}  ${p.where.split('>').slice(-2).join('>')} | ${p.text}${bad}`);
+      if (p.spacing) {
+        const S = p.spacing;
+        const sbad = spacingFailures(S).length ? '  ✗' : '';
+        console.log(`      spacing: ink gap ${S.inkGap}  box gap ${S.boxGap}  top ${S.top}  bottom ${S.bottom}${S.divider ? ' (divider)' : ''}  descender clip ${S.descClip ?? 'n/a'} (lines ${S.clipFirst ?? '-'}/${S.clipLast ?? '-'})  row ${S.rowH}${sbad}`);
+      }
     }
   }
   const pairCount = readings.reduce((n, r) => n + (r.pairs?.length ?? 0), 0);
@@ -307,7 +368,11 @@ async function main() {
     writeFileSync(join(out, 'readings.json'), JSON.stringify({ tolerance: TOLERANCE_PX, settleMs: 900, emulated: true, readings, verdict: v }, null, 2));
   }
   if (v.refused.length) { for (const r of v.refused) console.log(`REFUSED ${r}`); exit(2); }
-  if (!v.ok) { console.log(`FAIL — ${v.failures.length} pair readings off by more than ${TOLERANCE_PX} px`); exit(1); }
+  if (!v.ok) {
+    const spacing = v.failures.filter((f) => f.spacing).length;
+    console.log(`FAIL — ${v.failures.length - spacing} readings off centre by more than ${TOLERANCE_PX} px; ${spacing} text-block spacing failures (ink gap < ${MIN_INK_GAP_PX} px or clipped descenders)`);
+    exit(1);
+  }
   console.log('PASS');
   exit(0);
 }

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { verdict, heroLayoutFailures, TOLERANCE_PX, CONTROL_LABELS, HERO_FACTS_GAP_PX } from './tile-centre-sweep.mjs';
+import { verdict, heroLayoutFailures, spacingFailures, MIN_INK_GAP_PX, TOLERANCE_PX, CONTROL_LABELS, HERO_FACTS_GAP_PX } from './tile-centre-sweep.mjs';
 
 const hero = (optical, box = 0) => CONTROL_LABELS.map((l) => ({
   where: 'div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon', text: `${l} / x`, box, optical,
@@ -119,4 +119,30 @@ test('recorded layout before/after: before red on the hero layout only, after gr
   assert.ok(vb.failures.length > 0 && vb.failures.every((f) => f.where === 'hero layout'), JSON.stringify(vb.failures.slice(0, 3)));
   const va = verdict(after);
   assert.equal(va.ok, true, JSON.stringify(va.failures.slice(0, 3)));
+});
+
+// ---- The text block's spacing (third report, 2026-10-11) ----
+
+const recent = (spacing) => ({ where: 'div#recent-list.recent-list>button.recent-row>span.recent-tile', text: 'Sent to phone / 509 B, automatically', box: 0, optical: -0.67, spacing });
+
+test('the shipped Recent activity rows: 1.63 px of ink between the lines, descenders cut 0.74 px — fails on both', () => {
+  // Verbatim from the before run (1440×900 dark): 13/14 px title over a 12/12 px detail, boxes touching.
+  const shipped = { inkGap: 1.63, boxGap: 0, top: 13.84, bottom: 10.26, descClip: -0.74, clipFirst: -0.42, clipLast: -0.74, divider: true, rowH: 48 };
+  assert.equal(spacingFailures(shipped).length, 2);
+  const v = verdict([reading([...hero(0), recent(shipped)])]);
+  assert.equal(v.ok, false);
+  assert.equal(v.failures.length, 2);
+  assert.ok(v.failures.every((f) => f.spacing && f.where.includes('recent-row')));
+});
+
+test('control: the spacing every other pair already had passes, and a pair with no clipping box is not asked about clipping', () => {
+  assert.deepEqual(spacingFailures({ inkGap: 5.73, descClip: 0.75 }), [], 'sidebar device card');
+  assert.deepEqual(spacingFailures({ inkGap: 7.51, descClip: null }), [], 'hero facts — values clip across, not down');
+  assert.deepEqual(spacingFailures(undefined), [], 'archived runs from before the field are not asked');
+});
+
+test('each spacing rule fails on its own, at its edge', () => {
+  assert.equal(spacingFailures({ inkGap: MIN_INK_GAP_PX, descClip: 0 }).length, 0, 'exactly at the minimum, descenders touching the box edge: pass');
+  assert.match(spacingFailures({ inkGap: MIN_INK_GAP_PX - 0.01, descClip: 1 })[0].rule, /ink between the lines/);
+  assert.match(spacingFailures({ inkGap: 8, descClip: -0.01 })[0].rule, /descenders cut/);
 });
