@@ -84,6 +84,11 @@ class TrialView {
     this.hooks.changed();
   }
 
+  /** The page subtitle while the screen covers a pane: the verdict's own quiet line. */
+  subtitle(): string {
+    return this.verdict?.line ?? '';
+  }
+
   /** Whether `routeId` is covered by the trial screen right now. */
   covers(routeId: string): boolean {
     return this.verdict?.blocks === true && !TRIAL_OPEN_ROUTES.includes(routeId);

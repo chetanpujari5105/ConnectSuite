@@ -497,7 +497,7 @@ const trialView: TrialView | null =
       )
     : null;
 if (trialView) {
-  shell.setTrialGate((id) => trialView.covers(id));
+  shell.setTrialGate((id) => trialView.covers(id), () => trialView.subtitle());
   connect.onTrialChanged?.((verdict) => trialView.apply(verdict));
   void trialView.load();
 }

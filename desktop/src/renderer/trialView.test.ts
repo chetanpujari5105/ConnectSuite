@@ -65,6 +65,7 @@ test('expired: the screen covers phone panes, never Activity or Settings, and sa
     for (const id of ['overview', 'mirror', 'files', 'messages', 'pairing']) assert.equal(m.view.covers(id), true, id);
     for (const id of ['activity', 'settings']) assert.equal(m.view.covers(id), false, id);
     assert.match(m.gate.textContent, /ended on 26 Nov 2026/);
+    assert.equal((m.view as unknown as { subtitle(): string }).subtitle(), 'Beta access ended on 26 Nov 2026.', 'the page subtitle is the trial\'s, not the covered pane\'s');
     assert.match(m.gate.textContent, /Nothing has been deleted/);
     assert.ok(button(m.gate, 'trial-use-gate'), 'the token entry is on the screen');
     const doors = m.gate.queryAll('.trial-doors button').map((b) => b.textContent);

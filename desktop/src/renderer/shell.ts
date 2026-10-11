@@ -431,6 +431,9 @@ class ShellView {
    * defect and the reason that surface was rebuilt.
    */
   private subtitleFor(id: string, fallback: string): string {
+    // Under the trial's screen the pane is not drawn, so its subtitle would describe something absent
+    // ("Pair a phone to get started" on a paired Mac whose link the trial stopped). The trial says it.
+    if (this.trialCovers(id)) return this.trialSubtitle();
     if (id === 'overview') return overviewSubtitle(toneOf(this.status));
     if (id === 'pairing') return pairingSubtitle(this.pairReachable);
     return fallback;
@@ -488,9 +491,11 @@ class ShellView {
    * and a pane can never both show.
    */
   private trialCovers: (id: string) => boolean = () => false;
+  private trialSubtitle: () => string = () => '';
 
-  setTrialGate(covers: (id: string) => boolean): void {
+  setTrialGate(covers: (id: string) => boolean, subtitle: () => string): void {
     this.trialCovers = covers;
+    this.trialSubtitle = subtitle;
     this.applyTrialGate();
   }
 
@@ -501,6 +506,9 @@ class ShellView {
     document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {
       section.hidden = covered || section.dataset.screen !== this.current;
     });
+    const sub = document.getElementById('page-sub');
+    const screen = screenById(this.current);
+    if (sub && screen) sub.textContent = this.subtitleFor(this.current, screen.subtitle);
   }
 
   /** Register a listener for [route]. See [routeListeners]. */

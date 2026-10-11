@@ -1,5 +1,5 @@
 /**
- * The beta trial's **public** key — base64 of the Ed25519 key's SPKI DER (`MCowBQYDK2VwAyEA…`, 44
+ * The beta trial's **public** key — base64 of the Ed25519 key's SPKI DER (`MCowBQYDK2VwAyEA…`, 60
  * characters). It verifies tokens; it cannot make one.
  *
  * `null` until the owner creates the keypair on their own Mac (the one-time command is in
