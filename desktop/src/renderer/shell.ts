@@ -462,9 +462,7 @@ class ShellView {
     connect.routeChanged(id);
     if (settingsPane) this.settingsPane = settingsPane;
 
-    document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {
-      section.hidden = section.dataset.screen !== id;
-    });
+    this.applyTrialGate();
     for (const [rowId, row] of this.navRows) {
       if (rowId === id) row.setAttribute('aria-current', 'page');
       else row.removeAttribute('aria-current');
@@ -482,6 +480,27 @@ class ShellView {
     this.movePill();
     this.replayEntrance();
     for (const listener of this.routeListeners) listener(id);
+  }
+
+  /**
+   * The beta trial's screen (2026-10-12, `trial.ts`): told which routes it covers, and re-applied on
+   * every route and every verdict. One writer of which section is visible — here — so the trial screen
+   * and a pane can never both show.
+   */
+  private trialCovers: (id: string) => boolean = () => false;
+
+  setTrialGate(covers: (id: string) => boolean): void {
+    this.trialCovers = covers;
+    this.applyTrialGate();
+  }
+
+  applyTrialGate(): void {
+    const covered = this.trialCovers(this.current);
+    const gate = document.getElementById('trial-gate');
+    if (gate) gate.hidden = !covered;
+    document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {
+      section.hidden = covered || section.dataset.screen !== this.current;
+    });
   }
 
   /** Register a listener for [route]. See [routeListeners]. */

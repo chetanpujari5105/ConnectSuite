@@ -157,6 +157,11 @@
 
           <div class="page cs-scroll" id="page">
 
+            <!-- The beta trial's screen (2026-10-12, trial.ts). Shown in place of a phone pane while
+                 beta access is not valid; never over Activity or Settings. Drawn from the main
+                 process's verdict — the token is checked on this Mac and nothing is sent. -->
+            <div class="trial-gate" id="trial-gate" hidden></div>
+
             <!-- ======================= Pairing — a route with no sidebar row ==================
               The design has no unpaired state at all: its first screen assumes a paired phone
               (docs/design-departures.md, row X5). Rather than invent a twelfth nav row nobody
@@ -977,6 +982,7 @@
     <script src="overview.js"></script>
     <!-- The four controls a Settings pane is built out of. Before shell.js, which draws the rail. -->
     <script src="settingsControls.js"></script>
+    <script src="trial.js"></script>
     <script src="shell.js"></script>
     <script src="../shared/shareReceiveCopy.js"></script>
     <script src="shareReceive.js"></script>

@@ -447,6 +447,12 @@ interface ConnectBridge {
   shareOffers?(): Promise<ShareCardData[]>;
   onShareOffers?(callback: (offers: ShareCardData[]) => void): void;
   shareWindowShow?(offerId: string): Promise<{ ok: boolean; reason?: string }>;
+  /** The beta trial (2026-10-12). Optional for the reason `appearanceGet` is: a stale preload. */
+  trialStatus?: TrialBridge['trialStatus'];
+  trialEnter?: TrialBridge['trialEnter'];
+  trialOpenFile?: TrialBridge['trialOpenFile'];
+  trialNoticeShown?: TrialBridge['trialNoticeShown'];
+  onTrialChanged?(callback: (verdict: TrialCheckView) => void): void;
 }
 
 declare const connect: ConnectBridge;
@@ -464,6 +470,37 @@ const ALL_CAPABILITIES = [
 ];
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+
+/*
+ * The beta trial (2026-10-12) — `trial.ts` draws, the main process decides. The shell asks it which
+ * routes its screen covers; Activity and Settings never are. Absent only with a stale preload.
+ */
+const trialView: TrialView | null =
+  connect.trialStatus && connect.trialEnter && connect.trialOpenFile && connect.trialNoticeShown
+    ? new TrialView(
+        {
+          trialStatus: () => connect.trialStatus!(),
+          trialEnter: (text) => connect.trialEnter!(text),
+          trialOpenFile: () => connect.trialOpenFile!(),
+          trialNoticeShown: (days) => connect.trialNoticeShown!(days),
+        },
+        el('trial-gate'),
+        {
+          toast: (text) => shell.toast(text),
+          route: (id) => shell.route(id),
+          paired: () => lastStatus?.paired === true,
+          changed: () => {
+            shell.applyTrialGate();
+            shell.refreshSettings();
+          },
+        },
+      )
+    : null;
+if (trialView) {
+  shell.setTrialGate((id) => trialView.covers(id));
+  connect.onTrialChanged?.((verdict) => trialView.apply(verdict));
+  void trialView.load();
+}
 
 /*
  * Start and Stop mirroring: exactly one is on screen. Two inputs from two clocks — the phone's
@@ -547,7 +584,11 @@ let wasConnected: boolean | null = null;
 function render(status: RendererStatus | null): void {
   shell.setStatus(status);
   // Held for Settings → Device info, which is built when it is opened rather than on every status.
+  const pairedBefore = lastStatus?.paired === true;
   lastStatus = status;
+  // The trial screen offers Activity and Settings only to a paired Mac (the pairing lock refuses them
+  // otherwise), so a pairing change redraws it.
+  if (trialView && pairedBefore !== (status?.paired === true)) trialView.redraw();
   const nowConnected = status?.phase === 'connected';
   if (nowConnected && wasConnected !== true) returnToScreen('reconnect');
   wasConnected = nowConnected;
@@ -2445,6 +2486,14 @@ shell.addSettingsPane(
     version.className = 'setting-value';
     version.textContent = APP_VERSION;
     body.appendChild(settingRow('Version', 'The Electron app in desktop/.', version));
+
+    // The beta trial: the quiet days-left line, and where a new token is entered. Checked on this Mac.
+    if (trialView) {
+      const heading = document.createElement('h3');
+      heading.className = 'trial-settings-title';
+      heading.textContent = 'Beta access';
+      body.append(heading, trialView.settingsBlock());
+    }
 
     /*
      * The handoff's About column also carries an Account card, a two-factor row, "Sign out
