@@ -1438,11 +1438,24 @@ body {
   padding-top: var(--space-10);
 }
 
+/*
+ * The tile is centred on the LETTERS, not on the line boxes (2026-10-11). `align-items: center`
+ * centred the two boxes exactly (0.00 px by getBoundingClientRect) and the tile still sat 1.05–1.30
+ * px low, because a line box is its line-height, not its glyphs: the caption has a little space above
+ * its capitals and the value has half-leading plus the descender band under its baseline. The trim
+ * on `.detail-label` / `.detail-value` makes the text block's box the cap top of the label to the
+ * baseline of the value, so the same `align-items: center` now centres what a reader sees.
+ *
+ * `min-height` is the height the two untrimmed lines had (caption 14 + gap 2 + value 20), so the
+ * grid's rhythm and every tile stay exactly where they were — only the letters move. Measured by
+ * `scripts/tile-centre-sweep.mjs`, which gates at 1 px on both readings.
+ */
 .detail {
   display: flex;
   align-items: center;
   gap: var(--space-5);
   min-width: 0;
+  min-height: calc(14px + 2px + 20px);
 }
 /* The 30px icon badge, component 8, Neutral tone: tone is state, never category. */
 .detail-icon {
@@ -1463,13 +1476,18 @@ body {
   font: var(--text-caption);
   letter-spacing: var(--tracking-caption);
   color: var(--text-meta);
+  text-box: trim-start cap alphabetic;
 }
 .detail-value {
   margin: 0;
   font: 500 13.5px/20px var(--font-ui);
   color: var(--text-primary);
+  text-box: trim-end cap alphabetic;
   white-space: nowrap;
-  overflow: hidden;
+  /* Clipped across, not down: the trimmed box ends at the baseline, and `overflow: hidden` would cut
+     the descenders off "Encrypted". `clip` on one axis leaves the other visible and keeps the ellipsis. */
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
 }
 .detail-value.mono {

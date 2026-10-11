@@ -1,0 +1,92 @@
+overview 1100x700 dark (10 pairs, vw 1100)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 22 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1440x900 dark (10 pairs, vw 1440)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 20 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1920x1050 dark (10 pairs, vw 1920)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 23 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1100x700@1.2 dark (10 pairs, vw 917)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 12 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1100x700 light (10 pairs, vw 1100)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 15 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1440x900 light (10 pairs, vw 1440)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 56%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 12 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1920x1050 light (10 pairs, vw 1920)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 55%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 16 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+overview 1100x700@1.2 light (10 pairs, vw 917)
+  box   0.00  optical  -0.27  div#device-card.device-card>span#device-icon.device-icon | Samsung SM-S938B / 55%
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Connection / Local network
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Address / 10.51.59.236
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Security / Encrypted
+  box   0.00  optical   0.00  div.detail>span.detail-icon | Latency / 16 ms
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sent to phone / 6.0 KB, automatically
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Connected / Successfully connected to your phone
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Sidekick started / Application launched
+  box   0.00  optical  -0.67  button.recent-row>span.recent-tile | Disconnected / The connection to your phone failed. See the 
+  box   0.00  optical  -0.47  div.security-row>span#security-badge.security-badge | Encrypted connection / Encrypted between your phone and this
+
+80 pairs over 152 pane readings; worst |offset| 0.67 px; tolerance 1 px
+excluded: .pair-step-mark ×32 (pairing checklist marks align to the step title line by design)
+PASS

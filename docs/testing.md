@@ -29430,3 +29430,38 @@ attempt changed nothing because zsh does not split an unquoted `$A` — its capt
   (PHY 1,200 and 600 Mbit/s); nothing changed. Synthetic 631 MB file `96825b90…`, all copies deleted.
 - **Two displays, zoom, Spaces:** fullscreen and Spaces are left to macOS by design (`refitMainWindow` skips a
   fullscreen or minimised window; a Space change does not move a window) — not separately exercised.
+
+## Icon alignment and transfer speed batch — 2026-10-11
+
+### Defect 217 — the device card's fact tiles sat below their text (Mac)
+
+**Instrument:** `scripts/tile-centre-sweep.mjs`, over a live CDP session on the development app (`dist` rebuilt
+from this commit's `shell.css`; before = the `dist` built at `e2866d0`). Every pane plus the seven Settings
+sub-panes, at 1100×700, 1440×900, 1920×1050 and 1100×700 at 120 % (emulated, as in `ux-sweep.mjs`), dark and
+light (stamped on `<html>`, restored). A pair is any square filled or bordered tile holding an `svg` in a row
+beside a sibling with two stacked lines of text — found by geometry, not by class. Two readings per pair:
+**box** (tile centre minus the text block's `getBoundingClientRect` centre) and **optical** (tile centre minus
+the midpoint of the first line's cap top and the last line's baseline; the baseline read from a zero-size
+inline-block appended and removed in one synchronous call, the cap height from canvas `measureText('H')` in the
+computed font). Positive = tile lower. Control: Overview must yield all four hero facts at every size, or the
+run refuses. Exclusion: `.pair-step-mark` (the pairing checklist's marks align to the title line by design),
+×32 seen.
+
+| Pair | Before box / optical (px) | After box / optical (px) |
+|---|---|---|
+| Hero · Connection | 0.00 / **1.05** | 0.00 / 0.00 |
+| Hero · Address | 0.00 / **1.30** | 0.00 / 0.00 |
+| Hero · Security | 0.00 / **1.05** | 0.00 / 0.00 |
+| Hero · Latency | 0.00 / **1.30** | 0.00 / 0.00 |
+| Sidebar device card | 0.00 / −0.27 | unchanged |
+| Overview · Recent activity rows (4) | 0.00 / −0.67 | unchanged |
+| Overview · security card | 0.00 / −0.47 | unchanged |
+
+Identical at all four sizes and both themes (80 pairs over 152 pane readings per run). No other pane and no
+Settings sub-pane has the pattern; the other panes' rows are avatars, plain label/value rows or bare glyphs.
+Before: exit 1, 32 readings over 1 px. After: exit 0, worst 0.67 px. **No tile moved:** 48 tile centres
+compared before/after (Recent activity excluded because its contents changed between runs), 0 moved.
+
+The first attempt (trim, `overflow: hidden` kept) cut the descenders off *Encrypted* in a 2× crop. The value now
+clips across only. A clone with a 60-character value drew its ellipsis (`scrollWidth` 278 > `clientWidth`
+118, right edge at the cell edge). Evidence: `docs/evidence/tile-centre-2026-10-11/{before,after}/`.

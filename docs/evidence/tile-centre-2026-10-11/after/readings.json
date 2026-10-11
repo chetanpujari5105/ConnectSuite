@@ -1,0 +1,1797 @@
+{
+  "tolerance": 1,
+  "settleMs": 900,
+  "emulated": true,
+  "readings": [
+    {
+      "screen": "overview",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 22 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 978,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 1026,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 1074,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 1122,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 731,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1100x700",
+      "theme": "dark",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 20 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 606,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 654,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 702,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 750,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 723,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1440x900",
+      "theme": "dark",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 23 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 606,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 654,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 702,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 750,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 723,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1920x1050",
+      "theme": "dark",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 12 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 978,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 1026,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 1074,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 1122,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 731,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1100x700@1.2",
+      "theme": "dark",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 15 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 978,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 1026,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 1074,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 1122,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 731,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1100x700",
+      "theme": "light",
+      "vw": 1100,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 56%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 12 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 606,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 654,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 702,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 750,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 723,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1440x900",
+      "theme": "light",
+      "vw": 1440,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 55%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 16 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 606,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 654,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 702,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 750,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 723,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1920x1050",
+      "theme": "light",
+      "vw": 1920,
+      "dpr": 2,
+      "pairs": []
+    },
+    {
+      "screen": "overview",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": [
+        {
+          "where": "aside.sidebar>div.sidebar-group>div#device-card.device-card>span#device-icon.device-icon",
+          "text": "Samsung SM-S938B / 55%",
+          "tileCentre": 116.5,
+          "box": 0,
+          "optical": -0.27
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Connection / Local network",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Address / 10.51.59.236",
+          "tileCentre": 347,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Security / Encrypted",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "div.hero-facts>dl#hero-facts.hero-details>div.detail>span.detail-icon",
+          "text": "Latency / 16 ms",
+          "tileCentre": 403,
+          "box": 0,
+          "optical": 0
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sent to phone / 6.0 KB, automatically",
+          "tileCentre": 978,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Connected / Successfully connected to your phone",
+          "tileCentre": 1026,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Sidekick started / Application launched",
+          "tileCentre": 1074,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "section#recent-card.card>div#recent-list.recent-list>button.recent-row>span.recent-tile",
+          "text": "Disconnected / The connection to your phone failed. See the ",
+          "tileCentre": 1122,
+          "box": 0,
+          "optical": -0.67
+        },
+        {
+          "where": "div.overview-grid>section#security-card.card>div.security-row>span#security-badge.security-badge",
+          "text": "Encrypted connection / Encrypted between your phone and this",
+          "tileCentre": 731,
+          "box": 0,
+          "optical": -0.47
+        }
+      ]
+    },
+    {
+      "screen": "mirror",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "files",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "photos",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "messages",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "notifications",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "clipboard",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "calls",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "camera",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "apps",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "activity",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "pairing",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/general",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/device",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/connection",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/notifications",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/transfer",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/advanced",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    },
+    {
+      "screen": "settings/about",
+      "size": "1100x700@1.2",
+      "theme": "light",
+      "vw": 917,
+      "dpr": 2.4000000953674316,
+      "pairs": []
+    }
+  ],
+  "verdict": {
+    "ok": true,
+    "refused": [],
+    "failures": [],
+    "worst": 0.67
+  }
+}
