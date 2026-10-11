@@ -1,3 +1,24 @@
+# BETA TOKEN TRIAL + "SIDEKICK" WORDING — 2026-10-12 early: 7 local commits; nothing pushed, signed or published
+
+1. **Built (owner's decision D):** signed, 45-day beta tokens checked offline on the Mac — `2c7d924` private-key
+   commit guard; `c0071d4` token core + store + link gate + IPC; `d5b98e0` the trial screen, token entry,
+   Settings › About line, 7/1-day notices; `a9aebde` `scripts/issue-trial-token.mjs`; `da1d28f` subtitle fix;
+   `c1440a5` docs (`docs/trial-licence-summary-2026-10-11.md` → *Decided and built* has the key command).
+   Nothing is sent anywhere. A packaged build always checks; a development build skips only with
+   `CONNECTSUITE_DEBUG_SWITCHES=skipTrial`.
+2. **`desktop/src/main/trialKey.ts` is `null`:** no public key yet, so every build (the running development
+   app included) shows *This copy of Sidekick can't check beta tokens* and does not connect to the phone.
+   Owner's next step: run the key command, send the 60-character public key; then embed, rebuild, issue a
+   token, enter it.
+3. **Phone wording:** `711a1e0` — the Files pane's grant hint and 14 more sentences now say Sidekick;
+   `scripts/check-app-name.mjs` guards it. Debug APK `7207ce92…` installed on the SM-S938B; link service up,
+   3 ports listening; no Mac attached because of item 2.
+4. **Tests:** Mac 2,099 / 0; scripts 325 / 0; phone core 282, sync-module 685, input-module 52, app 217, 0
+   failures; all hooks allowed every commit. Mutations: 10 on the token core, 4 on the view, 5 on the key guard
+   — each red.
+5. **Observed, not fixed:** the Overview subtitle reads *Pair a phone to get started* for any paired Mac whose
+   link is idle (e.g. after Disconnect) — `overviewSubtitle`'s default branch.
+
 # SEND FILES, SPACING, RC `8f8ecbb`, BETA DOCS — 2026-10-11 night: 6 local commits; nothing pushed, signed or published
 
 1. **Committed (owner-approved):** `c013ff8` the Overview row Start mirroring · **Send files** · Device info
