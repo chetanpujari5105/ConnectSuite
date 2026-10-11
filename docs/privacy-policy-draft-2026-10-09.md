@@ -1,4 +1,17 @@
-# Privacy policy and Data safety — DRAFT (2026-10-09, release candidate `34362e1`)
+# Privacy policy and Data safety — DRAFT (2026-10-09; re-checked 2026-10-11 against release candidate `8f8ecbb`)
+
+> **Re-check, 2026-10-11, `8f8ecbb`** (`docs/release-candidate-2026-10-11.md`). Between `34362e1` and `8f8ecbb`
+> (37 commits) **no dependency, Gradle file, Android manifest or backup rule changed** (`git diff --stat` over
+> `desktop/package*.json`, every `build.gradle.kts`, `gradle/libs.versions.toml`, every `AndroidManifest.xml`
+> and `res/xml/` is empty). Re-read on the new APK: the same 31 permission entries as §3; foreground-service types
+> `connectedDevice` and `mediaProjection` only; `com/google/mlkit`, `com/google/android/gms`, `com/google/firebase`
+> and `datatransport` **0** in the dex (control `MainActivity` 1). Re-read in the source: Activity cap
+> `MAX_EVENTS = 2_000`, both logs `512 KB` + one rotated file, `allowBackup="false"`, and the data-extraction rules
+> unchanged (the `files` domain is still not excluded from device transfer — the open decision below). The new
+> **Send files** button reuses the existing send path and adds no data, store or log line. **Changed in the text
+> below:** the Tailscale sentence (never measured — now worded as an option, not a promise) and the permissions
+> link (there is no in-app information page yet). Statements still awaiting the owner are listed in
+> `docs/release-candidate-2026-10-11.md` §6.
 
 Supersedes the skeleton in `docs/release-policy-addendum-2026-10-08.md` §2 and the Data safety table in
 `docs/privacy-and-distribution-2026-10-07.md` §5.3 now that the QR scanner is ZXing (item 4). **Nothing here is
@@ -15,6 +28,7 @@ none was invented.
 | `[[EFFECTIVE DATE]]` | policy header |
 | `[[WHERE THE POLICY IS HOSTED]]` | a URL testers and (later) Play can open — needs no server of Sidekick's; any static page |
 | `[[HOW CHANGES ARE ANNOUNCED]]` | policy §Changes |
+| `[[WHERE THE PERMISSION LIST IS PUBLISHED]]` | policy §Permissions — §3 below, published beside the policy, is enough |
 | Decision: may the phone's diagnostic logs move in a device-to-device transfer? (today: not excluded) | §2 *Backups* |
 | Decision: rewrite Activity history written before `219cb76` that may hold clipboard link hosts? (irreversible) | §2 *Mac* |
 
@@ -33,8 +47,9 @@ none was invented.
 > your phone and your Mac only: notifications, text messages, call events, contacts you look up, clipboard
 > text, files and photos you choose, the list of apps you can open, battery and network status, and your
 > phone's screen while you mirror it. It travels over an encrypted connection (TLS 1.3) whose keys are pinned
-> when you pair the two devices by scanning a code. If you enter a Tailscale address on the Mac, the connection
-> runs over your own Tailscale network instead of your local one.
+> when you pair the two devices by scanning a code. If you type in an address yourself — for example one on a
+> private network you run, such as Tailscale — the connection goes over that network instead of your local one,
+> still encrypted the same way.
 >
 > **What leaves your network.** Nothing, from Sidekick. Neither app contains analytics, advertising, crash
 > reporting or any other service that sends data to us or to a third party. The phone's QR scanner reads the
@@ -68,7 +83,7 @@ none was invented.
 >
 > **Permissions.** Each Android permission is asked for when you turn on the feature that needs it, and the
 > feature works only while it is granted; you can revoke any of them in Android Settings. The full list and what
-> each is for is in the app's information page `[[LINK]]`.
+> each is for: `[[WHERE THE PERMISSION LIST IS PUBLISHED — the app has no information page yet]]`.
 >
 > **Children.** Sidekick is not directed at children under 13.
 >
@@ -111,7 +126,7 @@ the accessibility service (Mac → phone input), and screen-capture consent (eac
 
 | Question | Draft answer | Note |
 |---|---|---|
-| Does the app collect or share user data? | **No** | Data moves only between the user's own two devices, end-to-end encrypted, initiated by the user, with no developer server. Whether Play's form treats such transfers as "not collected" must be confirmed against the form's current wording before submitting |
+| Does the app collect or share user data? | **No** | Data moves only between the user's own two devices, encrypted between them (TLS 1.3, both ends pinned), initiated by the user, with no developer server. Whether Play's form treats such transfers as "not collected" must be confirmed against the form's current wording before submitting |
 | Is data encrypted in transit? | Yes — TLS 1.3, both ends pinned | |
 | Can users request deletion? | Yes — all data is on the user's devices; uninstall / Forget / delete the Mac folder | No server copy exists |
 | Third-party SDKs that collect data | None (ML Kit removed 2026-10-08) | release classpath reading above |

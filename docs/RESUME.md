@@ -1,3 +1,29 @@
+# SEND FILES, SPACING, RC `8f8ecbb`, BETA DOCS — 2026-10-11 night: 5 local commits; nothing pushed, signed or published
+
+1. **Committed (owner-approved):** `c013ff8` the Overview row Start mirroring · **Send files** · Device info
+   (Send files = the Files pane's own `pickAndOffer`, aimed at Received files; View activity removed);
+   `fb2df10` Recent activity rows (ink between the lines 1.63 → 6.63 px, no clipped descenders, row 52 px);
+   `8b1c4d8` `tile-centre-sweep.mjs` gates text-block spacing + evidence `docs/evidence/recent-spacing-2026-10-11/`;
+   `8f8ecbb` design-departures V4; plus this docs commit. Mac 2,054 / 0, scripts 308 / 0, all 16 hooks allowed
+   every commit. The owner's uncommitted edits in 12 files are untouched.
+2. **Send files hardware check is NOT done.** The owner reported sending the two synthetic files. Both logs
+   (Mac and phone, rotated file included) show only one push since 23:00, `-a4SbfD_SeSbHeFk.mp4`
+   (7,656,651 bytes, `verified=true`), and neither `.bin` is on the phone. Sources kept:
+   `~/Desktop/sidekick-send-test-2026-10-11/send-{small,100mb}-2026-10-11.bin` (sha256 `dbfe7be8…0748`,
+   `a852b0f4…8139`). Next: the owner presses Send files and picks both; then hash both ends, compare with a Files
+   send, delete by literal path.
+3. **Release candidate `8f8ecbb`** (unsigned, ad-hoc, isolated build, nothing launched):
+   `~/.connectsuite-evidence-private/rc-8f8ecbb/` with SHA256SUMS; `rc-34362e1/` kept. arm64 `.dmg`
+   `2dd74a2a…b92b`, APK `53802a45…dc0f`. Static checks all pass (fuses `000011011`, quarantine key, ASAR
+   integrity, gates off, new logo pixel-identical, new strings, 0 test files, no debug components, no
+   `dataSync`, 4 exported activities + 2 permission-guarded receivers). Known: the x64 framework sign failure
+   (D12), and the Intel app has never run. Record: `docs/release-candidate-2026-10-11.md`.
+4. **Docs refreshed:** `docs/beta-tester-guide.md` (new row, pairing path as the app says it today), the
+   privacy/Data-safety draft re-checked against `8f8ecbb` (Tailscale sentence softened, no in-app permission
+   page), `docs/trial-licence-summary-2026-10-11.md`, `docs/beta-launch-checklist-2026-10-11.md` (19 steps).
+   Statements still to confirm: release-candidate record §5 (13) and §6 (9).
+5. **Next:** checklist step 1 (the two sends), then the owner's trial decision (step 2).
+
 # CARD LAYOUT, PHONE TILE, QUIT WORDING, RAW SPEED — 2026-10-11 late afternoon: 4 local commits; nothing pushed, signed or published
 
 1. **Overview device card (defect 218), owner approved:** the facts were pinned to the card's bottom (102 px
