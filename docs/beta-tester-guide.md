@@ -1,6 +1,7 @@
 # Sidekick beta — install and pair (one page)
 
-*Matches release candidate `8f8ecbb` (2026-10-11). Statements the owner has not yet confirmed on a fresh Mac
+*Updated 2026-10-12 for the beta token (builds from `711a1e0` on; release candidate `8f8ecbb` has no token
+step). Statements the owner has not yet confirmed on a fresh Mac
 account or a tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this page.*
 
 Sidekick connects your Android phone and your Mac directly over your own Wi-Fi (or your phone's hotspot).
@@ -21,7 +22,10 @@ and about ten minutes.
 3. Open **System Settings → Privacy & Security**, scroll to the message about Sidekick being blocked, click
    **Open Anyway**, enter your Mac password, then confirm **Open Anyway** in the dialog that follows. You do
    this once.
-4. If macOS asks whether Sidekick may **find devices on your local network**, click **Allow** — this is how it
+4. Sidekick asks for your **beta token** — the text or the `.sidekick-token` file you were sent with the app.
+   Paste it into the box and press **Use this token**, or press **Open token file…** and choose the file. The
+   token is checked on your Mac; nothing is sent anywhere.
+5. If macOS asks whether Sidekick may **find devices on your local network**, click **Allow** — this is how it
    reaches your phone. Sidekick shows **Scan this with your phone** and a pairing code.
 
 ## Phone
@@ -53,6 +57,19 @@ The Overview screen has three buttons under your phone's card:
 **Recent activity** below them lists the latest events; **View all** opens the full Activity list.
 
 Camera and webcam are **not** in this build.
+
+## Your beta token
+
+- Your access runs until the date in your token — 45 days. **Settings › About › Beta access** shows the end
+  date and how many days are left. You get one quiet notice 7 days before the end and one the day before.
+- Reinstalling Sidekick does not change the end date — it is part of the token.
+- When it ends, Sidekick shows a screen saying so, with a box for a new token. **Nothing is deleted or hidden:**
+  Activity, Settings and the files you received are all still there, and Activity can still be exported.
+  Ask the developer for a new token and enter it there, or in Settings › About.
+- If Sidekick says your Mac's date looks earlier than before, check **System Settings › General › Date &
+  Time**. Fixing the date fixes it.
+- If a token is refused, the message says why — not copied completely, not issued for this build, ended, or
+  not started yet.
 
 ## After pairing
 

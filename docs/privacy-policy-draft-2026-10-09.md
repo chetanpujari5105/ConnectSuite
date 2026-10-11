@@ -58,7 +58,10 @@ none was invented.
 > **What is stored, and where.**
 > - *On your Mac:* files you copy to it (in `~/Downloads/Sidekick`, or the folder you choose); an Activity
 >   history of what happened (event types, times, file names, and call events with the contact's name but never
->   the number), kept to the latest 2,000 events; diagnostic logs (connection states, counts and file names — no
+>   the number), kept to the latest 2,000 events; your **beta token** (its tester name, its id and its start and
+>   end dates — the token is checked on the Mac and sent nowhere), the last time Sidekick saw the Mac's clock
+>   (sealed in your login Keychain, used only to notice a clock set backwards), and which expiry notices were
+>   shown; diagnostic logs (connection states, counts and file names — no
 >   message, clipboard or file content), at most about 1 MB; your settings and the pairing record; and this
 >   Mac's private key, sealed in your login Keychain. All of it is in
 >   `~/Library/Application Support/sidekick-desktop` except the files you received and the Keychain item.
@@ -100,6 +103,7 @@ none was invented.
 | *Clipboard: memory only, 20 entries, cleared on disconnect* | `docs/phase-5-clipboard-proposal.md` §6; clipboard text is never logged (re-checked for this batch's new log lines) |
 | *Phone opts out of cloud backup* | `android:allowBackup="false"`; `data_extraction_rules.xml` excludes `sharedpref` and `database`. **Open:** the `files` domain (diagnostic logs) is not excluded from device-to-device transfer on Android 12+ — owner decision to exclude or state it |
 | *Mac key in the Keychain* | `safeStorage`; item name measured 2026-10-08 (attributes only) |
+| *Beta token, clock mark, notices — checked on the Mac, sent nowhere* (2026-10-12) | `desktop/src/main/trial.ts` writes `trial.json` in the profile folder: the token, a `safeStorage`-sealed mark, the notices shown. `shared/trial.ts` verifies with Node's `crypto.verify` and imports no networking module; the trial adds no IPC that reaches the network and no dependency |
 
 ## 3. Android permissions — what each is for (release manifest, 31)
 
