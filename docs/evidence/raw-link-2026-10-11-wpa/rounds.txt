@@ -1,0 +1,34 @@
+r1 up    1 streams  437 Mbit/s complete  | PHY tx 816→1080 MCS 8 -40 dBm / -92 dBm | phone 74% 36.8°C usb=true
+r1 up    2 streams  375 Mbit/s complete  | PHY tx 960→960 MCS 10 -41 dBm / -90 dBm | phone 74% 36.8°C usb=true
+r1 up    4 streams  342 Mbit/s complete  | PHY tx 960→648 MCS 8 -41 dBm / -91 dBm | phone 74% 36.9°C usb=true
+r1 up    8 streams  415 Mbit/s complete  | PHY tx 680→864 MCS 6 -40 dBm / -91 dBm | phone 74% 37.1°C usb=true
+r1 down  1 streams  283 Mbit/s complete  | PHY tx 907→612 MCS 9 -39 dBm / -91 dBm | phone 74% 37.2°C usb=true
+r1 down  2 streams  278 Mbit/s complete  | PHY tx 1080→272 MCS 7 -42 dBm / -91 dBm | phone 74% 37.3°C usb=true
+r1 down  4 streams  267 Mbit/s complete  | PHY tx 324→324 MCS 5 -41 dBm / -91 dBm | phone 74% 37.4°C usb=true
+r1 down  8 streams  285 Mbit/s complete  | PHY tx 600→432 MCS 7 -41 dBm / -91 dBm | phone 75% 37.4°C usb=true
+r2 down  8 streams  281 Mbit/s complete  | PHY tx 576→360 MCS 7 -41 dBm / -91 dBm | phone 75% 37.4°C usb=true
+r2 down  4 streams  284 Mbit/s complete  | PHY tx 432→432 MCS 7 -42 dBm / -91 dBm | phone 75% 37.4°C usb=true
+r2 down  2 streams  264 Mbit/s complete  | PHY tx 600→306 MCS 4 -40 dBm / -91 dBm | phone 75% 37.4°C usb=true
+r2 down  1 streams  270 Mbit/s complete  | PHY tx 480→288 MCS 7 -40 dBm / -91 dBm | phone 75% 37.5°C usb=true
+r2 up    8 streams  370 Mbit/s complete  | PHY tx 600→960 MCS 4 -41 dBm / -91 dBm | phone 75% 37.5°C usb=true
+r2 up    4 streams  395 Mbit/s complete  | PHY tx 720→680 MCS 9 -39 dBm / -91 dBm | phone 75% 37.6°C usb=true
+r2 up    2 streams  336 Mbit/s complete  | PHY tx 960→612 MCS 9 -40 dBm / -91 dBm | phone 75% 37.7°C usb=true
+r2 up    1 streams  379 Mbit/s complete  | PHY tx 864→960 MCS 6 -39 dBm / -91 dBm | phone 75% 37.9°C usb=true
+r3 up    1 streams  393 Mbit/s complete  | PHY tx 206→648 MCS 9 -40 dBm / -91 dBm | phone 75% 37.9°C usb=true
+r3 up    2 streams  315 Mbit/s complete  | PHY tx 864→864 MCS 6 -40 dBm / -92 dBm | phone 75% 38.1°C usb=true
+r3 up    4 streams  317 Mbit/s complete  | PHY tx 680→816 MCS 7 -40 dBm / -92 dBm | phone 75% 38.2°C usb=true
+r3 up    8 streams  354 Mbit/s complete  | PHY tx 864→648 MCS 9 -41 dBm / -92 dBm | phone 76% 38.3°C usb=true
+r3 down  1 streams  261 Mbit/s complete  | PHY tx 816→216 MCS 8 -41 dBm / -92 dBm | phone 76% 38.3°C usb=true
+r3 down  2 streams  256 Mbit/s complete  | PHY tx 600→360 MCS 11 -42 dBm / -92 dBm | phone 76% 38.3°C usb=true
+r3 down  4 streams  275 Mbit/s complete  | PHY tx 324→360 MCS 7 -42 dBm / -91 dBm | phone 76% 38.3°C usb=true
+r3 down  8 streams  264 Mbit/s complete  | PHY tx 432→360 MCS 11 -41 dBm / -92 dBm | phone 76% 38.3°C usb=true
+r4 down  8 streams  294 Mbit/s complete  | PHY tx 720→432 MCS 9 -41 dBm / -91 dBm | phone 76% 38.2°C usb=true
+r4 down  4 streams  265 Mbit/s complete  | PHY tx 480→204 MCS 7 -41 dBm / -92 dBm | phone 76% 38.2°C usb=true
+r4 down  2 streams  252 Mbit/s complete  | PHY tx 612→408 MCS 2 -39 dBm / -92 dBm | phone 76% 38.1°C usb=true
+r4 down  1 streams  289 Mbit/s complete  | PHY tx 408→360 MCS 7 -40 dBm / -91 dBm | phone 76% 38.1°C usb=true
+r4 up    8 streams  382 Mbit/s complete  | PHY tx 408→864 MCS 7 -41 dBm / -92 dBm | phone 76% 38.1°C usb=true
+r4 up    4 streams  414 Mbit/s complete  | PHY tx 816→229 MCS 9 -40 dBm / -92 dBm | phone 77% 38.1°C usb=true
+r4 up    2 streams  402 Mbit/s complete  | PHY tx 907→864 MCS 9 -39 dBm / -91 dBm | phone 77% 38.2°C usb=true
+r4 up    1 streams  383 Mbit/s complete  | PHY tx 864→864 MCS 8 -40 dBm / -92 dBm | phone 77% 38.3°C usb=true
+
+[exited with code 0]

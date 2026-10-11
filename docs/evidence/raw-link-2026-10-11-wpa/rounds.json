@@ -1,0 +1,930 @@
+[
+  {
+    "round": 1,
+    "dir": "up",
+    "n": 1,
+    "at": "2026-10-11T10:04:31.607Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -92 dBm",
+      "txRate": 816,
+      "mcs": 8,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 36.8,
+      "usb": true
+    },
+    "txRateAfter": 1080,
+    "result": {
+      "dir": "up",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 9828.157291,
+      "mbit": 437.0063653674995
+    }
+  },
+  {
+    "round": 1,
+    "dir": "up",
+    "n": 2,
+    "at": "2026-10-11T10:04:53.685Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -90 dBm",
+      "txRate": 960,
+      "mcs": 10,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 36.8,
+      "usb": true
+    },
+    "txRateAfter": 960,
+    "result": {
+      "dir": "up",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 11468.145958000001,
+      "mbit": 374.51278626288297
+    }
+  },
+  {
+    "round": 1,
+    "dir": "up",
+    "n": 4,
+    "at": "2026-10-11T10:05:12.509Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 960,
+      "mcs": 8,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 36.9,
+      "usb": true
+    },
+    "txRateAfter": 648,
+    "result": {
+      "dir": "up",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 12555.503792,
+      "mbit": 342.0784515820566
+    }
+  },
+  {
+    "round": 1,
+    "dir": "up",
+    "n": 8,
+    "at": "2026-10-11T10:05:32.477Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 680,
+      "mcs": 6,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 37.1,
+      "usb": true
+    },
+    "txRateAfter": 864,
+    "result": {
+      "dir": "up",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 10360.568874999999,
+      "mbit": 414.5493696165405
+    }
+  },
+  {
+    "round": 1,
+    "dir": "down",
+    "n": 1,
+    "at": "2026-10-11T10:05:50.293Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-39 dBm / -91 dBm",
+      "txRate": 907,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 37.2,
+      "usb": true
+    },
+    "txRateAfter": 612,
+    "result": {
+      "dir": "down",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15174.301791999998,
+      "mbit": 283.0421692459246
+    }
+  },
+  {
+    "round": 1,
+    "dir": "down",
+    "n": 2,
+    "at": "2026-10-11T10:06:14.437Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-42 dBm / -91 dBm",
+      "txRate": 1080,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 37.3,
+      "usb": true
+    },
+    "txRateAfter": 272,
+    "result": {
+      "dir": "down",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15459.115375000001,
+      "mbit": 277.82749477021736
+    }
+  },
+  {
+    "round": 1,
+    "dir": "down",
+    "n": 4,
+    "at": "2026-10-11T10:06:38.515Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 324,
+      "mcs": 5,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 74,
+      "tempC": 37.4,
+      "usb": true
+    },
+    "txRateAfter": 324,
+    "result": {
+      "dir": "down",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16089.769124999999,
+      "mbit": 266.9377828005347
+    }
+  },
+  {
+    "round": 1,
+    "dir": "down",
+    "n": 8,
+    "at": "2026-10-11T10:07:03.686Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 600,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.4,
+      "usb": true
+    },
+    "txRateAfter": 432,
+    "result": {
+      "dir": "down",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15052.485375,
+      "mbit": 285.3327665830733
+    }
+  },
+  {
+    "round": 2,
+    "dir": "down",
+    "n": 8,
+    "at": "2026-10-11T10:07:27.718Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 576,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.4,
+      "usb": true
+    },
+    "txRateAfter": 360,
+    "result": {
+      "dir": "down",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15304.482916,
+      "mbit": 280.63459050353447
+    }
+  },
+  {
+    "round": 2,
+    "dir": "down",
+    "n": 4,
+    "at": "2026-10-11T10:07:52.412Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-42 dBm / -91 dBm",
+      "txRate": 432,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.4,
+      "usb": true
+    },
+    "txRateAfter": 432,
+    "result": {
+      "dir": "down",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15147.376041999998,
+      "mbit": 283.54530078946334
+    }
+  },
+  {
+    "round": 2,
+    "dir": "down",
+    "n": 2,
+    "at": "2026-10-11T10:08:16.529Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 600,
+      "mcs": 4,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.4,
+      "usb": true
+    },
+    "txRateAfter": 306,
+    "result": {
+      "dir": "down",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16240.000709,
+      "mbit": 264.46841801058446
+    }
+  },
+  {
+    "round": 2,
+    "dir": "down",
+    "n": 1,
+    "at": "2026-10-11T10:08:41.581Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 480,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.5,
+      "usb": true
+    },
+    "txRateAfter": 288,
+    "result": {
+      "dir": "down",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15921.591833000002,
+      "mbit": 269.75740497869094
+    }
+  },
+  {
+    "round": 2,
+    "dir": "up",
+    "n": 8,
+    "at": "2026-10-11T10:09:06.324Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 600,
+      "mcs": 4,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.5,
+      "usb": true
+    },
+    "txRateAfter": 960,
+    "result": {
+      "dir": "up",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 11618.802166,
+      "mbit": 369.65663367333383
+    }
+  },
+  {
+    "round": 2,
+    "dir": "up",
+    "n": 4,
+    "at": "2026-10-11T10:09:25.257Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-39 dBm / -91 dBm",
+      "txRate": 720,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.6,
+      "usb": true
+    },
+    "txRateAfter": 680,
+    "result": {
+      "dir": "up",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 10876.568374999999,
+      "mbit": 394.88257214215326
+    }
+  },
+  {
+    "round": 2,
+    "dir": "up",
+    "n": 2,
+    "at": "2026-10-11T10:09:43.449Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 960,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.7,
+      "usb": true
+    },
+    "txRateAfter": 612,
+    "result": {
+      "dir": "up",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 12795.201417,
+      "mbit": 335.6701591499456
+    }
+  },
+  {
+    "round": 2,
+    "dir": "up",
+    "n": 1,
+    "at": "2026-10-11T10:10:03.865Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-39 dBm / -91 dBm",
+      "txRate": 864,
+      "mcs": 6,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.9,
+      "usb": true
+    },
+    "txRateAfter": 960,
+    "result": {
+      "dir": "up",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 11333.563625,
+      "mbit": 378.9600021767205
+    }
+  },
+  {
+    "round": 3,
+    "dir": "up",
+    "n": 1,
+    "at": "2026-10-11T10:10:22.764Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 206,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 37.9,
+      "usb": true
+    },
+    "txRateAfter": 648,
+    "result": {
+      "dir": "up",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 10940.976791000001,
+      "mbit": 392.5579386598298
+    }
+  },
+  {
+    "round": 3,
+    "dir": "up",
+    "n": 2,
+    "at": "2026-10-11T10:10:41.112Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -92 dBm",
+      "txRate": 864,
+      "mcs": 6,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 38.1,
+      "usb": true
+    },
+    "txRateAfter": 864,
+    "result": {
+      "dir": "up",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 13644.255042,
+      "mbit": 314.78210300079786
+    }
+  },
+  {
+    "round": 3,
+    "dir": "up",
+    "n": 4,
+    "at": "2026-10-11T10:11:02.596Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -92 dBm",
+      "txRate": 680,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 75,
+      "tempC": 38.2,
+      "usb": true
+    },
+    "txRateAfter": 816,
+    "result": {
+      "dir": "up",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 13560.279166,
+      "mbit": 316.73148048226545
+    }
+  },
+  {
+    "round": 3,
+    "dir": "up",
+    "n": 8,
+    "at": "2026-10-11T10:11:23.571Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -92 dBm",
+      "txRate": 864,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 648,
+    "result": {
+      "dir": "up",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 12145.234583,
+      "mbit": 353.6339513780802
+    }
+  },
+  {
+    "round": 3,
+    "dir": "down",
+    "n": 1,
+    "at": "2026-10-11T10:11:43.088Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -92 dBm",
+      "txRate": 816,
+      "mcs": 8,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 216,
+    "result": {
+      "dir": "down",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16441.482500000002,
+      "mbit": 261.2274955132543
+    }
+  },
+  {
+    "round": 3,
+    "dir": "down",
+    "n": 2,
+    "at": "2026-10-11T10:12:08.362Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-42 dBm / -92 dBm",
+      "txRate": 600,
+      "mcs": 11,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 360,
+    "result": {
+      "dir": "down",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16762.629834000003,
+      "mbit": 256.2227608992728
+    }
+  },
+  {
+    "round": 3,
+    "dir": "down",
+    "n": 4,
+    "at": "2026-10-11T10:12:33.985Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-42 dBm / -91 dBm",
+      "txRate": 324,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 360,
+    "result": {
+      "dir": "down",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 15633.972499999998,
+      "mbit": 274.7201516441199
+    }
+  },
+  {
+    "round": 3,
+    "dir": "down",
+    "n": 8,
+    "at": "2026-10-11T10:12:58.584Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -92 dBm",
+      "txRate": 432,
+      "mcs": 11,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 360,
+    "result": {
+      "dir": "down",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16249.662083,
+      "mbit": 264.31117607628835
+    }
+  },
+  {
+    "round": 4,
+    "dir": "down",
+    "n": 8,
+    "at": "2026-10-11T10:13:24.263Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -91 dBm",
+      "txRate": 720,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.2,
+      "usb": true
+    },
+    "txRateAfter": 432,
+    "result": {
+      "dir": "down",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 14589.6665,
+      "mbit": 294.3841996662501
+    }
+  },
+  {
+    "round": 4,
+    "dir": "down",
+    "n": 4,
+    "at": "2026-10-11T10:13:48.458Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -92 dBm",
+      "txRate": 480,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.2,
+      "usb": true
+    },
+    "txRateAfter": 204,
+    "result": {
+      "dir": "down",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 16219.926667,
+      "mbit": 264.79572837639637
+    }
+  },
+  {
+    "round": 4,
+    "dir": "down",
+    "n": 2,
+    "at": "2026-10-11T10:14:14.170Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-39 dBm / -92 dBm",
+      "txRate": 612,
+      "mcs": 2,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.1,
+      "usb": true
+    },
+    "txRateAfter": 408,
+    "result": {
+      "dir": "down",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 17050.916167,
+      "mbit": 251.89070510547657
+    }
+  },
+  {
+    "round": 4,
+    "dir": "down",
+    "n": 1,
+    "at": "2026-10-11T10:14:40.164Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -91 dBm",
+      "txRate": 408,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.1,
+      "usb": true
+    },
+    "txRateAfter": 360,
+    "result": {
+      "dir": "down",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 14878.079,
+      "mbit": 288.67754338446514
+    }
+  },
+  {
+    "round": 4,
+    "dir": "up",
+    "n": 8,
+    "at": "2026-10-11T10:15:03.865Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-41 dBm / -92 dBm",
+      "txRate": 408,
+      "mcs": 7,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 76,
+      "tempC": 38.1,
+      "usb": true
+    },
+    "txRateAfter": 864,
+    "result": {
+      "dir": "up",
+      "streams": 8,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 11241.646167,
+      "mbit": 382.05857329044323
+    }
+  },
+  {
+    "round": 4,
+    "dir": "up",
+    "n": 4,
+    "at": "2026-10-11T10:15:22.588Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -92 dBm",
+      "txRate": 816,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 77,
+      "tempC": 38.1,
+      "usb": true
+    },
+    "txRateAfter": 229,
+    "result": {
+      "dir": "up",
+      "streams": 4,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 10361.859792000001,
+      "mbit": 414.4977235955249
+    }
+  },
+  {
+    "round": 4,
+    "dir": "up",
+    "n": 2,
+    "at": "2026-10-11T10:15:40.622Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-39 dBm / -91 dBm",
+      "txRate": 907,
+      "mcs": 9,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 77,
+      "tempC": 38.2,
+      "usb": true
+    },
+    "txRateAfter": 864,
+    "result": {
+      "dir": "up",
+      "streams": 2,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 10685.515542,
+      "mbit": 401.94291787966597
+    }
+  },
+  {
+    "round": 4,
+    "dir": "up",
+    "n": 1,
+    "at": "2026-10-11T10:15:58.532Z",
+    "link": {
+      "phy": "802.11ax",
+      "channel": "149 (5GHz, 80MHz)",
+      "signal": "-40 dBm / -92 dBm",
+      "txRate": 864,
+      "mcs": 8,
+      "security": "WPA2/WPA3 Personal"
+    },
+    "phone": {
+      "level": 77,
+      "tempC": 38.3,
+      "usb": true
+    },
+    "txRateAfter": 864,
+    "result": {
+      "dir": "up",
+      "streams": 1,
+      "run": 1,
+      "stopped": "complete",
+      "bytes": 536870912,
+      "ms": 11214.037833,
+      "mbit": 382.9991801312661
+    }
+  }
+]

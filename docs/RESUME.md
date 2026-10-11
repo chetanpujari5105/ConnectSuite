@@ -1,3 +1,27 @@
+# CARD LAYOUT, PHONE TILE, QUIT WORDING, RAW SPEED — 2026-10-11 late afternoon: 4 local commits; nothing pushed, signed or published
+
+1. **Overview device card (defect 218), owner approved:** the facts were pinned to the card's bottom (102 px
+   under the pill, 0 under the last row). The whole column is now centred on the phone illustration, 24 px from
+   pill to facts, at every size and theme; the sweep gates it. Commit `3b8e4af`.
+2. **Phone "Your Mac" card (defect 219), hardware-verified:** tile 4.13 dp low → 0.13 dp (a background-less pill
+   kept its padding). The phone runs debug APK `9bf3c01d…` (this code). Commit `b1b3b4b`.
+3. **Activity wording (defect 220), verified on the running app:** a quit or relaunch reads *"Sidekick was
+   closed on this Mac"*; real drops keep their sentence. Commit `a96e0ab`. Not changed: *Device forgotten*
+   still takes the generic failure sentence.
+4. **Storage card:** correct — it is the phone's shared storage, 5.4 GB free of 490 GB (df agrees).
+5. **Raw speed, hotspot secured:** no gain from 2/4/8 streams in either direction (Mac → phone 276 single vs 272
+   four; phone → Mac 398 vs 367). **The multi-stream push was not built**, per the owner's rule. If a slow link
+   state comes back (single ≈ 110), re-run `raw-link-speed.mjs` there first. The design that fits the code
+   when it is wanted: interleaved fixed slices on N sockets, merged *in order* into the existing append-only
+   receive loop (`receiveFrom`'s single `framing.readChunk()` is the only call that changes), so the partial
+   stays a contiguous prefix and the verdict, digest and resume code are reused unchanged.
+6. **Totals:** Mac 2,044 / 0; phone 1,184 run this sitting (core 282, sync-module 685, app 217; camera, mirror,
+   input not re-run — unchanged); scripts 305 / 0; all 15 guards exit 0.
+7. **Left on your devices:** phone on the USB cable, charging (77 %), Sidekick in front; Mac `dist` rebuilt at
+   `a96e0ab`, relaunched (window on the external display). No synthetic files created this sitting (the raw
+   tool uses `/dev/zero`); `~/Downloads/Sidekick/speed-{4mb,100mb,595mb}.mp4` are from your 14:17 share and were
+   left.
+
 # ICON ALIGNMENT + SHARING SPEED — 2026-10-11 afternoon: 2 local commits; nothing pushed, signed or published
 
 **Read first:** `docs/transfer-speed-2026-10-11.md` §5–§9 (the second sitting) and defect **217**.

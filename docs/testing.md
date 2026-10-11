@@ -29499,3 +29499,76 @@ Full write-up: `docs/transfer-speed-2026-10-11.md` §5–§9. The readings, as r
 - **Cleanup:** six synthetic files deleted on the Mac (`~/Downloads/Sidekick/speed-*`, 30 → 24 entries) and five
   on the phone (`Movies/SidekickSpeed/` and its folder; `Download/ConnectSuite/speed-*`); no `speed-*`
   MediaStore rows; no staging copies; phone free space 1.0 → 2.3 GB.
+
+### Defect 218 — the Overview device card's facts sat at the bottom of the card (Mac)
+
+**Instrument:** a scratch CDP script through `probe.mjs`'s transport (sizes emulated, theme stamped and restored,
+viewport capture cropped with PIL at the emulated dpr), and `scripts/tile-centre-sweep.mjs`, which now records
+`heroLayout` on Overview and gates it. **Instrument fault, caught before any number was used:** the first two
+"variant" runs injected an inline `<style>`, which the page's CSP refuses — it never reached
+`document.styleSheets`, both variants measured the unchanged page and returned identical numbers. Re-run with a
+constructed stylesheet (`adoptedStyleSheets`) and a rule-count check that refuses an empty variant.
+
+| CSS px (card 302 tall, phone 260) | before | option A | **option B (shipped)** |
+|---|---|---|---|
+| pill → first fact row | **102** | 51 | **24** |
+| last fact row → card content bottom | **0** | 51 | 42 |
+| facts block centre − illustration centre | +84 | +33 | +42 |
+| title+pill centre − illustration centre | −94 | −94 | −58 |
+| whole column centre − illustration centre | +3 | −22.5 | **0.00** |
+| fact rows / columns out of line | 0 / 0 | 0 / 0 | 0 / 0 |
+
+Identical at 1100×700, 1440×900, 1480×900, 1920×1050 (the MSI external, maximised), 1100×700 at 120 %, and the
+live window (1440×841), dark and light; after the fix also at 150 % and 175 %, where the phone steps to 210 px
+(gap 24, column 0.00). Sweep: before exit 1 (16 layout failures over 8 readings, tile-to-text worst 0.67 px);
+after exit 0 over every pane (152 readings), the hero tiles 0.00/0.00. **Glyphs inside the tiles** (geometry =
+`getBBox` mapped through `getScreenCTM`; ink = painted pixels in a 2× capture, border excluded): Connection
+(Wi-Fi) 0.37 / 0.25 px low, its ink centroid 1.09 px *high*; Address, Security 0.00 / 0.00; Latency 0.29 / 0.25;
+sidebar card, Recent activity, Battery, Storage, security badge ≤ 0.18 px. Not changed. Device info has no tile
+rows. Mac tests 2,040 / 0. Owner looked at the screenshot and approved B. Evidence:
+`docs/evidence/hero-layout-2026-10-11/` (before/after at five sizes, the three options, the live window, the
+2× glyph crops, every reading).
+
+### Defect 219 — the phone's "Your Mac" tile sat 4.13 dp low (Android)
+
+**Instrument:** `screencap` + `uiautomator dump` through `adb-pinned.sh` (Sidekick opened by name; it was
+showing the hotspot settings). The dump's bounds are **touch areas** (each chip reports 180 px, the 48 dp
+minimum), so every reading is on painted pixels, bounded to the element's own box. Two thresholds were tried
+first and read the card's gradient and the dim caption wrong (a "text top" above the caption's own box) — not
+used. Your Mac card: tile 2137–2347 px, text ink YOUR MAC cap top 2111 → *Connected* baseline 2342: tile
+**+15.5 px = +4.13 dp** low. Device card: the text column starts 1 dp below the illustration's top, 22 dp under
+it — a top alignment with no gap inside the column, not the 218 pattern. Chips: icon against cap-top-to-baseline
++0.27, +0.5 (*Encrypted*, descenders excluded), +0.13 px. After the fix (APK `9bf3c01d04c62f4b…`,
+`install -r`, started by name, `link-up.sh` 3/3): tile 2107–2317, ink 2111 → 2312, **+0.13 dp**. Phone tests:
+core 282, sync-module 685, app 217, 0 failed. Evidence: `docs/evidence/hero-layout-2026-10-11/android/`.
+
+### Defect 220 — a quit or relaunch recorded as a failed connection (Mac)
+
+Red first: `disconnectActivity.test.ts` failed on the rule (a quit got *"The connection to your phone failed…"*)
+and on the wiring (no quit cause in `main.ts`'s teardown). After: 4/4; Mac tests 2,044 / 0. On hardware: the
+first relaunch after the build was performed by the **old** main process and wrote the old sentence (seq 5455,
+15:26:43) — no reading yet; the second, performed by the new build, wrote **"Sidekick was closed on this Mac"**
+(seq 5459). Reconnected via last-known both times, pairing v2, stored identity `A9:59:35:BB…`, no re-pair.
+
+### Raw link speed, hotspot secured (WPA2/WPA3) — 2026-10-11 15:34–15:46
+
+`scripts/raw-link-speed.mjs`, 512 MiB per run, four interleaved rounds (every direction × stream count once per
+round, order reversed on alternate rounds), the Mac's PHY rate/MCS/signal and the phone's battery read beside
+every run. Link: 802.11ax, 5 GHz channel 149, 80 MHz, −39 to −42 dBm; the Mac's transmit rate moved between 204
+and 1,080 Mbit/s during the runs. Phone on the USB cable, charging, 74 → 77 %, 36.8 → 38.3 °C. 32 of 32 runs
+`complete`. Mbit/s:
+
+| | 1 stream | 2 | 4 | 8 |
+|---|---|---|---|---|
+| phone → Mac | 437, 379, 393, 383 (mean 398) | 375, 336, 315, 402 (357) | 342, 395, 317, 414 (367) | 415, 370, 354, 382 (380) |
+| Mac → phone | 283, 270, 261, 289 (mean 276) | 278, 264, 256, 252 (263) | 267, 284, 275, 265 (272) | 285, 281, 264, 294 (281) |
+
+**Four streams do not beat one in either direction in this link state.** The earlier reading (single 109–112,
+four 205–207 Mac → phone) belonged to a slower state; with the hotspot secured today the single stream is ~2.5×
+that and the extra streams add nothing. Per the owner's rule, the multi-stream push was **not built**; the
+design note (append-only partial kept, streams merged in order before the existing receive loop) is in
+`docs/RESUME.md`. Evidence: `docs/evidence/raw-link-2026-10-11-wpa/`. Before the runs: the hotspot change
+dropped the link once (15:06:39 `ECONNRESET`), reconnected at 15:06:40 via last-known, pairing v2, same
+identity; Mac `10.51.59.160`, phone `10.51.59.236` unchanged. Phone free space 5,308,232 KiB of 478,509,056 KiB
+— the Overview Storage card's "5.4 GB free of 490 GB" is this volume (`StatFs` on shared storage) in decimal GB,
+and is correct; the Mac's own volume (15.9 GB free of 494.4 GB) is not what it shows.
