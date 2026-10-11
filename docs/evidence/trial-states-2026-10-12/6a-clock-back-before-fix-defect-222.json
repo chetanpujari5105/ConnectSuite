@@ -1,0 +1,21 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "Waiting for this Mac’s date to be right.",
+ "gateShown": true,
+ "headline": "This Mac’s date looks earlier than before",
+ "body": "Sidekick last ran on 12 Oct 2026, but this Mac’s date now reads 9 Oct 2026. It can’t check your beta access until the date is right. Open System Settings › General › Date & Time and check it. If the date is already right, ask the person who invited you to the beta for a new token — entering it fixes this.",
+ "gateMessage": "Thank you — beta access until 25 Nov 2026.",
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [
+  "Open Activity",
+  "Open Settings"
+ ],
+ "toasts": [
+  "Thank you — beta access until 25 Nov 2026."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

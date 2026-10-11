@@ -1,0 +1,18 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "Your phone and Mac are in sync.",
+ "gateShown": false,
+ "headline": null,
+ "body": null,
+ "gateMessage": null,
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [],
+ "toasts": [
+  "Thank you — beta access until 25 Nov 2026."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

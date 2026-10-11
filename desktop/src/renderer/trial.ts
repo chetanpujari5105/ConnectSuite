@@ -43,8 +43,13 @@ const TRIAL_OPEN_ROUTES: readonly string[] = ['activity', 'settings'];
 
 class TrialView {
   private verdict: TrialCheckView | null = null;
-  /** The last thing the entry said, kept across redraws so a refusal does not vanish on a re-check. */
-  private message: { ok: boolean; text: string } | null = null;
+  /**
+   * The last thing the entry said, kept across redraws so a refusal does not vanish on a re-check —
+   * and tied to the state it answered, so it goes when that state does. A thank-you under a later
+   * *"your date looks earlier"* or *"ended on"* screen thanked the person for access being refused
+   * (2026-10-12, seen on the clock-back screen).
+   */
+  private message: { ok: boolean; text: string; state: TrialCheckView['state'] | null } | null = null;
   private busy = false;
 
   constructor(
@@ -68,7 +73,7 @@ class TrialView {
 
   apply(verdict: TrialCheckView): void {
     this.verdict = verdict;
-    if (!verdict.blocks && this.message && !this.message.ok) this.message = null;
+    if (this.message && this.message.state !== verdict.state) this.message = null;
     this.drawGate();
     if (verdict.notice) {
       const days = verdict.notice.days;
@@ -173,23 +178,24 @@ class TrialView {
       this.busy = false;
       use.disabled = false;
       open.disabled = false;
-      if (!result) {
-        this.message = { ok: false, text: 'Sidekick could not check that token. Try again.' };
-      } else if (result.cancelled) {
-        return;
-      } else {
-        this.message = { ok: result.ok, text: result.message };
-      }
-      if (result) this.apply(result.data);
-      else this.hooks.changed();
+      if (result?.cancelled) return;
+      // The answer is recorded against the verdict it came with, before that verdict is applied — so
+      // applying it keeps the answer, and the redraw it causes (the gate here, Settings via `changed`)
+      // draws it. Clearing first and writing after is what lost a refusal made in Settings while access
+      // was valid, and threw on the way (2026-10-12).
+      this.message = result
+        ? { ok: result.ok, text: result.message, state: result.data.state }
+        : { ok: false, text: 'Sidekick could not check that token. Try again.', state: this.verdict?.state ?? null };
       said.textContent = this.message.text;
       said.dataset.ok = String(this.message.ok);
+      if (result) this.apply(result.data);
+      else this.hooks.changed();
       if (result?.ok) this.hooks.toast(result.message);
     };
     use.addEventListener('click', () => {
       const text = field.value.trim();
       if (!text) {
-        this.message = { ok: false, text: 'Paste the token first — it starts with SIDEKICK-TRIAL-1.' };
+        this.message = { ok: false, text: 'Paste the token first — it starts with SIDEKICK-TRIAL-1.', state: this.verdict?.state ?? null };
         said.textContent = this.message.text;
         said.dataset.ok = 'false';
         return;

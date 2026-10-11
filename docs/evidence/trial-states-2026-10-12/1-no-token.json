@@ -1,0 +1,19 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "No beta token entered.",
+ "gateShown": true,
+ "headline": "Enter your beta token",
+ "body": "This test build of Sidekick needs a beta token before it connects to your phone. The person who invited you to the beta sends it — paste it below or open the file. The token is checked on this Mac; nothing is sent anywhere.",
+ "gateMessage": "",
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [
+  "Open Activity",
+  "Open Settings"
+ ],
+ "toasts": [],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

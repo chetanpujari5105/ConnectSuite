@@ -1,0 +1,21 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "Beta access ended on 25 Nov 2026.",
+ "gateShown": true,
+ "headline": "Your beta access ended on 25 Nov 2026",
+ "body": "Thank you for testing Sidekick. To keep using it, ask the person who invited you to the beta for a new token and enter it below. Nothing has been deleted: your Activity, your settings and the files you received are all still here, and Activity can still be exported.",
+ "gateMessage": "",
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [
+  "Open Activity",
+  "Open Settings"
+ ],
+ "toasts": [
+  "Your Sidekick beta access ends within a day, on 25 Nov 2026. A new token can be entered in Settings › About."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

@@ -29550,6 +29550,68 @@ first relaunch after the build was performed by the **old** main process and wro
 15:26:43) — no reading yet; the second, performed by the new build, wrote **"Sidekick was closed on this Mac"**
 (seq 5459). Reconnected via last-known both times, pairing v2, stored identity `A9:59:35:BB…`, no re-pair.
 
+### Defect 221 — a refused token in Settings got no answer (Mac)
+
+Running app, access valid, Settings › About: a pasted `SIDEKICK-TRIAL-1.notatoken` logged
+`beta token refused: malformed` while `#trial-message-settings` stayed empty, and CDP saw two
+`TypeError: Cannot read properties of null (reading 'text')`, one per press. Red first:
+`trialView.test.ts` › *a refusal in Settings while access is valid is shown, not lost* failed on that
+`TypeError`. After the fix: 10 / 10; mutation M2 (message written after `apply`, the old order) red on 3 tests.
+
+### Defect 222 — a thank-you under a blocking screen (Mac)
+
+Seen in `docs/evidence/trial-states-2026-10-12/6a-clock-back.png`: *"Thank you — beta access until 25 Nov
+2026."* under *"This Mac's date looks earlier than before"*. Red first: *a thank-you belongs to the moment it
+answered* failed with *clock-back: the screen still thanks the person for access it is refusing* (run alone; in
+the full file it was masked by 221's `TypeError`). After: green; mutation M1 (the old clearing rule
+`!verdict.blocks && !message.ok`) red on 2 tests.
+
+### Beta trial — key created, owner token entered, every state on screen — 2026-10-12 01:45–02:12
+
+**Key.** The documented *Making the key* command ran once on the owner's Mac (no key existed before: `stat`
+said *No such file*). It printed only the public key, 60 characters, `MCowBQYDK2VwAyEA…`, which parses as
+Ed25519 SPKI and is committed as text in `desktop/src/main/trialKey.ts` (`3f5155d`). The private key was only
+ever `stat`ed: mode 600, outside the repository. `trialKey.test.ts` was red 2/2 while the key was `null`.
+`check-no-private-keys.mjs --tree`: 2,788 of 2,788 tracked files at HEAD, PASS.
+
+**Owner token.** `issue-trial-token.mjs`, label *Chetan (owner)*, 45 days: id `ZuxLbrRIryPrvBrB`,
+`2026-10-11T00:00Z → 2026-11-25T00:00Z` (it was still the 11th in UTC). Checked by the app's own verifier
+before use: `ok`; one character changed: `bad-signature`.
+
+**On the running development app, no `skipTrial` switch** (`checked: true; public key in this build: true`):
+
+| state | how | what the screen and the log said |
+|---|---|---|
+| no token | first launch after the key | *Enter your beta token*; subtitle *No beta token entered.*; Open Activity / Open Settings present (1) |
+| copied incompletely | the owner token less its last 20 characters, pasted | *That doesn't look like a Sidekick beta token… check that all of it was copied.* — `refused: malformed` (2a) |
+| one character changed | pasted | *This token wasn't issued for this copy of Sidekick, or part of it changed…* — `refused: bad-signature` (2b) |
+| another key | a token signed by an Ed25519 key generated in memory for the run, never written | the same sentence — `refused: bad-signature` at 01:52:42.506 (3). The driver's own `landed` read `false` because the message text did not change from 2b; the log line is the reading |
+| owner token | pasted at 01:53:28.875 | `accepted — until 2026-11-25T00:00:00.000Z`; `starting the link the beta check had stopped`; **`Connected to Samsung SM-S938B … via last-known` at 01:53:29.074**; toast *Thank you — beta access until 25 Nov 2026.*; About *Beta access until 25 Nov 2026 · 45 days left · for Chetan (owner)* (4a, 4b). Pairing unchanged: same device id, fingerprint, `pairedAt`, pairing 2, and identical hashes of both identity files |
+| relaunch | the app killed and started again at 02:04:49 | `beta access: valid — … 25 Nov 2026 · 45 days left`; reconnected in 0.16 s; same end date (9) |
+
+Nothing was stored by any refusal: `trial.json` did not exist until the owner token was accepted; it is mode 600
+and holds the public token and a sealed mark.
+
+**Shifted clock, in an isolated second instance** — `CONNECTSUITE_DEV_PROFILE` pointed at a scratch folder holding
+only a copy of the paired record with auto-connect off (so the doors draw; no identity, so it could not reach
+the phone), its main process's `Date.now` shifted through the Node inspector. The trial reads `Date.now`
+through its `now` seam on every check; the system clock and the owner's profile were never touched. The scratch
+profile was deleted afterwards.
+
+| state | shift | result |
+|---|---|---|
+| not yet valid, entered | −21 h | refused: *This token starts on 11 Oct 2026. Enter it again on or after that day.* (5a) |
+| not yet valid, stored | −21 h after entry | *Your beta access starts on 11 Oct 2026* — subtitle *Beta access starts on 11 Oct 2026.* (5b) |
+| clock set back | −3 days | *This Mac's date looks earlier than before … last ran on 12 Oct 2026, … now reads 9 Oct 2026* (6a); back to 0 → valid, About 45 days left (6b). The first take showed a stale thank-you — defect 222 |
+| 7-day notice | `notAfter − 6.5 d` | due, toasted once, then `notice: null`; `notices.shown [7]` on disk; **after a relaunch at the same time: not repeated** (7a) |
+| 1-day notice | `notAfter − 0.5 d` | due, toasted once, then `null`; `shown [7, 1]` (7b) |
+| expired | `notAfter + 1.5 d` | *Your beta access ended on 25 Nov 2026* with *Nothing has been deleted…* (8a); **Open Activity** → Activity, gate hidden, *Export log as CSV* present (8b); **Open Settings** → About reads *Beta access ended on 25 Nov 2026.*; the same token re-entered: *This token ended on 25 Nov 2026. Ask … for a new one.* (8c). Nothing deleted: across a relaunch while expired, identity, settings and `legacy-migration.json` byte-identical, `activity.jsonl` only grew (2 → 3 lines, 1–2 intact); `trial.ts` contains no delete call. That relaunch began in `clock-back` — the scratch mark sat at 26 Nov — which is the rule working |
+| reinstall | a fresh scratch profile, the same token | *Beta access until 25 Nov 2026 · 45 days left* — the same end date |
+
+An instrument fault, recorded: the first "nothing deleted" listing used `find -newer /dev/null`, listed nothing,
+and its diff proved nothing; it was re-taken as SHA-256 over named files across the expired relaunch.
+Screenshots and sidecars: `docs/evidence/trial-states-2026-10-12/`.
+
 ### Raw link speed, hotspot secured (WPA2/WPA3) — 2026-10-11 15:34–15:46
 
 `scripts/raw-link-speed.mjs`, 512 MiB per run, four interleaved rounds (every direction × stream count once per

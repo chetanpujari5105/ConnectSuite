@@ -41,7 +41,7 @@ class FakeBridge {
   async trialNoticeShown(days: 7 | 1) { this.shown.push(days); return { ok: true }; }
 }
 
-function mount(paired = true) {
+function mount(paired = true, settingsHost: FakeElement | null = null) {
   const fake = installFakeDocument();
   const bridge = new FakeBridge();
   const gate = el('div');
@@ -51,7 +51,11 @@ function mount(paired = true) {
   const View = (globalThis as Record<string, unknown>).TrialView as new (...a: unknown[]) => {
     apply(v: Verdict): void; covers(id: string): boolean; settingsBlock(): FakeElement; load(): Promise<void>;
   };
-  const view = new View(bridge, gate, { toast: (t: string) => toasts.push(t), route: (id: string) => routed.push(id), paired: () => paired, changed: () => { changes += 1; } });
+  const view = new View(bridge, gate, { toast: (t: string) => toasts.push(t), route: (id: string) => routed.push(id), paired: () => paired, changed: () => {
+    changes += 1;
+    // What renderer.ts does: Settings › About is rebuilt from settingsBlock() on every verdict.
+    if (settingsHost) settingsHost.replaceChildren(view.settingsBlock());
+  } });
   return { view, bridge, gate, toasts, routed, changes: () => changes, restore: fake.restore };
 }
 
@@ -173,6 +177,50 @@ test('not enforced (development): no screen, and Settings says it is not checked
     const block = m.view.settingsBlock();
     assert.match(block.textContent, /not checked/);
     assert.equal(block.queryAll('textarea').length, 0);
+  } finally {
+    m.restore();
+  }
+});
+
+const CLOCK_BACK = v({ state: 'clock-back', blocks: true, daysLeft: 0, headline: 'This Mac’s date looks earlier than before', body: 'It can’t check your beta access until the date is right.', line: 'Waiting for this Mac’s date to be right.' });
+
+test('a refusal in Settings while access is valid is shown, not lost (2026-10-12: it vanished and threw)', async () => {
+  const host = el('div');
+  const m = mount(true, host);
+  const thrown: unknown[] = [];
+  const onRejection = (e: unknown) => thrown.push(e);
+  process.on('unhandledRejection', onRejection);
+  try {
+    m.view.apply(v({}));
+    host.queryAll('textarea').find((f) => f.id === 'trial-token-settings')!.value = 'SIDEKICK-TRIAL-1.cut';
+    m.bridge.next = { ok: false, message: 'That doesn’t look like a Sidekick beta token.', data: v({}) };
+    button(host, 'trial-use-settings').click();
+    await settle();
+    assert.deepEqual(thrown, [], 'the entry threw while answering');
+    assert.match(host.textContent, /doesn’t look like a Sidekick beta token/, 'the person pressed the button and got no answer');
+    assert.match(host.textContent, /44 days left/, 'a refusal changes nothing');
+  } finally {
+    process.off('unhandledRejection', onRejection);
+    m.restore();
+  }
+});
+
+test('a thank-you belongs to the moment it answered: a later clock-back or expiry does not keep it (2026-10-12)', async () => {
+  const host = el('div');
+  const m = mount(true, host);
+  try {
+    m.view.apply(NONE);
+    m.gate.queryAll('textarea')[0]!.value = 'SIDEKICK-TRIAL-1.good.sig';
+    m.bridge.next = { ok: true, message: 'Thank you — beta access until 26 Nov 2026.', data: v({}) };
+    button(m.gate, 'trial-use-gate').click();
+    await settle();
+    assert.match(host.textContent, /Thank you/, 'control: the thank-you is shown while it is true');
+    for (const later of [CLOCK_BACK, EXPIRED]) {
+      m.view.apply(later);
+      assert.doesNotMatch(m.gate.textContent, /Thank you — beta access until/, `${later.state}: the screen still thanks the person for access it is refusing`);
+      assert.doesNotMatch(host.textContent, /Thank you — beta access until/, `${later.state}: Settings still thanks the person`);
+      assert.match(m.gate.textContent, new RegExp(later.headline), `${later.state}: control — the screen is drawn`);
+    }
   } finally {
     m.restore();
   }

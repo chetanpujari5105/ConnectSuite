@@ -1,0 +1,18 @@
+{
+ "screen": "settings",
+ "title": "Settings",
+ "subtitle": "Tune Sidekick to your workflow.",
+ "gateShown": false,
+ "headline": null,
+ "body": null,
+ "gateMessage": null,
+ "settingsLine": "Beta access until 25 Nov 2026 · 7 days left · for Chetan (owner)",
+ "settingsMessage": "Thank you — beta access until 25 Nov 2026.",
+ "doors": [],
+ "toasts": [
+  "Your Sidekick beta access ends in 7 days, on 25 Nov 2026. A new token can be entered any time in Settings › About."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

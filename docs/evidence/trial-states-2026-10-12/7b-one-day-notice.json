@@ -1,0 +1,18 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "Pair a phone to get started.",
+ "gateShown": false,
+ "headline": null,
+ "body": null,
+ "gateMessage": null,
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [],
+ "toasts": [
+  "Your Sidekick beta access ends within a day, on 25 Nov 2026. A new token can be entered in Settings › About."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}

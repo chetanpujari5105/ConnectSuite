@@ -1,0 +1,21 @@
+{
+ "screen": "overview",
+ "title": "Good morning",
+ "subtitle": "Beta access starts on 11 Oct 2026.",
+ "gateShown": true,
+ "headline": "Your beta access starts on 11 Oct 2026",
+ "body": "This token begins on 11 Oct 2026, and Sidekick will connect from then — there is nothing to do now. If that date looks wrong, check this Mac’s Date & Time in System Settings.",
+ "gateMessage": "Thank you — beta access until 25 Nov 2026.",
+ "settingsLine": null,
+ "settingsMessage": null,
+ "doors": [
+  "Open Activity",
+  "Open Settings"
+ ],
+ "toasts": [
+  "Thank you — beta access until 25 Nov 2026."
+ ],
+ "navCount": 12,
+ "innerWidth": 1440,
+ "outerWidth": 1440
+}
