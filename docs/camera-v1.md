@@ -388,3 +388,18 @@ the cap armed only on this stream's own start):
   live watch.
 
 Evidence: `docs/testing.md` → *Camera case A retry*.
+
+## Case A with a timed Home — 2026-10-02, 23:16 IST: scripted procedure NO READING; product checks held on the owner's own Home
+
+- **The driver's Home was never sent.** The owner pressed Home about 3 s after the picture went live,
+  before the driver's 5 s timer.
+- **Every product check held on that Home:**
+  - `LEFT_SCREEN` on the phone; the Mac's *"…camera screen left your phone's display."*;
+  - the picture cleared and the camera released;
+  - 63 / 63 / 63 frames, 0 drawn after the end, nothing in flight;
+  - a normal reopen with no capture, no new request and no reused consent;
+  - a clean 60 s watch from the confirmed reopen.
+- **The scripted procedure itself is a NO READING:** steps A–B were not exercised.
+- B, C and D remain unapproved.
+
+Evidence: `docs/testing.md` → *Camera case A with a timed Home*.

@@ -124,20 +124,27 @@ test rather than the code:
 Nothing below is stubbed. Each step is blocked on something only the owner can approve, in the
 order it would happen.
 
+**Re-measured 2026-10-05** (`docs/camera-v2-signing-readiness.md` §8, read-only): Command Line Tools only,
+no Xcode; **0** code-signing identities of any kind; no provisioning profiles; no extension bundle files
+or activation code in the tree; SIP enabled; 0 system extensions. **The local activation test uses
+Apple Development signing and needs no notarization; Developer ID is distribution only** — the rows
+below say which. The paid Apple Developer Program is needed for both: System Extension and App Groups
+have no free-account support.
+
 | # | Step | Blocked on |
 |---|---|---|
-| 1 | Enrol in the Apple Developer Program; note the **Team ID** | B1 |
+| 1 | Enrol in the **paid** Apple Developer Program (a free Apple ID cannot provision System Extension or App Groups); note the **Team ID** | B1 |
 | 2 | Install full Xcode (provisioning, capability editor, the extension target) | B2 |
-| 3 | In the developer portal, create these, all with Developer ID profiles: <br>• App IDs `com.chetan.sidekick.desktop` (System Extension, App Groups) and `com.chetan.sidekick.desktop.camera` (App Groups) <br>• the app group `<TEAMID>.com.chetan.sidekick.camera` | B3 |
+| 3 | In the developer portal, create these, with **Apple Development** profiles for the local test (this Mac registered as a device) and, later and separately, Developer ID profiles for distribution: <br>• App IDs `com.chetan.sidekick.desktop` (System Extension, App Groups) and `com.chetan.sidekick.desktop.camera` (App Groups) <br>• the app group `<TEAMID>.com.chetan.sidekick.camera` | B3 |
 | 4 | Confirm the permanent identifiers in `Sources/WebcamCore/Identity.swift`: the device name, the device and stream UUIDs, the bundle ids and the bridge identifier | B4 |
 | 5 | Set `SidekickCameraIdentity.teamID` to the Team ID. That is one line; the producer requirement then names it | 1 |
-| 6 | Build the extension bundle. In an Xcode Camera Extension target compiling `Sources/WebcamExtension` + `Sources/sidekick-camera-extension`: <br>• `CFBundleIdentifier` `com.chetan.sidekick.desktop.camera`; <br>• `CMIOExtension` → `CMIOExtensionMachServiceName` = `<TEAMID>.com.chetan.sidekick.camera` (it must be prefixed by the app group); <br>• entitlements `com.apple.security.app-sandbox` and `com.apple.security.application-groups`, with **no** network or file entitlements; <br>• signed Developer ID, with its profile | 2, 3 |
-| 7 | Sign the bridge as Developer ID with identifier `com.chetan.sidekick.desktop.camera-bridge`, hardened runtime, no entitlements. Add the camera entitlement only if Q2 shows the sink needs camera TCC | 1 |
-| 8 | Package with electron-builder: <br>• the extension in `Contents/Library/SystemExtensions/`, the bridge in `Contents/MacOS/`; <br>• `provisioningProfile`; <br>• app entitlements plus `com.apple.developer.system-extension.install` and the app group; <br>• **delete** `disable-library-validation`; <br>• replace `build/adhoc-sign.mjs` with inside-out Developer ID signing (extension, bridge, Electron parts, app) | 1–7 |
+| 6 | Build the extension bundle. In an Xcode Camera Extension target compiling `Sources/WebcamExtension` + `Sources/sidekick-camera-extension`: <br>• `CFBundleIdentifier` `com.chetan.sidekick.desktop.camera`; <br>• `CMIOExtension` → `CMIOExtensionMachServiceName` = `<TEAMID>.com.chetan.sidekick.camera` (it must be prefixed by the app group); <br>• entitlements `com.apple.security.app-sandbox` and `com.apple.security.application-groups`, with **no** network or file entitlements; <br>• signed **Apple Development** with its development profile for the local test; Developer ID with its Developer ID profile only for distribution | 2, 3 |
+| 7 | Sign the bridge (Apple Development locally; Developer ID for distribution) with identifier `com.chetan.sidekick.desktop.camera-bridge`, hardened runtime, no entitlements. Add the camera entitlement only if Q2 shows the sink needs camera TCC | 1 |
+| 8 | Package with electron-builder: <br>• the extension in `Contents/Library/SystemExtensions/`, the bridge in `Contents/MacOS/`; <br>• `provisioningProfile`; <br>• app entitlements plus `com.apple.developer.system-extension.install` and the app group; <br>• **delete** `disable-library-validation`; <br>• replace `build/adhoc-sign.mjs` with inside-out signing (extension, bridge, Electron parts, app) — Apple Development for the local test, Developer ID for distribution | 1–7 |
 | 9 | The activation call (`OSSystemExtensionRequest`) from Electron main (a small Node-API addon) or the bridge (proposal Q1); Settings → Camera install/uninstall UI with every delegate outcome named | 8; W4 |
-| 10 | Electron main's half (W3): the `webcam.*` controller with consumer episodes and no automatic re-request, spawning the bridge, and the Camera pane's states | separate approval |
-| 11 | The phone's half (W2): the Camera2 → MediaCodec path, the 16-byte header against `docs/fixtures/webcam-au-v1.hex`, and the debug-only gate | separate approval; B7 for the spike sitting |
+| 10 | Electron main's half (W3): the `webcam.*` controller with consumer episodes and no automatic re-request, spawning the bridge, and the Camera pane's states | **built** (`desktop/src/main/webcam.ts`), development-gated |
+| 11 | The phone's half (W2): the Camera2 → MediaCodec path, the 16-byte header against `docs/fixtures/webcam-au-v1.hex`, and the debug-only gate | **built** (`camera-module/…/webcam/`), debug-only; run on hardware in two supervised encoder spikes |
 | 12 | Install the signed app in `/Applications` (B5). Activate it, and the admin approves it in System Settings → General → Login Items & Extensions → Camera Extensions | B5 |
 | 13 | The §11.2 readings: <br>• activation from `~/Downloads` refused (`unsupportedParentBundleLocation`, the control) and then accepted from `/Applications`; <br>• `systemextensionsctl list`; <br>• Photo Booth and QuickTime list the device and show the camera-off card; <br>• **sink authorization**: the real bridge accepted, an ad-hoc binary with the same identifier refused and logged; <br>• Q7, Q8 and Q9; <br>• the consent flow end to end with Photo Booth; <br>• upgrade and uninstall | 12 |
 | 14 | Meet and Zoom (§11.3): each call joined twice from this Mac, with the **viewer's tile** as the evidence; fill in the pre-registered table | B8, owner present |
-| 15 | Notarize for distribution only | B6 |
+| 15 | Notarize for distribution only — never needed for the local Apple Development test | B6 |

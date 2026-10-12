@@ -108,3 +108,76 @@ I/O](https://developer.apple.com/documentation/coremediaio/creating-a-camera-ext
 Enrol, purchase, install Xcode, create certificates or profiles, register the Mac, sign, notarize,
 upload, copy to `/Applications`, activate, approve in System Settings, enable developer mode, change
 SIP or any security setting, flip `WEBCAM_RELEASE` on either side.
+
+## 8. Re-measured 2026-10-05 (read-only), and what changed
+
+Nothing installed, signed, enrolled, created, activated, uploaded or changed. No private key was read and
+no certificate name, hash, account or Team ID was printed: identities were **counted by kind** only.
+
+| | Reading | Control that makes it a reading |
+|---|---|---|
+| macOS | 26.6.1 (25G76), arm64 | — |
+| Developer tools | Command Line Tools **26.5** only; `xcodebuild` refuses (*"requires Xcode"*); **no Xcode** in `/Applications`, `~/Applications`, or anywhere Spotlight indexes (bundle id `com.apple.dt.Xcode`: 0) | the same Spotlight query finds the Electron app by its bundle id |
+| Code-signing identities | **0** valid, **0** including invalid or expired, **0** identities of any policy | the keychain is readable: 2 keychains in the search list, 15 certificates in the login keychain — none labelled as an Apple developer certificate |
+| Provisioning profiles | none: both profile directories absent | — |
+| `~/Library/Developer/Xcode` | caches only (`DerivedData`, `UserData`, index plists); no profiles | listed by folder name only |
+| Membership (B1) | **unknown — cannot be read without signing in**, which this audit did not do. No local evidence of it: no certificate, no profile | — |
+| Team ID | **unavailable**: `SidekickCameraIdentity.teamID = nil`; no certificate carries one | — |
+| SIP / Gatekeeper / system extensions | enabled / assessments enabled / **0** | — |
+| Extension bundle in the tree | **none**: no `Info.plist`, `.entitlements`, `.xcodeproj` or `.systemextension` outside build output | — |
+| Activation call (`OSSystemExtensionRequest`) | **not built**: the only match is README prose | a known symbol (`CMIOExtensionProvider`) is found in 2 source files |
+| W2 / W3 | **built** (`camera-module/…/webcam/`, `desktop/src/main/webcam.ts`), development-gated — the README's "separate approval" rows were stale | — |
+
+**A fact this checklist lacked, from Apple's own table** ([Supported capabilities
+(macOS)](https://developer.apple.com/help/account/reference/supported-capabilities-macos)): the rows
+**System Extension** and **App groups** are ticked for the Apple Developer Program and Developer ID and
+**blank for a free Apple Developer account**. So the **paid** program is required even for the local test.
+*The first reading of that page was a lookalike*: a summary listed the three column headers as though
+they were ticks; asked cell by cell, with a row containing blanks (Apple Pay) as the control, the free
+column is blank.
+
+**What changed in the plan:** `desktop/native/SidekickCamera/README.md`'s *Blocked* table and the
+proposal's W4 row said Developer ID throughout. Both now say **Apple Development for the local test,
+Developer ID for distribution** (§6), and W2/W3 are marked built.
+
+### 8.1 Commands that would be used later — NOT run, each needs its own approval
+
+Local activation (Approval L):
+
+```sh
+# B2 — Xcode, then point the tools at it (admin)
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
+# after B1/B3: confirm an Apple Development identity exists (prints identity names — the owner's to read)
+security find-identity -v -p codesigning
+# build the (not yet written) extension target with automatic development signing
+xcodebuild -project <SidekickCamera.xcodeproj> -scheme SidekickCameraExtension -configuration Debug -allowProvisioningUpdates build
+# package with the signing changes of README step 8, then verify before installing
+codesign --verify --deep --strict --verbose=2 Sidekick.app
+codesign -d --entitlements - Sidekick.app/Contents/Library/SystemExtensions/com.chetan.sidekick.desktop.camera.systemextension
+# B5 — install where activation is allowed
+ditto Sidekick.app /Applications/Sidekick.app
+# activation has no CLI: the app's Install button calls OSSystemExtensionRequest.activationRequest;
+# the admin approves in System Settings → General → Login Items & Extensions → Camera Extensions
+systemextensionsctl list          # read-only: expect [activated enabled]
+```
+
+Rollback of an installed extension (with SIP enabled — `systemextensionsctl uninstall` and `reset` need
+SIP off and are **not** part of any plan here):
+
+```sh
+# 1. the app's Uninstall button → OSSystemExtensionRequest.deactivationRequest (admin approval again)
+# 2. or move /Applications/Sidekick.app to the Trash in Finder: macOS deactivates the extensions the
+#    app contains when the app is deleted (Apple's documented behaviour — not measured here)
+systemextensionsctl list          # read-only: expect it gone, or "terminated waiting to uninstall on reboot"
+# 3. if it waits for a reboot (proposal Q5), restart, then list again
+```
+
+Distribution (Approval D, later and separate):
+
+```sh
+security find-identity -v -p codesigning          # a Developer ID Application identity
+xcrun notarytool submit Sidekick.zip --keychain-profile <profile> --wait
+xcrun stapler staple Sidekick.app
+spctl -a -vv -t execute Sidekick.app              # expect: accepted, source=Notarized Developer ID
+```

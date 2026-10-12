@@ -120,3 +120,17 @@ Approvals first: install `4164d96`'s debug APK (`98187d17…`) and rebuild + rel
 
 Not reachable on hardware on demand, and staying tests-only: 170 (a timer later than a tap), 173 (a
 session with no pinned identity), 175 (a cancel inside one round trip), and 169's race.
+
+## Supervised follow-up — 2026-10-03, 13:07–14:22 IST
+
+The update above was installed and verified, and the driver was validated read-only. **Session 1 is a NO
+READING:** the phone was asleep at the driver's gate, so no request was sent. Session 2 did not run. Record:
+`docs/testing.md` → *Camera supervised sessions — 2026-10-03*; handoff at the top of `docs/RESUME.md`.
+
+**Second Session 1 attempt, 15:09 IST:** 11 of 12 pre-registered bounds met. The phone's `stopped` line took
+the close-first route (`STREAM_CLOSED`, re-attributed to `STOPPED_BY_MAC`). Session 2 is held for the owner.
+Record: `docs/testing.md` → *Camera Session 1, second attempt*.
+
+**Session 2 (case D), 15:59 IST: NO READING.** The actor's tray AppleScript failed to compile (`its` is
+reserved), so no Disconnect happened and the 20 s cap stopped capture. There was no retry. Record:
+`docs/testing.md` → *Camera Session 2, case D*.

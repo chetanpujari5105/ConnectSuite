@@ -3,8 +3,9 @@
 <!-- impeccable:product-schema 1 -->
 
 **Scope of this record: the Mac-side Electron app in `desktop/` only.** The Android app is the other
-half of the same product and is deliberately out of scope for design work — see *Capabilities and
-Constraints → Scope boundary*.
+half of the same product and has **its own design record** — `docs/sidekick-android-redesign-plan.md`,
+opened 2026-09-21. It is no longer out of scope for design work; it is out of scope for *this file*.
+See *Capabilities and Constraints → Scope boundary*.
 
 ## Platform
 
@@ -90,9 +91,14 @@ built not to need it — a refusal is observed via the `failed` event, not predi
 
 ## Capabilities and Constraints
 
-**Scope boundary.** Design and code work covered by this record touches `desktop/` only. The Android
-side (`app/`, `core/`, `sync-module/`, `mirror-module/`, `input-module/`) is out of scope. The wire
-contract `docs/protocol.md` is shared and is changed there first, then on both sides.
+**Scope boundary.** Design and code work covered by this record touches `desktop/` only, and the
+Android side (`app/`, `core/`, `sync-module/`, `mirror-module/`, `input-module/`) is outside **this
+record** — which is no longer the same thing as being outside design work. **Since 2026-09-21 the
+Android app is under its own design pass**, planned in `docs/sidekick-android-redesign-plan.md`:
+the Sidekick tokens ported to Compose, one state vocabulary, a rebuilt connect-a-Mac flow, and the
+app renamed to Sidekick in copy while `applicationId` stays `com.chetan.connectsuite`. That plan is
+the Android record; this one stays the Mac's. The wire contract `docs/protocol.md` is shared and is
+changed there first, then on both sides.
 
 **The panes** (sidebar order; every screen declares its own `state` in `src/renderer/navModel.ts`):
 

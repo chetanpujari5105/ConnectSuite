@@ -27,6 +27,12 @@ devices, both ends pinned by certificate fingerprint; there is no Sidekick serve
 | Diagnostic logs | both | **nowhere** (not uploaded) | phone `files/logs/link.log` ≤ 512 KB + one rotated file; Mac `logs/` ≤ 512 KB + one rotated file. Lengths, counts and states — no message, clipboard or file content by design | phone: clear data / uninstall; Mac: delete the profile folder |
 | Activity history (Mac) | Mac | nowhere | `logs/activity.jsonl`, last 2,000 events read; details truncated; call numbers redacted | delete the profile folder; CSV export is the person's own file |
 
+*Audit note 2026-10-07 16:3x (`docs/pc-only-audit-2026-10-07.md` F2; wording left to the owner):* the *Diagnostic logs*
+row is narrower than the code. Both apps log **file names** of transferred files (Mac `main.ts` send/collision lines,
+`bulk.ts` publish lines; phone `DownloadsStore.kt`, `BulkTransfers.kt`, `SafTreeStore.kt`), and the Mac's Activity
+history keeps file names and, when the person presses **Open** on a clipboard link, that link's **host**
+(`main.ts` `clip-open`). The same applies to the *Backups* paragraph's "counts and states only" for the phone's logs.
+
 **Mac profile location:** `~/Library/Application Support/<profile>` (`sidekick-desktop` for the current builds;
 the packaged name is to be confirmed on the first packaged run). **Deleting all Mac-side data** = quit Sidekick,
 delete that folder, delete the Keychain item *“<app> Safe Storage”*, and delete the receive folder if wanted.
