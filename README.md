@@ -1,5 +1,10 @@
 # ConnectSuite
 
+> **Personal data notice.** Screenshots and phone logs under `docs/evidence/` (and some notes in
+> `docs/`) contain real personal data from the owner's own phone, including contact names, phone
+> numbers, messages and notifications. This repository is going to be made private. Do not rely on,
+> copy or redistribute that material.
+
 Two independent tools in one Android app, both running entirely over your own network — no
 account, no server in the middle, no mobile data.
 
