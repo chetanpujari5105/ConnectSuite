@@ -538,6 +538,692 @@ app, defect 137 open, and nothing below is on the phone or in the running Mac ap
    12:51, not relaunched or attached; `desktop/dist/` not rebuilt. Your uncommitted edits and untracked
    files untouched; this entry is the only addition to this file, staged without them.
 
+# OPTION B (webcam.keyframe) BUILT, CODE ONLY — 2026-10-05: ext.webcam 2; evidence of the 12:48 run committed; defect 177 OPEN; nothing run on hardware
+
+**Read this first.** Two approved steps, both done. No install, relaunch, capture, signing or push.
+
+1. **Built and proven (tests and mutations only):**
+   - **The 12:48 IST hardware run's evidence is committed** (`76d2d14`): PASS 28/28, 425 AUs, 0 drops, no
+     overflow. The driver's sanitized report, the pre-registration, the readout and the run record are in
+     `docs/evidence/camera-v2-encoder-spike-2026-10-05/`. **The snapshots are NOT in the repository** —
+     they hold device settings, the pairing fingerprint and personal file names — and live in
+     `~/.connectsuite-evidence-private/camera-v2-encoder-spike-2026-10-05/` (0700/0600, `SHA256SUMS`),
+     pointed to by `snapshots.pointer.md`. The 2026-10-04 FAIL and its post-hoc re-score are unchanged.
+   - **Option B**, contract first (`71865a2`), then the bridge (`139dd4e`), Electron main (`636bd7d`) and the
+     phone (`a96a474`): `ext.webcam` **2** = version 1 + `webcam.keyframe`; the AU header version stays 1.
+     The bridge sends `chain-broken` once per break and `chain-recovered` once after it; main asks only for
+     the current session/generation/bridge, one outstanding, one per second, 2 s ack / 3 s IDR wait, no
+     retry, and measures request / IDR received / recovered apart; the phone accepts only from the owner,
+     for the running session at its announced generation, once a second, and asks only the encoder still
+     bound to that session and generation. v1 peers: nothing sent, periodic IDR fallback.
+   - **Fresh, final tree:** Swift 140/0, Mac 1,686/0, phone 1,349/0 (clean `--rerun-tasks`), scripts 287/0,
+     hook fixtures pass, both typechecks clean, spec guard green. 18 mutations red (MK-S1..3, MK-M1..9,
+     MK-P1..6), each restored and checksum-verified.
+2. **Committed** (local, not pushed): `76d2d14`, `71865a2`, `139dd4e`, `636bd7d`, `a96a474`, `5b24e7c`.
+   Your edits (`docs/testing.md`'s other lines, this file, `PRODUCT.md`, `camera-*.md`, `skills-lock.json`,
+   untracked files) are untouched and uncommitted.
+3. **Not reached by any test, by design of the codebase:** `WebcamEngine`'s dispatch to the activity and
+   `WebcamActivity`'s forwarding. **Not proven at all:** that a keyframe request shortens a real recovery.
+4. **Needs your decision:** the single hardware verification below, which needs a stimulus that does not
+   exist yet (a natural break did not happen in the 12:48 run), a phone install, a `dist` build, a release
+   rebuild and a relaunch — each its own approval. Also: `scripts/hooks/protocol-spec-in-sync.sh` denies
+   **every** Bash command while the spec check is red, not only commits; it cost one lost edit here.
+5. **Would do next, on approval:** a probe-only, flag-gated simulated decode failure at one AU, then the
+   one short supervised run in the report.
+6. **Left changed on your devices:** phone — nothing (APK `b0ad2a47…` still v1 of webcam). Mac — Sidekick
+   running normally (12:51 launch, no switches); `.build/release` holds the A+B probe/bridge (`331cc7bb…`,
+   `39011e97…`) — **not** rebuilt for B, and must be rebuilt **together with `desktop/dist`** before any
+   run, because a B bridge's `chain-broken` is unknown to the current `dist`'s parser.
+
+# CAMERA V2 ENCODER SPIKE, SECOND RUN — 2026-10-05 12:48 IST (owner-supervised, once): PASS; no overflow; evidence UNCOMMITTED; Mac back to normal
+
+**Read this first.** One approved diagnostic run with the A+B bridge. Full record:
+`docs/evidence/camera-v2-encoder-spike-2026-10-05/RUN.md` (uncommitted, as approved).
+
+1. **Built and proven:** **PASS, 28 of 28** pre-registered criteria (scorer v2, unchanged): 425 AUs, 8 IDR +
+   417 P decoded, 0 failures, 1920×1080 at every stage, accounting 425 = 425, planned Stop at 15,002 ms,
+   camera released in 1,364 ms, 60 s of nothing. Route `en0` Wi-Fi. **Defect 177: no overflow in this run**
+   (high-water 3 of 4, one interval with 5 AUs) — a reading, not proof burst recovery is solved; the earlier
+   overflow's field cause remains unmeasured. Preparation 43.9 ms, never waited on; first frame 118 ms after
+   live; `decodedAfterFailure` 0.
+2. **Committed:** nothing this run. Accepted earlier: `80a89f0`, `0e584b7`, `a16cee8`.
+3. **Readable, not committed:** the run's evidence directory — `report.json`, `diag-readout.txt`,
+   `preregistration.*`, `snapshot-before/`, `snapshot-after/`, `RUN.md`.
+4. **Needs your decision:** whether to commit that evidence; whether to approve option B (keyframe request).
+   Defect 177 stays open. The earlier run's FAIL, its re-score and the private original are untouched.
+5. **Would do next, on approval:** commit the evidence; then B, if wanted — this run neither required nor
+   ruled it out.
+6. **Left changed on your devices:** phone — nothing (no reinstall). Mac — `.build/release` rebuilt
+   (probe `331cc7bb…`, bridge `39011e97…`); Sidekick relaunched normally at 12:51:08 with no switches; the
+   old app (pid 54964) did not quit on SIGTERM and was quit through its named menu item.
+
+# DEFECT 177 — OPTION A AND THE DECODE-FAILURE FIX BUILT — 2026-10-05 (code, tests and generated streams only): defect stays OPEN; no capture, no phone change, no relaunch
+
+**Read this first.** Two approved, scoped changes, both committed locally; their evidence committed
+separately. **No hardware reading exists for either.** No capture, wire message, keyframe policy, queue
+bound or quality change. The 2026-10-04 run's verdict and its private original report are untouched.
+
+1. **Built and proven (tests, mutations, a release comparison):**
+   - **A — composers prepared at `session-live` (`80a89f0`).** Both published formats' composers (pool,
+     transfer, rotation sessions) are made on their own queue beside the first IDR's decode; Stop or
+     replacement detaches them, a late completion is released and never installed, nothing is made for an
+     ended session. The decoder is not prepared (needs SPS/PPS; nothing stands in for them).
+     `PreparationTests` 9; MA1–MA6 red, restored with SHA-256 checks.
+   - **B — decode-failure recovery (`0e584b7`).** `docs/protocol.md` (local main↔bridge only) states it:
+     a decode failure is a recoverable Mac-side drop. The decoder is reset; waiting AUs of that session
+     before a current-generation IDR with SPS/PPS are dropped undecoded (`droppedDecodeQueue`); such an
+     IDR and its chain are kept; stale-session failures touch nothing of a replacement. A second fault
+     found red-first: a Stop's decoder reset could land after the replacement's IDR — the decoder now has
+     one owner. `DecodeRecoveryTests` 10 + one end-to-end placeholder test; MB1–MB8 red (MB7 green first,
+     test added).
+   - **Release comparison** (`docs/evidence/camera-v2-decode-recovery-2026-10-05/`, 180 runs, old / A /
+     A+B on identical generated bytes, 10 reps predeclared): first frame ~125 → ~85 ms; paced-arrival
+     overflow 6/10 → 1/10 (loaded Mac); **every burst still overflows, 30/30 on each build, 54 refused,
+     ~2 s.**
+   - **Fresh:** Swift 132/0 (2 opt-in skipped), Mac 1,660/0, scripts 287/0, hook fixtures, both typechecks.
+2. **Committed** (local, not pushed): `80a89f0` (A), `0e584b7` (B), `a16cee8` (evidence + defects,
+   proposal §8, and my `docs/testing.md` section only). Your other edits — `docs/testing.md`'s 1,117 lines,
+   this file, `PRODUCT.md`, `camera-*.md`, `skills-lock.json`, untracked files — are uncommitted, untouched.
+3. **Readable, not built:** options B (`webcam.keyframe`), C, D in the proposal §5. **B is still
+   justified**: A does nothing for the ~2 s recovery gap after any overflow.
+4. **Needs your decision or hands:** approval of the single supervised run below, and of B. The private
+   original report at `~/.connectsuite-evidence-private/…` is kept.
+5. **Would do next, on approval:** one short supervised spike (the existing runbook, 15 s planned Stop)
+   with a release probe rebuilt from `0e584b7` — the current `.build/release` is the 2026-10-04 17:07
+   build without the diagnostics. It would read `diag.overflow.first.*` (the field cause),
+   `diag.prepare.waitMaxUs`, `diag.firstFrame.sinceLiveUs` and `diag.chain.decodedAfterFailure`.
+6. **Left changed on your devices:** phone — nothing. Mac — `desktop/native/SidekickCamera/.build/debug`
+   rebuilt by the tests; three release probes and a bench in this session's scratchpad (not
+   `.build/release`, which is unchanged); `graphify-out/` refreshed. Sidekick (pid 54964) not touched.
+
+# CAMERA V2 SPIKE FOLLOW-UP — 2026-10-04 (20:05–21:00 IST): Mac relaunched normally; scorer v2 and the sanitizer; the run's evidence re-scored; defect 177 instrumented and proposed. No capture, no phone change
+
+**Read this first.** Three approved steps, in order, all done. **No further spike or capture was run or
+approved.** The 19:57 IST run's verdict is **FAIL** and stays FAIL; a separate, post-hoc re-score exists.
+
+1. **Built and proven.**
+   - **A7 (20:06).** The debug Sidekick (pid 193, `webcamDev,webcamSpike`) was quit and relaunched
+     normally, as pid 54964 with the CDP and accessibility flags. Checked first: no call (`mCallState=0`),
+     no camera clients, media projection `null`, no mirror or transfer since 17:09. After: no `DEBUG SWITCHES`,
+     `webcam not advertised`, `webcam` absent from the negotiated extensions, no bridge process, nothing
+     started, no camera held. `pull-resume/` and `dev-share-receive/` hashes identical before and after
+     (`0 expired at start`).
+   - **Scorer v2 + sanitizer (`d1cb5e0`).** The FAIL was the scorer's: v1 summed `probe.decoded` as an
+     ending, and the frame decoding when the Stop landed is decoded *and* `discardedEnded` (BridgeCore
+     re-checks the session after decode). `accounting()` now sums BridgeCore's terminal dispositions,
+     checked against `BridgeCore.invariantHolds` from the Swift. Six scenarios run through the real
+     BridgeCore with a gated decoder; their counts are `docs/fixtures/webcam-spike-accounting-v1.json`, and the
+     scorer holds on each, and fails on one lost or one double-counted AU in each. The sanitizer covers all
+     five peer-name shapes (a test enumerates the Kotlin), then every known Mac name, then refuses on any
+     residue. M1–M5 red. Runbook §7 item 10 and §8 record the correction.
+   - **Evidence (`28c1b38`).** `report.sanitized.json` (derived, names the original's SHA-256) and
+     `rescore-v2.json` (not a hardware run; v1 from `e3fea6a` reproduced the FAIL exactly first; v2 moves only
+     the accounting line, to PASS; bounds identical; marked **post-hoc**).
+   - **Defect 177 (`34db563`).** One decode-stage overflow → 54 P-frames refused (GOP index 5, so that GOP's
+     IDR was in flight with four waiting). `PipelineDiagnostics`: 35 fixed integer counters in every
+     `counts` status + one line at the probe's exit, nothing per frame. Tests use a manual clock and the
+     gated decoder; D1–D4 red (D2 green first, a later-GOP test added). **Readings on this Mac, release
+     build, generated 1080p rotated, 5 runs:** first frame 92–106 ms (setup), steady ~9 ms; smooth arrivals
+     never overflowed; a 17-AU burst during the first frame reproduced the field signature exactly (54
+     refused, 1.65 s). **Field cause unproven.**
+   - **Fresh:** Swift **111 / 0** (1 opt-in skipped), Mac **1,660 / 0**, scripts **287 / 0**, both
+     typechecks clean, every commit guard passed.
+2. **Committed** (local, not pushed): `d1cb5e0`, `28c1b38`, `34db563`. My `docs/testing.md` section went in
+   `34db563` by staging the committed file plus that section only; **your edits to `docs/testing.md` remain
+   uncommitted**, as do this entry and your other modified and untracked files.
+3. **Readable, not built:** `docs/camera-v2-decode-recovery-proposal.md` — the measurements, then four
+   options with costs: (A) create the composer at `session-live`; (A′) pipeline decode and compose; (B)
+   `webcam.keyframe {sessionId, generation}` with rate limiting, which `docs/protocol.md` already names as the
+   addition; (C) a 1 s IDR interval, not recommended; (D) a 4 → 6 decode bound. §6 is a second finding: after a
+   decode **failure**, AUs already waiting are still decoded against a missing reference
+   (`diag.chain.decodedAfterFailure`, 2 of 2 here). Neither is fixed.
+4. **Needs your decision or hands:**
+   - Which, if any, of A / B / D (B and D change the contract first), and whether §6's flush is wanted.
+   - The **one supervised spike** that would name the field cause: the probe now reports
+     `diag.overflow.first.*`. It needs its own approval. The current `.build/release` binaries are the
+     17:07 build **without** the diagnostics; the A1 build would have to be redone first.
+   - **The unredacted original** is at `~/.connectsuite-evidence-private/camera-v2-encoder-spike-2026-10-04/`
+     (dir 0700, file 0600, `SHA256SUMS`). Keep or delete it — your call; nothing references its path.
+5. **Would do next, on approval:** option A (local, no contract change), then the supervised run.
+6. **Left changed on your devices:** phone: nothing. Mac: Sidekick relaunched normally (pid 54964); a
+   release probe built in this session's scratchpad (not `.build/release`); `.build/debug` rebuilt; the
+   private evidence directory above; `graphify-out/` refreshed. In
+   `docs/evidence/camera-v2-encoder-spike-2026-10-04/`, four files from an earlier sitting
+   (`dry-run-1.out`, `snapshot-*`, `snapshot.sh`) are untracked and untouched.
+
+# CAMERA V2 ENCODER SPIKE PREPARED — 2026-10-04 (code and fixtures only): one Samsung spike planned and tooled; signing checklist written; nothing run, installed, relaunched, signed or activated
+
+**Read this first.** The integration checkpoint is accepted. The proposed 30-minute batch (V0–V5 in the
+entry below) was **not started** and is replaced, for the first sitting, by ONE short spike. Approved and
+done: its preparation and a signing-readiness checklist. **No `adb` or device command, no install, no
+capture, no Mac relaunch, no build into `desktop/dist`, no signing, no activation, no push.**
+
+1. **Commits** (local, `clipboard-watcher-and-phase-5-close`, not pushed): the wiring checkpoint
+   `e7fb646`, `4e20782`, `73ec308` (unchanged); this sitting `5386814` (decode probe) and `0f9fb01`
+   (runner, driver, runbook, signing checklist, mutation record).
+2. **Fresh results:** Swift **99 / 0**, Mac **1,660 / 0**, phone **1,342 / 0**, scripts **259 / 0**,
+   both typechecks clean, every guard OK. 19 mutations red on their named tests (MS7, SW1, SW5 green
+   first and SW6 hung first — each a real gap, fixed).
+3. **The spike** — `docs/camera-v2-encoder-spike.md`. One request, the owner's Start tap, back camera,
+   planned Stop at **15 s** and an independent **20 s** cap from the tap (both in Electron main), the
+   driver's own emergency Home at 25 s, then **60 s** of observation. The route is recorded (`route.address`
+   + the Mac interface), never assumed; adb over USB is named as the debugging link, not the video
+   transport. Real SPS/PPS/IDR and P-frame checks, header = `running` = SPS-cropped = decoded size with
+   the coded size beside it, session/generation identity and the claim, Stop → release → nothing after,
+   all **pre-registered** as PASS / FAIL / NO READING in `scripts/webcam-spike-core.mjs` before any
+   reading exists.
+   - **Tooling** (tested on generated fixtures only): `sidekick-camera-decode-probe` (the bridge's real
+     `BridgeCore` + VideoToolbox into a counting sink; writes nothing; self-exits); `EncoderSpike` in
+     Electron main behind `webcamDev` **and** `webcamSpike` (live link, v1's pinned opener, the exact
+     claim, the phone's unchanged consent; once per launch; no button); the phone's capture line now names
+     the encoder, its hardware flag and the AE range; `scripts/webcam-spike-driver.mjs`.
+   - **Unchanged:** `WebcamController`'s extension and identity gates, the bridge, `resolveBridgeExecutable`,
+     the phone's consent/deadline/claim rules. The development preview is still not built.
+4. **Signing** — `docs/camera-v2-signing-readiness.md`. CLT only, **no Xcode**; SIP enabled; 0 system
+   extensions; Team ID **missing** (`teamID = nil`); ADP membership and keychain identities **unknown**
+   (not read). **Finding that changes W4:** a Developer ID–signed system extension will not load until
+   notarized (Apple DTS), so **local activation = Apple Development signing + development profiles, no
+   notarization**; Developer ID + notarization is distribution only, a separate approval. The Swift
+   README's *Blocked* table assumed Developer ID throughout and now carries the correction.
+5. **Left changed on your devices:** nothing on the phone. On the Mac: `.build/debug` rebuilt (Swift), test
+   children all reaped (`pgrep` finds none), `graphify-out/` refreshed. The running Sidekick (pid 28482,
+   from `dist`) was not touched; `desktop/dist` not rebuilt. **Uncommitted, on purpose:** this entry and
+   the new `docs/testing.md` section (both files hold your earlier uncommitted work). Your other modified
+   and untracked files are untouched.
+
+**The exact next approval needed** — for the spike's preparation steps and then the sitting, each line
+its own yes/no (runbook §4.2, §5, §6):
+
+- **A1** `swift build -c release` (bridge + probe) · **A2** phone debug APK build — local builds only;
+- **A3** install that APK on the pinned SM-S938B (`adb install -r` via the pin) · **A4** start it
+  (`am start …/MainActivity`) and `scripts/link-up.sh`;
+- **A5** `npm run build` into `desktop/dist` · **A6** quit Sidekick pid 28482 and relaunch it
+  unpackaged with `CONNECTSUITE_DEBUG_SWITCHES=webcamDev,webcamSpike` and the CDP/accessibility flags;
+- then `node scripts/webcam-spike-driver.mjs --dry-run` (read-only gates);
+- then **the sitting**: `--execute --report <new file> --owner-present`, owner holding the phone with
+  Sidekick in front and the back camera on a non-personal scene; **A7** relaunch Sidekick normally after.
+
+Signing stays a separate track: **Approval L** (local activation: B1 enrol, B2 Xcode, B3 development
+profiles, B4 identifiers, B5 `/Applications` + activation + admin approval) and, later and separately,
+**Approval D** (Developer ID, notarization upload).
+
+# CAMERA V2 WIRED — 2026-10-04 (code only): mirror ↔ webcam coexistence closed; both apps wired; integration-tested; nothing installed, operated, signed or captured
+
+**Read this first.** Approved: the coexistence fix, then production wiring and integration tests, code
+only. Done, committed locally (`e7fb646`, `4e20782`, `73ec308`), **not pushed**. Neither app was installed,
+relaunched or operated. **No picture can be produced yet, by design**: the Mac refuses every webcam request
+while Sidekick Camera is not installed or the build has no Team ID, and both are blocked on signing.
+
+1. **Exact wiring now complete.**
+   - **Coexistence:** a mirror start (Mac or the phone's Mirror tab) is refused while a webcam request or
+     session is open — the mirror's `stopped` ack, `CAMERA_BUSY`, nothing touched; the webcam refuses while
+     the mirror runs / awaits consent / is coming up / is being admitted; the mirror, Camera v1 and the
+     webcam admit under one lock (`core` `CaptureAdmission`). Nothing is stopped to make room. Camera v1's
+     unrelated behaviour is unchanged. `docs/protocol.md` → *Starting a session* and *Webcam*.
+   - **Phone:** `ConnectSuiteApp` → `CaptureWiring.connect(CameraUse.arbiter, MirrorAdmission.gate)`, the
+     real mirror-busy predicate, `WebcamFeature.install` — **debuggable builds only**, `WEBCAM_RELEASE`
+     false. Then `webcam` + `ext.webcam` 1 are advertised and the claim is served. Consent, deadlines,
+     no-linger and late-callback rules are W2's, unchanged.
+   - **Mac:** `main.ts` → `planWebcam` → `wireWebcam` (`desktop/src/main/webcamWiring.ts`). `ext.webcam` 1
+     only unpackaged **and** `CONNECTSUITE_DEBUG_SWITCHES=webcamDev` **and** the bridge at
+     `desktop/native/SidekickCamera/.build/release/sidekick-camera-bridge`. Bound: `webcam.state`, the
+     session ending, suspend / lock-screen / user switch (not resume or unlock), the pane's ask / stop /
+     switch; quit writes the stop then reaps the bridge.
+   - **UI:** a separate *Use as webcam* card under Camera v1's (`WebcamView`). Not route-bound; no preview;
+     Camera v1's controls untouched.
+   - **Note:** there is **no release build of the bridge** at that path, so a dev Mac started with
+     `webcamDev` today truthfully reports *the camera bridge is not built* (`swift build -c release` in
+     `desktop/native/SidekickCamera` makes it — not done here).
+2. **Tests and injected boundaries** (`docs/testing.md` → *Camera v2, app wiring*): the Mac suite drives
+   the production `wireWebcam` with the **real built Swift bridge** (not installed / unconfigured → nothing
+   asked → reaped) and an **INJECTED** bridge child for every flow the real one cannot reach on this Mac;
+   the phone link, socket, `ipcMain` and `powerMonitor` are **stand-ins**. The phone's coexistence test
+   drives the app's own `CaptureWiring` with the production machines; mirror state is **injected**. Fresh:
+   phone **1,342 / 0**, Mac **1,647 / 0**, Swift **89 / 0**, scripts **227 / 0**, typechecks and guards
+   clean; Camera v1 **108 / 0** + **78 / 0**. Mutations 9 Mac + 7 phone, red after one fix (MW2/MW3: tests
+   had read the production table).
+3. **Remaining signing / activation blockers** (proposal §15, README *Blocked*): B1 Apple Developer Program
+   membership → B2–B9: a Team ID compiled into `SidekickCameraIdentity` (lifts *unconfigured*), Developer ID
+   signing of Sidekick, the bridge and the Camera Extension, the system-extension entitlement and App Group,
+   notarization, a build in `/Applications`, the admin's activation in System Settings (lifts *not
+   installed*). Release flags stay false on both sides until a commit records evidence.
+4. **First Samsung Camera2/MediaCodec verification — bounded, supervised, needs its own approval.** The Mac
+   app cannot ask until W4, so the phone half is verified with **repository tooling acting as the paired
+   Mac** (like Camera v1's driver), never by loosening the Mac's gate:
+   - **Pre-reqs (approval each):** the pinned SM-S938B (`scripts/adb-pinned.sh`), a debug APK install, the
+     owner present to tap. No audio, no recording kept: AU dumps live in the session scratchpad, are checked
+     and deleted; only counts, hashes and timings are kept.
+   - **V0, read-only:** each camera's MediaCodec-capable sizes, AE fps ranges, timestamp source and sensor
+     orientation; the AVC encoder's caps. Pre-registered: rung 0 is attempted only if 1920×1080 at 30 fps is
+     offered as a PRIV output (proposal Q3).
+   - **V1, front, 60 s:** request → tap → record. Pass: IDR+SPS/PPS within 10 s of the tap; `running`'s
+     selected size equals the AUs'; every AU accepted by the Swift gate and decoded offline; measured fps
+     and IDR interval reported beside the 30 fps / 2 s targets (not pass/fail); rotation byte matches how
+     the phone is held.
+   - **V2, switch:** `webcam.switch` back → generation 2, IDR with discontinuity, within 2 s.
+   - **V3, endings:** phone Stop, Home (`left-screen`), `webcam.stop` `failure` (the phone shows the
+     Mac-failure sentence — read by resource id, not coordinates), `no-consumers`, disconnect.
+   - **V4, coexistence on device:** mirror running → `webcam.request` refused; webcam awaiting →
+     `mirror.start` refused with the sentence; Camera v1 ↔ webcam.
+   - **V5, 10 minutes, back camera:** thermal status every 30 s, measured fps/bitrate; stop at `SEVERE`.
+   - **Bounds:** ≤ 30 minutes of capture in total, one sitting, an independent 20 s cap on V1–V3's
+     startup phases, the owner's tap every session.
+5. **Later, separately — Meet / Zoom compatibility (after W4 only):** Sidekick Camera listed in Meet
+   (Chrome), Zoom, FaceTime and Photo Booth; selected with no session → the camera-off card; one phone
+   request per consumer episode, none on re-selecting after a decline; approval → self-view;
+   leaving the call → `no-consumers` stop within 1 s; 1080p and 720p formats; portrait pillarboxed;
+   switch mid-call (paused card, then the new camera); sleep/lock mid-call; two apps at once; reopening an
+   app never resumes; Zoom's own effects on our frames.
+6. **Left changed on your devices:** nothing on the phone. On the Mac: test children only (all reaped;
+   `ps` shows none); `graphify-out/` refreshed. `desktop/dist` unchanged (Oct 3); the Sidekick already
+   running from it (pid 28482) was not touched. Your six modified files and untracked files are untouched;
+   this entry and the `docs/testing.md` section are uncommitted for that reason.
+
+# CAMERA V2 W3 CORRECTIONS + W2 — 2026-10-04 (code only): the stop-failure cause and `stream-rejected`; the phone half built and tested; nothing installed, wired, signed or captured
+
+**Read this first.** Approved: (A) the two W3 contract corrections, then (B) W2 on the phone, code only. Both
+are done and committed. **No part of either running app uses any of it**: `ConnectSuiteApp` does not call
+`WebcamFeature.install`; `main.ts`, `MAC_EXT` and the renderer are unchanged. The W3 entry below stands.
+
+1. **Built, and what proved it.**
+   - **A, `510d808`.** `webcam.stop` cause `failure` + a closed `detail` (phone reason `mac-failed`, never
+     worded as a Stop; the phone never shows the string). The bridge's `stream-rejected {sessionId,
+     generation, violation}`: decided by session **before** the bytes are read, fatal only for the live
+     session, reported once, ignored by main unless the id is current. Shared closed sets in
+     `docs/fixtures/webcam-vocabulary-v1.json` (read by TS, Swift, Kotlin).
+   - **B, `c0ed2de` + `acb11e4`.** Contract first (selected size beside the target in `running`; v1/webcam
+     as one decision; the mirror both ways). `core`: the `webcam` claim, sink, contract and `ext.webcam`
+     (installed **and** debuggable; `WEBCAM_RELEASE = false`). `camera-module/.../webcam/`: the session
+     machine, AU codec + MediaCodec assembler, stream writer, capture core, `CameraUseArbiter`, the Camera2 →
+     MediaCodec backend (compiled only), the screen, notifications, the gated install. Mac: the four names
+     in `MessageType` as the twin, nothing else.
+   - **Real H.264 across three readers:** VideoToolbox output cut into MediaCodec's shape → the phone's
+     production path reproduces `docs/fixtures/webcam-phone-stream-v1.hex` → the Swift gate admits and
+     VideoToolbox decodes all 9 AUs → Electron main frames them. The encoder is a Mac's, standing in.
+   - **Fresh results:** phone **1,325 / 0** (six modules), Mac **1,616 / 0**, typecheck clean, Swift
+     **89 / 0**, every guard OK, spec checker 0 unaccounted (spec-only now 4: `apps.launch`, `mic.*`).
+   - **Mutations:** A — 3 TS + 3 Swift; B — 17 phone. All red on the test named for them after one fix:
+     **MB14 was green** because the coexistence test modelled the engines' wiring; the decision now has one
+     home (`admitCamera` / `admitWebcam`). Also found: a writer test settling on one of two clocks (8/8 red
+     alone), fixed. Evidence: `docs/evidence/camera-v2-w3-corrections-2026-10-04/`,
+     `docs/evidence/camera-v2-w2-2026-10-04/`; the record is `docs/testing.md` → the two new sections.
+2. **Committed:** `510d808`, `c0ed2de`, `acb11e4`, local, **not pushed**. **Not committed, on purpose:**
+   this entry and the two `docs/testing.md` sections (both files hold your uncommitted work). Your other
+   modified and untracked files are untouched.
+3. **Reachable versus not.** Real and tested: the machine, codec, assembler, writer, capture core, arbiter,
+   claim, `ext`, contract. **Compiled only, never executed:** `Camera2WebcamBackend`, `WebcamEngine`,
+   `WebcamActivity`, `WebcamNotifications`, `WebcamFeature.install`. Held by source scans only: the gate's
+   order in `install`, and each engine passing the arbiter's answer through.
+4. **Decisions and gaps the code cannot settle:**
+   - **The mirror's own admission.** A webcam refuses while mirroring, and a mirror started before the tap
+     wins; a `mirror.start` during a *running* webcam is not refused (as for Camera v1). Making the mirror
+     refuse is a mirror-contract change and app wiring — your call.
+   - **No on-device preview decision yet:** P1 (Camera2, preview + encoder surfaces) is coded; whether this
+     phone holds it is S1's reading. The preview surface's aspect is unhandled until then.
+   - **Once reinstalled, the debug phone lists `webcam` in `unavailable`** (its "not implemented" reason)
+     because the capability now exists and the feature is not installed. The Mac ignores names outside its
+     own list, so nothing on screen changes; it is the contract's prescribed release-build row.
+   - The dev preview stays deferred; device-not-installed and producer-identity gating are untouched.
+5. **Needs your hands**, each a separate approval:
+   - **App wiring, both sides together:** `ConnectSuiteApp` → `WebcamFeature.install(this, link, mirrorBusy
+     = …)` (and update `WebcamReleaseGateTest`, which fails on purpose when that line appears); `main.ts` →
+     construct the controller, advertise `webcamExt`, dispatch `webcam.state`, `powerMonitor`, IPC, a pane.
+   - **S1, supervised:** debug APK install + one capture sitting (both cameras, 10 min, rate/size/heat/latency).
+   - **W4:** B1–B9 (Apple Developer Program, signing, the extension, activation). Release activation stays off.
+6. **Would do next, on approval:** the paired wiring commit (phone install + Mac controller), then S1's
+   pre-registered readings.
+7. **Left changed on your devices:** nothing on the phone (no `adb`). On the Mac: the Swift bridge rebuilt in
+   `desktop/native/SidekickCamera/.build/debug`; `camera-module/build/webcam-phone-stream-v1.bin` (a test
+   output); `graphify-out/` refreshed. One `swift` script run (VideoToolbox encode in-process, no device, no
+   camera, no TCC). No relaunch, no `dist` build, no extension command, no signing. `ps` shows no bridge or
+   test children left.
+
+# CAMERA V2 W3 — 2026-10-04 (01:00–02:10 IST): Electron main's controller and the bridge process built and tested locally; nothing wired, signed, installed or captured
+
+**Read this first.** Only W3 was approved, and it is done. W2 (phone) and W4 (signing, deployment) remain
+unapproved. **No part of the running app constructs the new controller**: `main.ts`, `MAC_EXT`,
+`MessageType`, the Camera pane and `desktop/dist` are unchanged. The W0/W1 entry below is unchanged.
+
+1. **Built, and what proved it.**
+   - `desktop/src/main/webcam.ts` — `WebcamController`: consumer episodes (one automatic request per
+     episode, none after a spent one, none after a reconnect or a bridge restart); the phone's tap before
+     the socket; `running` before any AU reaches the bridge; the immediate `no-consumers` stop; Stop,
+     disconnect, sleep/lock/user switch, quit and the dev switch; Cancel during the ack and late acks; token,
+     session, socket and generation ownership; logs without tokens, whole ids or frame bytes.
+   - `desktop/src/main/webcamBridge.ts` — `BridgeProcess` (no shell, one resolved path, strict stdout,
+     stderr as diagnostics, 4-AU bound with the keyframe rule, ready deadline, shutdown → SIGTERM → SIGKILL,
+     resolved on exit) and `resolveBridgeExecutable` (no override, no symlink, no debug fallback).
+   - `desktop/src/shared/webcamWire.ts`, `webcamBridgeRecords.ts` — the claim, the stream splitter (the
+     bridge stays the one full AU validator), the record codec, the strict status parser, and `webcamExt()`
+     (the advertise gate, **not wired**).
+   - The bridge's new first record, `ready {device, producerIdentity}` — one row added to
+     `docs/protocol.md`'s Mac-local status table, so main reads the Team ID's absence from the bridge instead
+     of holding a second copy. **Fail closed**: no request while either is negative. Team ID still `nil`.
+   - **Fresh results:** Mac **1,607 / 0**, typecheck clean, Swift **78 / 0**, isolated release build 0
+     warnings, script fixtures 23/23, every guard OK. **Mutations:** 20 + re-runs + 1 Swift; all red on the
+     test named for them except M1 (unreachable guard, explained). Evidence:
+     `docs/evidence/camera-v2-w3-2026-10-04/`; the record is `docs/testing.md` → *Camera v2, W3*.
+2. **Committed:** `46c4e24` (the `ready` record, contract row first) and `a7f708b` (controller, bridge
+   process, codecs, 64 tests, evidence), local, **not pushed**, on `clipboard-watcher-and-phase-5-close`.
+   **Not committed, on purpose:** this entry and the appended `docs/testing.md` section — both files hold
+   your earlier uncommitted work. Your other modified and untracked files are untouched.
+3. **Reachable production paths versus injected boundaries.**
+
+   | Path | Status |
+   |---|---|
+   | `BridgeProcess` → the **built** Swift bridge: spawn, `ready`, records split/coalesced, malformed input, stdin close, shutdown, escalation, reaping | **real, exercised** |
+   | Controller → real `BridgeProcess` → real bridge on this Mac: reports *not installed / unconfigured*, asks the phone nothing | **real, exercised** |
+   | Controller's request/approval/frames/stop logic | **real code, driven by stand-ins** for the phone, the socket and the consumer count |
+   | Sidekick Camera installed, producer identity configured, a consumer count ≥ 1 | **injected** — this Mac has none of them |
+   | `openCameraSocket` (v1's pinned TLS opener) for the webcam claim | **not exercised**; it is what wiring would pass as `openSocket` |
+   | `main.ts` wiring: `MessageType` constants, `hello` ext, `webcam.state` dispatch, `powerMonitor`, IPC, a pane | **not built** — needs approval with W2 |
+
+4. **Half-built, gaps and decisions the code cannot make:**
+   - **The pre-signing end-to-end sitting is now impossible by construction.** The proposal's W3 included a
+     dev-only preview drawing the bridge's frames; it was out of this approval. Without it, the controller
+     correctly refuses every request because no Sidekick Camera exists to show the picture. Either approve a
+     dev-preview consumer (and its gate), or accept that the first phone→Mac picture waits for W4.
+   - **The contract has no stop cause for a Mac-side failure.** An expiry backstop, a malformed stream, a
+     bridge failure and a producer refusal send `webcam.stop` `shutdown` (the phone reads `stopped-by-mac`).
+     True, but coarse. A contract decision, not a code one.
+   - **Malformed AUs:** main closes the stream on what it frames (length, flags, version, codec,
+     generation 0). The bridge's deeper rules (NAL structure, IDR-per-generation, order) **drop and count**
+     rather than close, so the contract's "the Mac closes the stream on a malformed AU" holds only for main's
+     subset. Closing on the bridge's verdict needs a new status op.
+   - The packaged bridge name (`sidekick-camera-bridge` in `Contents/MacOS/`) is W4's to confirm.
+5. **Needs your hands:** separate approvals for W2's code; for wiring W3 into `main.ts` (only together with
+   W2); for the dev-preview question above; for the stop-cause question. W4 stays blocked on B1–B9.
+6. **Would do next, on approval — W2, code only** (no device, no install, no capture):
+   - `webcam.*` constants and handlers on the phone, behind `Extensions.WEBCAM_RELEASE = false` and the
+     debuggable-build gate; the `webcam` capability and `ext` key advertised only there;
+   - the session state machine reusing Camera v1's consent screen: per-request `sessionId`, the `trigger`
+     sentence, 30 s expiry on the request's own clock, no tap after the deadline, `CAMERA_BUSY` against v1
+     and the mirror both ways, stop causes and `stream-closed` re-attribution;
+   - the 42502 `webcam` claim (all five conditions, claimed once);
+   - the AU writer: the 16-byte header held to `docs/fixtures/webcam-au-v1.hex`, generation on switch and
+     reconfiguration, SPS/PPS on every IDR, a 2 s IDR target, the 2-AU in-flight bound with the keyframe
+     rule and a sync-frame request;
+   - JVM tests for each, red-first, and the Mac twin's constants only when wiring is approved.
+   The Camera2 → MediaCodec spike (S1) and any capture stay a supervised sitting (B7).
+7. **Left changed on your devices:** nothing on the phone. On the Mac: the bridge rebuilt in
+   `desktop/native/SidekickCamera/.build/debug` (Swift change); an isolated release build in the session
+   scratchpad; `graphify-out/` refreshed (gitignored). Tests spawned and reaped local children only. **Three
+   orphans from mutation runs** (a SIGSTOPped debug bridge and two `node` stand-ins under `$TMPDIR`) were
+   verified by command line and killed; `ps` shows none now, and no test temp directory remains. No app
+   relaunch, no `dist` build, no system-extension command, no signing, no TCC prompt.
+
+# CAMERA V2 W0 + W1 — 2026-10-03 (16:40–17:40 IST): contract and Mac logic built locally; nothing signed, installed or captured
+
+**Read this first.** Only W0 and W1 were approved, and both are done. This sitting ends here; W2 onward
+needs a new approval. The plan entry below (*CAMERA V2 PLAN*) is unchanged, and its item 5 is what this
+entry completed. All the Camera v1 entries below are unchanged.
+
+1. **Built, and what proved it.**
+   - **The proposal, revision 2** (`docs/camera-v2-webcam-proposal.md`) records the owner's decisions:
+     no linger, an immediate stop on the last consumer, enumerate/open/permission ≠ consent, no automatic
+     restart.
+   - **W0, the contract.** `docs/protocol.md` → *Webcam*:
+     - the device versus the session;
+     - consumer episodes, with one automatic request per episode and none after any other ending;
+     - `webcam.request/state/stop/switch`, the `webcam` claim on 42502 and the 16-byte AU header with
+       its golden fixture `docs/fixtures/webcam-au-v1.hex`;
+     - formats, the two cards, host-clock timestamps and bounds per stage;
+     - the main ↔ bridge ↔ extension contract;
+     - older peers (no v1 fallback), the `ext` `webcam: 1` key, and the dev and release gates.
+
+     `camera.*` is byte-for-byte unchanged. `check-protocol-spec`: 8 spec-only, 0 unaccounted for. Its
+     control: the four new names were the only findings before they were allowlisted.
+   - **W1, the Mac logic** (`desktop/native/SidekickCamera/`, SwiftPM, CLT only):
+     - the real CMIOExtension provider/device/streams;
+     - `FrameRelay` and `ProducerAuthorizer`, which fails closed: the Team ID is `nil`;
+     - the bridge pipeline, with real VideoToolbox, a real `CMSimpleQueue`, and the bridge executable.
+
+     `node run-tests.mjs`: **78 tests, 0 failing.** A clean isolated debug and release build: 0 warnings.
+     **14 mutations, each red on the test named for it.** Evidence: `docs/evidence/camera-v2-w1-2026-10-03/`.
+     What each test stands on, and what is **injected** (the identity verifier) or **modelled**
+     (CoreMediaIO's fan-out and cross-process transport), is in the package README.
+   - **New readings:**
+     - one `CMIOExtensionProvider` per process (an NSException);
+     - `notifyPropertiesChanged` and `send` crash on a device with no provider;
+     - the decode stage's first bound reached 11 against 4, caught by its test and fixed;
+     - `swift test` needs Testing.framework's path under the CLT, which the wrapper passes;
+     - CoreMediaIO enumeration lists only `FaceTime HD Camera` (the control for "device not installed").
+   - **`check-suites-run.mjs` has a Swift leg.** A filtered run counts as unrun. Red-first was done.
+   - **SinkCam:** MIT at `ce124cfc…`. Its files carry a stale 2022 "All rights reserved" header. **No
+     code copied**; hashes are in `ATTRIBUTION.md`. **OBS (GPL) not read.**
+2. **Committed:** `95a5485` (W0) and `28d69d5` (W1), local, **not pushed**, on
+   `clipboard-watcher-and-phase-5-close`. **Not committed, on purpose:**
+   - `docs/RESUME.md` (this entry) and `docs/testing.md` (a W0/W1 section appended at the end). Both
+     files already held your uncommitted work, so they stay as working-tree edits like the entries below.
+   - All your other uncommitted and untracked files, which are untouched.
+3. **Half-built:** nothing. Two pieces of W1 code compile and have **never executed**, because no device
+   exists for them to find:
+   - `CMIOSinkPort`'s sink-stream path;
+   - `ConsumerWatcher`'s property listener.
+
+   `sidekick-camera-extension` is compiled only.
+4. **Needs your hands:**
+   - **B1–B9** for anything further. The exact ordered steps for signing, packaging, activation and
+     Meet/Zoom are the README's *Blocked* table (15 steps).
+   - **W2** (the phone) and **W3** (Electron main's controller and the bridge spawn) each need a
+     separate approval, even for code only.
+   - **Unproven until a signed build:**
+     - that a Developer-ID bridge passes the authorizer;
+     - Q7: attachments crossing the sink;
+     - Q8: per-client `startStream`;
+     - Q9: whether the sink counts as "running somewhere".
+5. **Would do next, on approval:** W3's controller in TypeScript, written against the same fixture. It
+   is the last piece of the consent policy that can be tested without a device: episodes, no
+   automatic re-request, the immediate no-consumers stop, stop ordering. Then W2's code.
+6. **Left changed on your devices:** nothing on the phone. No `adb`, and no install, relaunch or settings
+   change. On the Mac:
+   - **built:** `desktop/native/SidekickCamera/.build/` and an isolated copy in the session scratchpad;
+   - **read-only commands only:** CoreMediaIO enumeration with no stream started, and `codesign -dv`;
+   - **no signing, no TCC prompt, no system-extension command.**
+
+   The tests spawned `/bin/sleep` briefly, and they wrote crash reports for the test runner to
+   `~/Library/Logs/DiagnosticReports/` while I diagnosed (`swiftpm-testing-helper-2026-10-03-17*.ips`).
+   The running Sidekick, `desktop/dist`, and all protected transfer artifacts were not touched.
+
+# CAMERA V2 (VIRTUAL WEBCAM) PLAN — 2026-10-03: written, nothing built, signed, installed or captured
+
+**Read this first.** The plan is `docs/camera-v2-webcam-proposal.md` (uncommitted). The Camera v1 entries
+below are unchanged, and so are Camera v1's code and `docs/protocol.md`.
+
+1. **Built and proven:** nothing built. The plan rests on these readings:
+   - macOS 26.6.1 arm64. **No Xcode, only the Command Line Tools.** 0 signing identities, 0 system
+     extensions, SIP enabled.
+   - A Swift typecheck of every CoreMediaIO, SystemExtensions and VideoToolbox symbol the plan needs
+     **passes** with the CLT SDK. The control: the first attempt failed on a renamed symbol. The probe is
+     in the session scratchpad and was never run.
+   - Apple's capability table lists System Extension and App Groups as **ADP / Developer ID only**.
+2. **Committed:** nothing. HEAD is still `ad8dd55`.
+3. **Half-built:** nothing. The proposal's phases W0–W3 need no Apple account. W4 onward is blocked on
+   B1 (Developer Program membership).
+4. **Needs your hands:** blockers B1–B11 in the proposal's §15, each a separate yes/no. The decisions
+   needed first are B10 (D-2: a 10 s linger, so a Meet join is not three taps) and B11 (a separate
+   `webcam.*` namespace, so v1 stays byte-for-byte unchanged).
+5. **Would do next, on approval:** W0 (`webcam.*` into `docs/protocol.md`), then W1 (the Swift bridge and
+   the extension logic, tested in-process). Both are local only.
+6. **Left changed on your devices:** nothing. No device writes, no install, no settings change. A
+   scratchpad typecheck file only.
+
+# CAMERA SESSION 2 (CASE D) — 2026-10-03 (15:59–16:01 IST): NO READING — the actor's tray AppleScript did not compile; no Disconnect happened; the 20 s cap stopped capture; no retry
+
+**Read this first.** Record: `docs/testing.md` → *Camera Session 2, case D*. Evidence:
+`docs/evidence/camera-supervised-2026-10-03/session-2/`. Session 1 (passed with the owner's documented
+deviation) and the earlier NO READING entries below are unchanged.
+
+1. **Built and proven:**
+   - Session 1 stands: an 11/12 functional smoke pass with the owner-accepted close-first deviation.
+   - Session 2's request, approval and live stream (`b836d498…`) worked.
+   - The actor's Disconnect gate held at live + 5.0 s.
+   - The independent cap fired at anchor + 19.5 s, and the camera was released within 20 s on both clocks.
+   - Case D itself has **no reading**: the tray was never clicked, and the link never dropped.
+2. **Root cause:** `its`/`it` are AppleScript reserved words in the actor's tray script (`-2740`), reproduced
+   offline with `osacompile` (no execution). The local tests used an injected tray, and the earlier tray check
+   used a different script, so the live script was never compiled before the run.
+3. **Committed:** nothing. HEAD `ad8dd55`, not pushed. All records and evidence are uncommitted.
+4. **Needs your hands:** approval for (a) renaming the variables in the actor's AppleScript and compiling it
+   with `osacompile` during preparation, (b) whether to note or fix the driver's capture-end dating (it reported
+   20.696 s / `withinLimit: false` for a Stop clicked at 19.503 s), and (c) a fresh case D attempt.
+5. **Would do next:** (a) and the compile check, then case D again with the same back-to-back procedure and
+   revision 2 of its acceptance (`f3940a02…`).
+6. **Left changed on your devices:** two Camera sessions in total today. Afterwards: no camera held, Sidekick's
+   Camera screen in front, the Mac pane `ended`. All snapshots are identical to before (the 65 protected
+   Mac artifacts, `sidekick.json` included); the APK and relaunch changes are as in the entries below.
+
+# CAMERA SESSION 1, SECOND ATTEMPT — 2026-10-03 (15:09–15:11 IST): 11 of 12 bounds met; S1-8's phone line took the close-first route; Session 2 held for the owner
+
+**Read this first.** Record: `docs/testing.md` → *Camera Session 1, second attempt*. Evidence:
+`docs/evidence/camera-supervised-2026-10-03/session-1b/`. The 14:17 NO READING entry below is unchanged.
+
+1. **Proven on hardware (production wiring, `98187d17…` + Mac pid 28482):**
+   - one request (`35bca7ce…`), bound by both the driver and the actor;
+   - the phone's request screen over Sidekick;
+   - live, rear 960 × 720; the switch at +5.0 s, confirmed front on both sides;
+   - the real Mac Stop at +15.06 s, inside the 20 s cap (16.49 s from the anchor; the cap never fired);
+   - the picture cleared (0 lit pixels at +0.3 s) and 0 draws after the Stop;
+   - the camera released by +1 s (2 released of 2 bound);
+   - counts: 208 sent, 207 received, 207 drawn, 0 not drawn;
+   - 60 s watch with no restart.
+2. **Not met as written: S1-8.** The phone's `stopped` line reads `STREAM_CLOSED`, because the Mac's socket
+   close beat its `camera.stop` by about 2 ms. It was then re-attributed to `STOPPED_BY_MAC` (defect 167's
+   close-first path), so the final attribution on both ends is "stopped by this Mac".
+3. **Committed:** nothing. HEAD `ad8dd55`, not pushed; every record and all evidence are uncommitted.
+4. **Needs your hands:** decide whether S1-8's close-first wording counts as a pass. Session 2 (tray
+   Disconnect/Connect) is approved but runs only after a full pass and your fresh readiness.
+5. **Would do next:** on your decision, Session 2 with the same back-to-back procedure
+   (`actor.mjs disconnect` beside the driver). Its tray path is read-verified, but the actor's disconnect
+   mode has **not** been exercised locally — the fake pane has no tray — so it needs that check first.
+6. **Left changed on your devices:** as in the entry below, plus one Camera session. Afterwards the phone
+   shows Sidekick's Camera screen, with no camera held. Every snapshot is identical to before.
+
+# CAMERA SUPERVISED SESSIONS — 2026-10-03 (13:07–14:22 IST): update done; Session 1 NO READING (phone slept before the request); Session 2 NOT RUN
+
+**Read this first.** Evidence: `docs/testing.md` → *Camera supervised sessions — 2026-10-03*; instruments
+and outputs in `docs/evidence/camera-supervised-2026-10-03/` (uncommitted, with `MANIFEST.sha256`).
+
+1. **Built and proven:** the approved update is installed and verified. Phone APK `98187d17…` (debug
+   signer `d3a505d2…`, installed 13:16:37, link 3/3); Mac `dist` rebuilt from `ad8dd55`, relaunched once
+   (pid 28482, no debug switches), connected, `camera` advertised. The driver passed its read-only
+   validation. The separate actor (switch at ~5 s, Mac Stop at ~15 s, tray actions for case D) passed 41/41
+   against a fake pane and fake `adb`, one mutation red; beside the real driver core, freezing it left the
+   20 s cap to stop capture by itself at anchor + 19.504 s.
+2. **Session 1: NO READING.** The dry-run passed at 14:17:01. At 14:17:47.96 the driver's gate found
+   the phone asleep (`awake: false`, no resumed activity) and aborted **before any request**. No camera line
+   on either end, no camera client. Per the approval, no retry. **Session 2: NOT RUN.**
+3. **Committed:** nothing new. HEAD is still `ad8dd55`, not pushed. The new records here and in
+   `docs/testing.md`, the overnight report's pointer and the evidence folder are uncommitted on purpose.
+4. **Needs your hands:** a fresh approval to run Session 1 again (and then Session 2). The phone must
+   stay awake and unlocked with Sidekick in front until the request appears; this time the request should
+   follow the readiness reply with no read-only step in between that the screen timeout can outlast.
+5. **Would do next:** exactly that — rerun the gates and the execute together, then Session 2 only on
+   a full pass. `scripts/camera-driver.mjs` is unchanged. The actor lives in the evidence folder and imports
+   `scripts/probe.mjs` by absolute path.
+6. **Left changed on your devices:** the phone's APK (`98187d17…`); the Mac app relaunched (pid 28482),
+   so `sidekick.json`'s mtime and inode changed (same bytes); the Mac's clipboard pushed to the phone on
+   connect (the shipped auto-sync); the Mac's Camera pane is selected. The phone's perms, bindings
+   (accessibility reads `null`, as before), prefs, trust store and receive folder, and all 65 protected Mac
+   artifacts — the paused partial, its record and the `.failed` marker included — are identical to the
+   pre-update snapshot (except that `sidekick.json`).
+
+# CAMERA HARDENING OVERNIGHT — 2026-10-03 (unattended, ended 12:55 IST): 8 defects fixed, tests only; nothing on hardware
+
+**Read this first.** Five local commits on top of `a93ebdb`, none pushed. **No device or app was touched**
+and **none of this is hardware-verified; Camera is not release-ready.** The full report is
+`docs/camera-overnight-2026-10-03.md`; the evidence is `docs/testing.md` → *Camera hardening overnight*.
+The 22:38, 22:53 and 23:14 NO READINGs below are unchanged.
+
+## 1. Built, and what proved it (tests only)
+
+- **Phone:** 169 (a camera could bind after its stream ended), 170 (a tap after the deadline opened it),
+  171 (the ack claimed an undeliverable notification), 176 (no line when a stream went live).
+- **Mac:** 172 (undrawable frames invisible; frozen picture labelled live), 173 (connected with no
+  identity to pin), 174 (a Mac Disconnect read "Your phone disconnected" — the predicted case D issue),
+  175 (asking again after a cancel was refused as busy).
+- **Driver:** `scripts/camera-driver.mjs` + `camera-driver-core.mjs`, with fixtures for every fault the
+  2026-10-02 sittings lost a reading to. **Never run against a device.**
+- Fresh: Mac **1,543 / 0**, phone **1,248 / 0** (all result files from a `--rerun-tasks` run), 23/23
+  script fixture suites, all 16 hooks allow. **40 mutations: 39 red, M175-B survives** (explained).
+
+## 2. Committed
+
+`29386f3` (task 1), `9dbb8ab` (task 2), `2ddfd33` (task 3), `4164d96` (task 4), `ad8dd55` (the report).
+
+## 3. Half-built
+
+Nothing. The CLI's device functions are ports of r6's and have not executed.
+
+## 4. Needs your hands
+
+- Approval for the smallest hardware batch (the report's last section): one plain session with the new
+  driver, then case D with the tray's Disconnect. Both need the `4164d96` debug APK installed and the Mac
+  rebuilt and relaunched.
+- Whether to keep the 2026-10-02 runs' raw outputs, which exist only in `/tmp`
+  (`docs/evidence/camera-v1-drivers/README.md`).
+- Whether to commit this file, `docs/camera-v1.md` and your `docs/testing.md` block (all still uncommitted).
+
+## 5. Next, and why
+
+The plain session first: it reads four of the eight fixes (169, 171, 172, 176) in one request, with the
+driver's cap. Then case D, which is the one predicted user-visible failure.
+
+## 6. Left changed on your devices
+
+Nothing. Mac app pid 39218 and its `dist` unchanged; the 65 live artifacts (the paused partial, its
+record, the `.failed` marker) identical in hash, size, mtime and inode; no `adb` command reached the phone.
+The debug APK was assembled into `app/build` only.
+
+---
+
+# CAMERA CASE A, TIMED HOME — 2026-10-02 (23:14–23:17 IST): scripted procedure NO READING (your own Home came first); every product check held; evidence uncommitted
+
+**Read this first.**
+- **This sitting committed `a93ebdb` (docs only, local):** the batch result and the 23:01 retry result
+  kept separate; defect 167's close-first re-attribution qualified as observed in the phone's log, the Mac
+  retaining `stopped-by-mac`, the phone's screen not observed; and the post-reopen evidence marked
+  retrospective.
+- **Uncommitted:** the timed-Home attempt → `docs/testing.md` → *Camera case A with a timed Home*.
+
+## What happened
+
+1. **The repaired core gained one timed Home action** (fires once, only after THIS stream is live, and
+   re-checked at the moment it fires) and a gated, flag-free reopen.
+   - 21/21 local tests including the real 20 s cap.
+   - Mutations H1, H2, H3 and H4 are red; the H2a control held.
+2. **The read-only preflight was clean.** Dry gates passed; you answered *ready*.
+3. **One request.**
+   - You tapped at 23:16:20, and the picture was live at 23:16:21.
+   - **You pressed Home at 23:16:24, before the driver's 5 s timer,** so the driver never sent its Home.
+4. **On your Home, every product check held:**
+   - `LEFT_SCREEN`, and the Mac's left-the-display wording;
+   - the picture cleared and the camera released;
+   - 63/63/63 frames, 0 drawn after the end;
+   - the gated normal reopen, with no capture, no new request and no reused consent;
+   - a clean 60 s watch from the confirmed reopen.
+5. **Result:**
+   - **the scripted timed-Home procedure is NO READING** (its step A never ran);
+   - **the product behaviour for Home held.**
+   - Whether that counts for case A is your call.
+6. **Instrument race, recorded:** two phone lines read twice. No decision was affected.
+
+## Left changed
+
+- **Phone:** the CAMERA app-op reflects this session.
+- **Mac:** one paint/draw-time wrapper on the running app (pid 39218).
+- **Unchanged:** the protected artifacts and your files.
+
+## Needs the owner
+
+- How to count this for case A.
+- If the scripted Home itself must be shown, one more attempt in which nobody touches the phone after
+  Start camera.
+- Whether to commit.
+- B, C and D are unapproved.
+
+---
+
 # CAMERA CASE A RETRY — 2026-10-02 (22:53–23:04 IST): NO READING (Home after the 20 s cap); repaired driver held; close-first re-attribution seen; evidence uncommitted
 
 **Read this first.**
@@ -883,7 +1569,327 @@ directions: `docs/camera-v1.md` → *Hardware results*.
 
 ---
 
-# Resume here — written 2026-10-01: L1/L2 T4-A PASSED on hardware — block 800 named; evidence committed (docs only); T5 NOT approved
+# CAMERA V1 HANDOFF — 2026-10-02 (written 05:04 IST): built and tested with generated fixtures only; nothing on hardware
+
+**Read this first.** Camera v1 — a live preview of the phone's camera inside the Mac's Camera pane — is
+implemented on both sides with tests, in four local commits on top of `685a8f4`, none pushed. **It has not
+run on any phone. It is not release-ready, and release builds do not install it.** Full design, evidence and
+the hardware plan: `docs/camera-v1.md`. Contract: `docs/protocol.md` → Camera. Evidence: `docs/testing.md`
+→ *Camera v1*.
+
+## Commits
+
+| Commit | Scope |
+|---|---|
+| `09fa76c` | Contract: `camera.request/stop/switch/state`, the camera claim on 42502 (`<token> camera <streamId>`, the mirror's token-only frame unchanged, no new listener), the 16-byte in-band frame header, `CAMERA_BUSY`/`CAMERA_UNAVAILABLE`, `SideChannelClaim`, `LinkServer` routing, the `camera` capability (no permission gate; `cameraServed` not defaulted) |
+| `e9140b3` | Phone: new `:camera-module` — `CameraSessionMachine` (all rules), `CameraEngine`, `CameraActivity` (request screen; CameraX Preview + ImageAnalysis bound to the activity), `CameraStream`, codec/NV21/pacer, `CameraReleaseGate`; core session-ended listener list and camera notification channel; guards cover the new module |
+| `a75b613` | Mac: `CameraController` (Electron-free), pinned stream socket, strict frame reader, `CameraView` + painter, nav entry built, Settings list, `peerFingerprint()` on the link |
+| `c2913a1` | Docs: `docs/camera-v1.md` handoff and the `docs/testing.md` section |
+
+## The privacy rules, and where each is held
+
+- A Mac request never opens the camera — `CameraEffect.OpenCamera` comes only from `approve()`, called by
+  the phone's request screen after **Start camera** (P1).
+- Permission is not consent — `CAMERA` is asked by Android's dialog only after that tap.
+- No socket or frame before approval; one claim per stream; owner-bound stop/switch/claim (P2–P5, P9, M1–M3).
+- Foreground only: the camera is bound to `CameraActivity`; `onStop` ends a live stream (P11). No foreground
+  service, no restart of any kind; consent dies with the stream.
+- Every end releases camera, socket, timers, notification, then reports counts (P6).
+- An old frame is never shown as live: two seconds without one hides the picture (M5, M11, M12).
+- Release gate: `CameraReleaseGate.allows(debuggable)` (P12).
+
+## Evidence (fresh at the end)
+
+- Mac **1,492 / 0** (+41); typecheck 0. Phone **1,201 / 0** (camera-module 61, core +5), all result files from
+  a `--rerun-tasks` run. Every guard green; fixture suites 21 / 21.
+- **28 / 28 mutations red** on their named tests, restores SHA-verified, none uncounted.
+- Isolated Mac build in scratch: 260 files, `tsc` 0. Debug APK assembled into `app/build`, **not installed**.
+
+## Protected, verified unchanged at the end
+
+`PRODUCT.md`, `skills-lock.json`, the owner's uncommitted `docs/testing.md` blocks (the start-of-night file is
+an unchanged prefix of today's, with only the Camera section appended), the earlier `RESUME.md` entries
+below, the 23 untracked files, and the running `dist` (pid 99261, not rebuilt, not relaunched). No `adb`
+command, no install, no transfer, no Resume/Cancel, no pairing or permission change, nothing signed or pushed.
+
+## Not done, and why
+
+- **No hardware reading of any kind.** The nine-step supervised plan in `docs/camera-v1.md` needs one debug
+  APK install and one Mac build + relaunch — both need the owner's go-ahead.
+- `PRODUCT.md` still lists Camera as unbuilt — it is the owner's protected file and was not edited.
+  `docs/phase-7-state.md` and `CLAUDE.md`'s roadmap likewise still describe the *webcam* as unbuilt, which
+  remains true; neither yet mentions the preview.
+- Front-camera mirroring/rotation, One UI's camera error codes and all performance are unmeasured.
+
+---
+
+# OVERNIGHT HANDOFF — 2026-10-02 (00:15–01:20 IST): four workstreams, tests only; nothing on hardware; running apps and live artifacts untouched
+
+**Read this first.** Four local commits on top of `b1f62fc`, none pushed. **No result below is
+hardware-proven, and the app is not finished or release-ready.** The metadata-based T5-B is still NO
+READING; T5-A and T4-B are unapproved and unproven.
+
+## Commits (each with its record in `docs/testing.md` and `docs/defects.md`)
+
+| Commit | Workstream | Defects | Files |
+|---|---|---|---|
+| `264ec68` | 1 — transfer verdicts and recovery | 158, remaining paths | `bulk.ts`, `filesResume.test.ts` |
+| `66f066f` | 4 — failure evidence and logs | **159, 160, 161** | Mac `bulk.ts`, `transferFiles.ts`, `fsBlocks.ts` + tests; phone `FsPartials`, the stores, `FsCorruptionProbe`, `BulkStops`, `BulkTransfers` + tests |
+| `a99ee74` | 3 — Files controls and truthful state | **162, 163, 164, 165** | `renderer/files.ts`, `renderer.ts`, `main/files.ts`, `bulk.ts` + `filesWiring`/`filesView`/`filesResume` tests |
+| `685a8f4` | 2 — source stability, stale metadata | **166** | phone `SourceStability`, `LiveStat`, the stores, `FsFeature`, `BulkTransfers`, `docs/protocol.md` + `SourceStabilityTest` |
+
+What each one does:
+- **158, remaining paths.** A TCP reset no longer downgrades a terminal `SOURCE_CHANGED` to an
+  interruption: `close` and `error` share one bounded wait (3 s), entered once, after the claim only.
+  Pause, Cancel, teardown and an in-flight record save during that wait are each pinned. A verdict later
+  than the bound stays an interruption; that is defined, and not solved.
+- **159.** `.failed` markers come in four kinds: checksum, block (the block number and both of its
+  digests, and no whole-file hash), source-changed, and unverified. Marker writes report created /
+  existed / failed. Retention is explicit and owned-only. The probe line no longer says CHECKSUM_MISMATCH
+  for a block pull.
+- **160.** A fresh push's own new partial is no longer called another app's file.
+- **161.** One session end acts once.
+- **162.** A finished send card no longer hides Pause and Cancel.
+- **163.** Copy again keeps the valid local copy unless the new copy arrives.
+- **164.** Pull state is keyed by root and id.
+- **165.** Pause, interruption and low space are each worded once, and "started again from the beginning"
+  appears only for a real restart.
+- **166.** Block pulls use the file's own size and mtime (`fstat` on the provider's descriptor), and the
+  index only when the provider gives none; a replacement under the read counts as changed. It is a
+  metadata check, not an immutability guarantee.
+
+## Evidence (fresh at 01:16–01:18)
+
+- **Mac `npm test` 1,451 / 0** (from 1,421). `tsc --noEmit` app 0, test 0.
+- **Phone 1,135 / 0**, all 118 result files written by a `--rerun-tasks` run: app 180, core 219, input 52,
+  mirror 60, sync 624.
+- **All 15 commit guards pass**, plus the force-stop hook's fixtures.
+- **The Mac build** was verified in a scratch copy: `tsc` and `copy-assets` exit 0, 254 files. **The
+  running `dist` was not rebuilt** (`4c50a4d2…`), and the app is still pid 99261.
+- **The debug APK** was assembled into `app/build` only. It was not installed, and no manifest changed.
+- **Red-first:** each fix's tests were red against the code before it, for the defect itself.
+- **Mutations:** each red on its named test, with every restore SHA-256-verified, every verdict carrying
+  an exit code, and Gradle results checked for age.
+  - Mac: W1–W5 (W4 is two guards on one property: each alone survives, both together red), X1–X5, R1–R9.
+  - Phone: P1, P2b, P3, P4, S1b–S7.
+- **Not counted:**
+  - P2's and M4's first forms (one did not compile, one hung).
+  - S1, which does not reach the measured case.
+  - One file-level warning that appears only with a name filter and is identical at `HEAD`.
+
+## Protected, verified unchanged at the end
+
+- Your `PRODUCT.md` and `skills-lock.json`, byte-identical.
+- The 23 untracked files and 53 untracked links, identical.
+- Your `docs/testing.md` block, and the uncommitted T5-B and prefix-check sections: the start-of-night
+  file is an unchanged prefix of the current one, with only appended sections after it.
+- The earlier `RESUME.md` entries below, unchanged.
+- **All 56 live Mac artifacts** (size, mtime, inode, SHA-256): the T4-A marker, the paused partial
+  (100,663,296 B, inode 88373242) and its record (768 blocks, M0), the H0 copy, and the ledger `[]`.
+- **No `adb` command was issued**, so the phone source is still H1 with its row at M0.
+- Nothing was staged, pushed, signed, released, relaunched or installed.
+
+## Remaining limitations (each also stated in its defect section)
+
+- **158:** a verdict later than 3 s is treated as none. The data stays safe, and the next Resume is
+  asked again.
+- **159:**
+  - The `.failed` retention proposal needs your decision: (a) today's rule, (b) skip names whose marker
+    exists, or (c) rename the superseded marker. The **T4-A marker** would be removed by the next
+    successful copy of that file landing at `(7).bin` under today's rule (a).
+  - No new marker is written when one already stands at that name; the log says so.
+- **160, 161, 166:** the Android halves (each store's `createdNow` and `liveStamp`, `LiveStat`, the
+  `forgetSession` gate) are not JVM-reachable. 166's call sites are held by a source scan.
+- **166 is unmeasured on the device:** does `fstat` on MediaProvider's descriptor see the shell's write?
+  - A same-size, mtime-restoring write passes the metadata check. The prefix re-hash covers a resumed
+    prefix; nothing covers a concurrent write during a read.
+  - Cloud providers fall back to their index, and say so.
+  - The first resume after the phone upgrade restarts once.
+- **165:** no automatic restart after a prefix mismatch was added, by design. The phone's own sentence
+  *"…so it has to start again"* is unchanged.
+- **163:** the pane does not re-check that the earlier copy still exists on disk.
+- **No debug hold was built.** It was not needed.
+
+## Supervised hardware checks still needed (none approved)
+
+1. **The paused artifact supports only one of these two, and the order is the owner's choice.** Both
+   need one Mac build and relaunch; (b) also needs a phone install.
+   - **(a) New Mac, current phone build (`95a8cdd`): Resume once.** Verifies 158, 159 and 165. Pass: the
+     phone answers `prefix-mismatch` with 0 bytes; the Mac discards the partial (inode 88373242) and the
+     record within 3 s; a `(2).bin.failed` *source-changed* marker; no `(2).bin`; not auto-resumable;
+     the pane shows no "paused".
+   - **(b) New phone and new Mac: Resume once.** Verifies 166 and 165's restart. Pass: the ack refuses
+     with `source-changed`, naming the file's own mtime; a restart from 0; the published file is **H1**;
+     *"started again from the beginning"*. If the ack accepts instead, `fstat` does not see the write:
+     NO READING for 166.
+
+   The other check needs a fresh paused pull and a fresh, approved source edit.
+2. **162:** send a file, then copy one back. Pause and Cancel are visible without pressing Done.
+3. **163:** Copy again, then Cancel it. The earlier copy is still offered, and a row click starts
+   nothing.
+4. **160:** push a new name. The phone logs *"a new, empty partial created for this push"*.
+5. **161:** Disconnect during a pull. Exactly one *"stopping 1 live stream(s)"* line, then *"already
+   handled"*.
+6. **159 (phone probe line):** only within an approved T4-type run.
+
+---
+
+# Resume here — written 2026-10-02 (00:15 IST): defect 158 fixed on the Mac in `b1f62fc` (tests only); not on hardware
+
+Evidence: `docs/testing.md` → `### Defect 158` (committed); `docs/defects.md` row and section 158.
+
+1. **The watch that was running closed at 23:50:43.** 0 reconnects, 0 claims; no additional transfer.
+   Recorded in the prefix-check section (uncommitted).
+2. **Defect 158** (register):
+   - Phone prefix-change detection PASSED.
+   - No mixed or corrupt file was published.
+   - The Mac's terminal-failure handling FAILED.
+   - Metadata-based T5-B stays NO READING; T5-A is unproven.
+3. **The fix — `b1f62fc`, Mac only, local, not pushed:**
+   - A short close of a block pull waits, bounded at 3 s, for the verdict. A terminal `SOURCE_CHANGED` takes
+     the established discard: owned partial and record gone, an exclusive `.failed`, no restart.
+   - Anything else is still an interruption.
+   - Verdicts count only from the pull's own session and transfer.
+   - A discarded pull leaves the auto-resume map.
+   - Truthful resume log; the pane sentence no longer runs on.
+   - Tests: +11 Mac (3 red before for the hardware's reason); M1–M7 each red on its named test.
+   - Fresh runs: 1,421/0; typechecks 0; all 15 guards 0.
+4. **Staging:** only the scoped files went in. `testing.md` was staged as HEAD plus the Defect 158 section.
+   Left uncommitted, as instructed:
+   - the owner's `testing.md` block, `PRODUCT.md` and `skills-lock.json`;
+   - the T5-B retry and prefix-check sections;
+   - the runbook, and this file.
+5. **Not done (not approved):**
+   - no `npm run build`; `dist` is still `4c50a4d2…`;
+   - no relaunch, and nothing installed;
+   - the live paused artifact is untouched: partial 100,663,296 B (inode 88373242), its record (768
+     blocks, M0), and the phone source H1 with its row at M0.
+6. **Proposed single hardware verification:** in the session reply of 2026-10-02.
+
+# Resume here — written 2026-10-01 (23:50 IST): resume prefix check on a changed source — phone refused correctly; Mac kept it as an interruption; nothing committed
+
+Evidence: `docs/testing.md` → *Changed source with unchanged indexed metadata — resume prefix check* (the last
+section). **This is a separate result. T5-B (revision 2) stays NO READING at the metadata gate. T5-B's
+metadata-based refusal and T5-A are unproven.**
+
+1. **What happened (23:38–23:50):**
+   - Preflight retaken with controls: pin, one session, `fs.blocks` 1, probe disarmed; the source H1 with its
+     row and `fs.stat` at M0; the partial matched its record (inode 88373242); all 768 retained blocks
+     re-hashed to the record; the 262,144 B tail past the verified prefix was treated as unverified.
+   - **Resume pressed once (23:40:07).**
+   - **Phone:** provisionally accepted, re-hashed blocks 0–767, and answered `SOURCE_CHANGED` / `prefix-mismatch`
+     with **0 bytes sent**.
+   - **Mac:** nothing was published, and the old prefix was never joined to the new file. But the Mac discarded
+     the verdict and logged an **interruption**. Partial and record kept, no restart, auto-resumable on a reconnect
+     within 10 minutes. Its own resume preparation truncated the partial to 100,663,296 B.
+   - 60 s with no further transfer; every pre-existing file unchanged, the T4-A marker included.
+2. **Committed:** nothing. Uncommitted, by instruction:
+   - the new last section of `docs/testing.md`;
+   - this entry;
+   - the runbook banner line.
+
+   The owner's edits are unchanged.
+3. **Half-built:** nothing.
+4. **Needs the owner:**
+   - **The paused partial (768 old blocks, record M0) is still there.** Every Resume will mismatch again, so
+     **Cancel** (the paused note's) is the only way out. That is the owner's call; nothing was cancelled.
+   - Whether these get defect numbers:
+     - the Mac ignoring `prefix-mismatch` when the bulk socket closes with 0 bytes (contradicts
+       `docs/protocol.md`; no test covers that shape);
+     - the premature *"re-hashed by the phone"* log;
+     - the pane's refusal-as-pause sentence;
+     - plus the earlier unnumbered findings.
+   - Whether to commit.
+5. **Left changed on devices:**
+   - Mac: the partial was truncated by the app from 100,925,440 to 100,663,296 B; its record was updated
+     (`updatedAtMs`). Nothing else changed.
+   - Phone: unchanged since 23:15 (source H1, row M0).
+   - Nothing deleted, installed or relaunched.
+
+# Resume here — written 2026-10-01 (23:20 IST): L1/L2 T5-B retry (revision 2) — NO READING at the metadata gate; nothing committed
+
+Evidence: `docs/testing.md` → *L1/L2 T5-B retry (runbook revision 2) on hardware* (the last section). Runbook:
+`docs/l1-l2-t5b-runbook-2026-10-01.md` (status banner updated; uncommitted).
+
+1. **What happened (23:06–23:17):**
+   - The phone returned to USB. Every preflight check was retaken with a control and matched revision 2: M0, H0,
+     inode 836493, `fs.stat`, probe disarmed, one session, `fs.blocks` 1, ledger `[]`, no partials, 53 Mac entries
+     unchanged.
+   - One explained difference: the 23:03 reconnect had cleared the pane's selection. It was restored with a gated,
+     selection-only click (the entry was local, so no prefetch), before the cap.
+   - Done at 23:14:45. Copy again once, then the real Pause at 46.7 % on `tf-bTWOjSmaPsSNQB9S4_S_kA`, with 768
+     verified blocks and the record's `mtimeMs` = M0.
+   - The guarded `dd` gave **H1** on the phone.
+   - **The gate failed.** The product's `fs.stat` and MediaStore's row both still read **M0** after 30 s (and at
+     140 s). The shell's write through `/sdcard` changes the file but not MediaStore's `DATE_MODIFIED`.
+   - **Stopped:** Resume not pressed, no further attempt. **T5-B is unproven.**
+2. **Committed:** nothing. Last commit `258227d`. Uncommitted, by instruction:
+   - the new last section of `docs/testing.md`;
+   - this entry;
+   - the runbook banner.
+
+   The owner's earlier uncommitted edits are left as they were.
+3. **Half-built:** nothing.
+4. **Needs the owner:**
+   - **The paused pull is still standing.** Resume would test the prefix re-hash (block 100 is inside the 768
+     verified blocks), a different case. Cancel on the paused note deletes the partial and record. Neither was
+     done.
+   - The runbook's only stimulus cannot reach the `source-changed` refusal. A new design is needed: a change the
+     platform reflects in MediaStore. Its stimulus would need its own approval, and must not touch or fake
+     metadata.
+   - Whether to commit.
+   - Numbers for the open findings: the send card, *"another app's file"*, the missing restart wording, T4-A's
+     three, and now this metadata blind spot.
+5. **Left changed on devices:**
+   - Phone: the T5 source (`_id` 1000313356) is now **H1**, and its MediaStore row still reads M0. Nothing else
+     changed (187 rows identical; `sidekick-pass-stop-200mb.bin` `bf375859…`).
+   - Mac: the paused partial `.sidekick-t5-source-change-200mb (2).bin.sidekick-pull.part` (inode 88373242) and
+     its `pull-resume` record were added. All 53 earlier entries are unchanged. Ledger `[]`. The pane shows Resume.
+   - Nothing was deleted, installed or relaunched.
+
+# Resume here — written 2026-10-01 (20:55 IST): L1/L2 T5-B — NO READING; warning explained; runbook revision 2 written (retry NOT approved); nothing committed
+
+Evidence: `docs/testing.md` → *L1/L2 T5-B on hardware — NO READING* (the last section). Runbook:
+`docs/l1-l2-t5b-runbook-2026-10-01.md` (uncommitted; the single retry is its revision 2, §R2).
+
+1. **What happened (19:58–20:03):**
+   - Preflight clean; the probe disarmed (log reading with a positive control).
+   - Source `sidekick-t5-source-change-200mb.bin` (the approval's name; bytes from the runbook's seed), H0
+     `b49846cb…12b93a`. H1 `b38a9052…0da7ba` computed independently (Mac `dd` + `shasum`).
+   - Sent once through the pane's card: phone `_id` **1000313356**, M0 `1790864966`, hash H0, verified.
+   - Pulled once (`tf-4yTFgavrfIJM7CLjQmjgCg`, offset 0). **The Pause watcher found no Pause button** in 40–60 %,
+     pressed nothing, and stood down at 61.5 %. The pull completed and published the unchanged file (= H0).
+   - **Stopped as required:** no source write, no `fs.stat` gate, no Resume, no retry. **T5-B is unproven.**
+   - Why: `FilesView.renderDetail` gives the detail column to the finished **send card** until it is dismissed, so
+     the selected file's Pause/Cancel/Copy controls were never drawn. A runbook gap, and a product finding
+     (unresolved, unnumbered): after sending a file, its copy back cannot be paused until the card is dismissed.
+2. **Committed:** nothing this sitting. Last commit `258227d`. Uncommitted, by instruction: the new last section
+   of `docs/testing.md` with its two investigation subsections (the owner's block at ~25,996 is unchanged and
+   separate), this entry, and the runbook (revision 2).
+3. **Half-built:** nothing.
+4. **Needs the owner:** the phone back on USB; whether to commit; approval for the single retry in §R2; whether the send-card finding and
+   the three T4-A findings get numbers. The contract's *"started again from the beginning"* wording is still
+   absent from the Mac and was **not** observed or passed.
+5. **Done since (20:40–20:55, read-only):**
+   - **The push's "another app's file" line is explained.** `DownloadsStore.openPartial` had just **created** row
+     1000313356 ("staged … as a pending item"). `FsPartials.resumeFrom` tests "no record" before "empty", so every
+     first push of a name reads as a foreign file. Publish removed 0 rows; snapshot A → B was one addition. It is
+     misleading wording, not a foreign file. Not established: hidden files of other apps, and the state after
+     20:02:47 (the phone left USB about 20:49; that reading failed its control and is not counted).
+   - **Hidden-control finding** recorded separately: a completed send card hides the next pull's Pause and Cancel.
+     Pressing **Done** is the retry's workaround, not a fix.
+   - **Runbook revision 2** (`docs/l1-l2-t5b-runbook-2026-10-01.md` §R2): reuse `_id` 1000313356 after fresh checks
+     (M0 1790864966, H0); press **Done**; confirm the selection's own controls; **Copy again** once; resolve the
+     destination fresh (`… (2).bin` at 20:49); a new watcher bound to this attempt's id presses the real Pause; stop
+     before any edit if Pause is unavailable or missed. **Not approved yet.**
+6. **Left changed on devices:**
+   - Phone: `Download/ConnectSuite/sidekick-t5-source-change-200mb.bin` (`_id` 1000313356, H0), added by the push.
+     Nothing else changed (directory and rows identical since); the probe is not armed.
+   - Mac: `~/Downloads/Sidekick/sidekick-t5-source-change-200mb.bin` (H0) added. All 52 earlier entries are
+     unchanged, the T4-A marker included. The origin and expected-after files are in the session scratchpad.
+     An inert watcher listener remains in the page until the next relaunch. Nothing deleted.
+
+# (earlier) 2026-10-01: L1/L2 T4-A PASSED on hardware — block 800 named; evidence committed (docs only); T5 NOT approved
 
 Evidence: `docs/testing.md` → *L1/L2 T4-A on hardware* (the last section). Plan: `docs/l1-l2-t4a-2026-10-01.md` §5.
 
