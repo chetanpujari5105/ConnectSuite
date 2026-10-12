@@ -25993,6 +25993,48 @@ plus one several-files test. Mutations R1–R6 each red on the named test: R1 ba
 old dropped-transfer sentence restored; R3 every disconnect called before-transfer; R4 the activity's
 bar ungated; R5 the several-files path not told it is queued; R6 queued surviving its turn.
 
+## Version 3 Run A — M3 and the first attempt at A1 (2026-09-28 02:25–02:31, owner-supervised; Run A paused)
+
+**M3 (02:25:24).** The Mac dev app (`dist` `8954e4b7…`, built from `5ab8774`; desktop unchanged in
+`c474516`) launched with `CONNECTSUITE_DEBUG_SWITCHES=shareV3` only, pid 5021; no `CONNECTSUITE_*` in the
+launching shell. The phone's one-shot arm (set 02:22:49 in the user-0 process, pid 451) was consumed by
+the first handshake, 02:25:25: Mac `negotiated {"share.file":3,"share.ask":1}`; phone `negotiated
+share.file 3`, `share.ask … negotiated 1`, `armed for this handshake: true`, the version-2 debug arm
+`false`. No synthetic-only gate line on the Mac. `link-up.sh` 3/3.
+
+**The attempt at A1 — what the owner reports, and what the logs show.**
+- *Owner's report:* two images were selected together in Gallery and **Sidekick did not appear** in the
+  Android share choices; one image was then selected and Sidekick appeared. **This is expected, not a
+  failed multi-file transfer:** the debug build's `ShareManyToMacActivity` is installed
+  `android:enabled="false"` and was never enabled. Read-only confirmation 02:31: `SEND_MULTIPLE`
+  `image/jpeg` resolves to 43 activities, none of this package; no component override; the single-file
+  `SEND` resolves to `ShareToMacActivity`.
+- *Logs:* one offer, `s-9Vz3UO20e-QDTRRdB_4ZhA`, **2,253,517 B `image/jpeg` — not one of the two planned
+  synthetic files** (100,718 B and 230,778 B). Offered 02:28:41 on `share.file 3`; the Mac held it for a
+  decision (Ask) and presented the receive window without focus; at 02:28:49 the Mac logged a
+  **receive-window decision `accept`**. Who made that decision is **not** recorded here — the owner will
+  say; the log does not establish it. Then: pulled (0 ahead), 50 ms, SHA-256 `50eacc10…` matched,
+  published as `20260927_152609.jpg`, acknowledged by the phone.
+- **No pull before the decision** held. The two-waiting-cards condition was **not exercised**: there
+  was only one offer.
+- **The saved copy is preserved**, not opened, moved or deleted: `~/Downloads/Sidekick/
+  20260927_152609.jpg`, 2,253,517 B, inode 85357191. The receive-folder baseline is now 24 files
+  including it; no pre-existing file changed.
+
+**State at 02:31, read-only:** the same connection (one handshake each side since 02:25:24, no session
+ended), `share.file 3` + `share.ask 1`; one offer since launch and it has ended — none pending; the
+receive window closed; the main tray hidden with 0 cards; staging empty; ledger `[]`; Mac pid 5021,
+phone pid 451.
+
+**A defect, reproduced, not fixed:** the main window's screen-reader live region (`#share-live`) keeps
+announcing *"Samsung SM-S938B wants to send 20260927_152609.jpg … Accept or decline it"* after the offer
+ended saved. The same stale text was read before the relaunch for the 2026-09-26 offer. Invisible, but a
+screen-reader user would hear an offer that no longer exists.
+
+**Instrument faults caught:** a receive-folder comparison against a guessed baseline filename (missing
+file, read as *different*), and a name comparison that split names at spaces (8 of 24 names contain
+one). Both redone; neither result was reported from the faulty form.
+
 ## Version 3 Run A after 02:31 — the two offers of 02:36, read from the Mac log (read-only, 2026-09-28 overnight)
 
 Not observed live; read afterwards from `sidekick.log` lines 1808–1827 and the receive-folder listing.
@@ -26630,6 +26672,365 @@ empty, no `sidekick-pull` partial. `link-up.sh` 3/3. The pane: nothing copying, 
 
 **Left on the devices:** the phone runs `95a8cdd` (`fa5523e7…`), probe disarmed; the Mac is unchanged; the
 `.failed` sidecar is kept for review.
+
+## L1/L2 T5-B on hardware — NO READING: the Pause control was not on screen (2026-10-01 19:58–20:03)
+
+Approved by the owner as one run of `docs/l1-l2-t5b-runbook-2026-10-01.md` (uncommitted at the time). **Result:
+NO READING.** The Pause was missed, so the source was **never modified** and **Resume was never pressed**. The
+pull ran to completion and published the unchanged file. T5-B's question — a resume refused after the source
+changed — was not reached and remains **unproven**. No retry was made. T5-A and T4-B were not touched.
+
+**Name.** The owner's approval named the source `sidekick-t5-source-change-200mb.bin`; the runbook had said
+`sidekick-t5b-…`. The approval's name was used. The bytes are the runbook's (SHAKE-256 of
+`sidekick-t5b-source-change-2026-10-01`, 209,715,200 B), so H0 and H1 are unchanged.
+
+**Preflight (19:58).**
+- Pin RZCY12330DT; phone APK `fa5523e7…` (`95a8cdd`); Mac pid 99261, `dist` `4c50a4d2…`, no newer file.
+- `link-up.sh` 3/3, one session; `fs.blocks` negotiated 1 (18:56:31).
+- **Probe disarmed:** 874 log lines read, with the known 16:50:56.799 arm line as control. The only probe
+  lines after the arm are the 16:51:25.940 disarm pair. My first count reported "2 after the disarm"; it was
+  the disarm itself, matched because `"…25.940+05:30" > "…25.940"` as strings.
+- Ledger `[]`, `pull-resume/` empty, no partials, no transfer since T4-A. Free: Mac 28.3 GB, phone 2.64 GiB.
+- Receive folder 52 entries, hashed, unchanged since 19:10; T4-A marker 430 B, inode 88280480, `a63f1fb5…`.
+- The new name was absent from MediaStore, from `Download/ConnectSuite` (186 files / 186 rows, snapshot A),
+  and from the Mac.
+
+**Step 1 — source and hashes (19:59:06).** Origin generated in the session scratchpad: 209,715,200 B, **H0**
+`b49846cb675c06b0441959a88d4e0856d37a8133369b03b7853435bcd912b93a`. **H1**, computed independently by the Mac's
+own `dd … bs=4096 seek=3200 count=1 conv=notrunc` on a copy and `shasum`:
+`b38a90524ee1ec644e83e95fe0ddbe1589e4e372e445522a302f90bc460da7ba`. Both equal the runbook's in-memory values.
+`cmp` shows 4,076 differing bytes, at 0-based offsets 13,107,200–13,111,295. Both files are kept.
+
+**Step 2 — sent once through the product (19:59:23).** `files.offer` (what a drop and the Send dialog end in),
+then the card's **Send** (`#files-send-confirm`) pressed once.
+- Mac: *"hashed 209715200 bytes in 118 ms before sending"*; push `tf-sAWE1kD5uFfEQHsyqNGAvw`.
+- Phone: *"received … 209715200 bytes in 2895ms … sha256=b49846cb675c…, verified=true (agreed in advance and
+  matched)"*. The pane: `arrived`, `verified: true`, `sentAs` the exact name, 3,545 ms.
+- The phone also logged, at the push's start, *"starts at 0: a partial with no transfer record of ours beside
+  it — treated as another app's file"*. Recorded verbatim; not investigated.
+- Row: **`_id` 1000313356**, 209,715,200 B, **M0 `date_modified` 1790864966**, owner
+  `com.chetan.connectsuite.debug`, not pending. File inode 836493; phone `sha256sum` = **H0**.
+- Snapshot A → B: exactly one file and one row added.
+
+**Step 3 — the pull, and the missed Pause (19:59:55).** The watcher was installed, then the row was clicked
+once (not local, so the click itself starts the pull).
+- Pull `tf-4yTFgavrfIJM7CLjQmjgCg`: phone *"registered … block-verified (blockSize=131072, 1600 blocks, from byte
+  0)"*, *"no resume asked"*; Mac *"claimed … offset 0"*.
+- The watcher saw 8 progress events for that transfer. **Twice inside 40–60 % it found no `#files-pull-pause` in
+  the page** (`button 0`), refused, and pressed nothing. At 128,974,848 B (61.5 %) it stood down.
+- The pull completed: phone *"block pull Sent: 209715200 of 209715200 bytes … 1600 blocks, manifest
+  1117511c72e0…"*; Mac *"pulled 209715200 bytes in 3048ms … sha256=b49846cb675c…, verified=true (every one of
+  1600 blocks matched)"*, published `~/Downloads/Sidekick/sidekick-t5-source-change-200mb.bin`.
+- **Why the button was absent, read from code and the live page:** `FilesView.renderDetail` gives the detail
+  column to the send batch card while `this.batch !== null`, and a settled batch stays until it is dismissed.
+  After the push, the selected file's own controls (Pause, Cancel, Copy) were therefore never drawn: after
+  the run, with the row selected and `fsPullStop` present, the column held **no** action button.
+- **The runbook's gap:** it did not dismiss the send card before the pull.
+- **The product finding** (unresolved, no number assigned): a person who sends a file and then copies it back
+  cannot Pause or Cancel that copy until they dismiss the send card.
+
+**Stopped as required.** No `dd`, no `fs.stat` gate, no Resume, no retry. The in-page watcher is still
+registered (an `onMessage` listener cannot be removed), inert (`missed: true`); a relaunch clears it.
+
+**After (20:01–20:03).**
+- 61 s of 10 s samples: Mac 2 begins (the push and the pull), 1 claim; phone 1 pull registration; no partial;
+  `pull-resume/` empty; ledger `[]`.
+- Receive folder 52 → 53: every pre-existing entry unchanged (size, mtime, inode, SHA-256), the T4-A marker
+  included. The addition is `sidekick-t5-source-change-200mb.bin`, 209,715,200 B, SHA-256 = **H0**.
+- Phone: the T5 source still **H0** (never modified); `sidekick-pass-stop-200mb.bin` still `bf375859…`; snapshot
+  B → C identical (187 files, 187 rows). `link-up.sh` 3/3.
+
+**Kept, nothing deleted:** the Mac origin and expected-after files in the session scratchpad; the phone source
+`_id` 1000313356; the published Mac copy.
+
+**For a second attempt (needs approval):**
+- Dismiss the send card, or start from a pane with no batch, before the pull.
+- The published copy makes the entry local, so the pull's trigger becomes **Copy again**, and a successful
+  pull would land at `sidekick-t5-source-change-200mb (2).bin`.
+- The phone source is unchanged, so H0, M0 and the planned edit still apply.
+
+### Recorded separately — the "started again from the beginning" wording
+
+`docs/large-file-l1-l2-rules-2026-09-29.md` §4 says the pane will show *"The file changed on the phone since it
+paused, so it started again from the beginning."* No shipping source in `desktop/src` contains it. This run did
+not reach a refused resume, so nothing about that wording was observed or passed. It stays an open contract-vs-code
+gap and was not changed.
+
+### Investigated afterwards (2026-10-01 20:40–20:55, read-only) — the push's "another app's file" line
+
+The line: `19:59:23.939 I [bulk] push of sidekick-t5-source-change-200mb.bin into downloads:connectsuite starts at
+0: a partial with no transfer record of ours beside it — treated as another app's file`.
+
+**Where it comes from.** `FsPartials.resumeFrom(partBytes, recordedBytes, totalBytes)`, called by
+`BulkTransfers.registerFsPush` with `partBytes = partial.bytesOnDisk` (the file's length, through a descriptor) and
+`recordedBytes` from the phone's transfer record for that name. `registerFsPush` first calls
+`store.openPartial(segments, name)`, whose own comment says it *"always leaves a partial"*. `resumeFrom` tests
+"no record" **before** "the partial is empty", so the first push of any new name — a partial just created, with no
+record yet — is described as another app's file.
+
+**What happened, from this run's phone log, in order:**
+1. `19:59:23.932 [fs] downloads:connectsuite staged sidekick-t5-source-change-200mb.bin as a pending item at
+   content://media/external/downloads/1000313356` — `DownloadsStore.openPartial` **created** a new pending row. Its
+   other branch logs *"reusing the pending item … this is the resume path"*, and that line is absent.
+2. 7 ms later, the warning: the "partial" is that row, 1000313356, which this push had just created.
+3. `19:59:26.947 [fs] … published sidekick-t5-source-change-200mb.bin (id 1000313356): delete-by-name 41 ms (0
+   removed), IS_PENDING 16 ms, stat 1 ms (found)` — the same id published; **zero rows removed**.
+
+**What the evidence establishes:** the path is `Download/ConnectSuite/sidekick-t5-source-change-200mb.bin`; the
+transfer is the push `tf-sAWE1kD5uFfEQHsyqNGAvw`; the operation is the push's own partial creation and the resume
+decision for it.
+- Nothing pre-existing was reused (no "reusing" line), and nothing was deleted at publish (`0 removed`).
+- Nothing visible was replaced: snapshot A → B is one file and one row added, with every other file's size and
+  mtime and every other row unchanged.
+- The item remains: it is the T5 source, read at 20:02 as `_id` 1000313356, H0, published.
+- **The sentence is misleading wording for a fresh push, not a sighting of a foreign file.** Recorded as a finding:
+  unresolved, unnumbered, not fixed.
+
+**What it cannot establish:**
+- That no **hidden** file of another app existed. The snapshots' `ls -la` showed no dot entries at all — not even
+  `.`/`..` — and no positive control for a hidden file's visibility was taken.
+- That no other app's pending row exists. The app's `pendingIdFor` sees only its own rows.
+- The state after 20:02:47. At 20:49 the phone had left the USB bus. A pending-row query (`?includePending=1`)
+  returned nothing, and its control returned 0 where 187 rows exist, so **that reading does not exist** and is not
+  counted.
+
+### Finding, recorded separately — a completed send card hides the next pull's Pause and Cancel
+
+`FilesView.renderDetail` gives the detail column to the send batch card while `this.batch !== null`, and a
+**settled** batch stays until its **Done** (`#files-send-done`) is pressed. Until then, a file selected and
+copied back gets no Pause, Cancel or Copy control in that column.
+- Seen in T5-B at 19:59:55: `button 0` twice during the copy.
+- Seen again at 20:49, read-only, with the row selected: the column's buttons are `files-send-to-phone` and
+  `files-send-done` only.
+
+**Unresolved, unnumbered, not fixed.** The T5-B retry (runbook revision 2) presses **Done** first. That is a test
+workaround and **not** evidence the product issue is fixed: a person who sends a file and then copies it back
+still cannot pause that copy until they dismiss a card about a different transfer.
+
+## L1/L2 T5-B retry (runbook revision 2) on hardware — NO READING: MediaStore never saw the change (2026-10-01 23:14–23:17)
+
+Approved by the owner as **one** retry under `docs/l1-l2-t5b-runbook-2026-10-01.md` §R2, after the pinned phone
+returned to USB. **Result: NO READING.** Done, Copy again and the real Pause all worked, and the guarded edit
+produced H1 on the phone. Then **the metadata gate failed**: the product's `fs.stat` still showed **M0** after 30 s,
+as did MediaStore's own row. As the approval requires, **Resume was not pressed**, no further attempt was made, and
+nothing was worked around. The pull is left **paused**, with its partial and record kept. **T5-B is still
+unproven.** T5-A, T4-B, code, builds, installs, relaunches, pairing and permissions were not touched.
+
+**Preflight (23:06–23:13), every check retaken with a control.**
+- Pin RZCY12330DT (SM-S938B, sdk 36), the only device. Before the phone was plugged in, `adb devices` was empty; an
+  `ioreg` USB listing (control: it enumerated one non-Samsung device, vendor 0x1D5C) confirmed the phone was absent.
+- Phone APK pulled back: `fa5523e7…6e5b067` (`95a8cdd`), `lastUpdateTime` 16:44:28. Mac pid 99261 (started
+  2026-09-30 18:19:05); `dist` digest `4c50a4d2…` reproduced by the earlier command (254 files, all written in the
+  process's start second, 0 newer at one-second resolution — `-newermt`'s fractional comparison first reported
+  254 "newer", which was the instrument, not a change).
+- `link-up.sh` 3/3, **one** control session. The session had idled out at 20:57:18 while the phone was away and a
+  new one came up at 23:03:22 with `fs.blocks` negotiated **1**. No `[bulk]` line on the phone since 20:02
+  (control: 114 in the file), no service restart, no transfer line on the Mac since 20:02 (control: revision 1's id
+  found twice). The first phone-log window admitted 40 untimestamped stack lines (`"at" > "2026"`, defect 78's
+  shape); re-read with timestamped lines only.
+- **Probe disarmed:** 4,487 phone log lines (2026-09-29 11:25 → 23:08). Control: the 16:50:56.799 `PROBE ARMED`
+  line is found. Only T4-A's arm, bind, flip and the 16:51:25.940 disarm exist; no later arm or refusal.
+- **Source, fresh:** row `_id=1000313356`, `sidekick-t5-source-change-200mb.bin`, 209,715,200 B,
+  `Download/ConnectSuite/`, `date_modified=1790864966` (= **M0**), owner `com.chetan.connectsuite.debug`, not
+  pending or trashed, the only row of that name (control: the same `LIKE` query finds `1000308768`). File inode
+  836493, 209,715,200 B, mtime 1790864966; phone `sha256sum` = **H0** `b49846cb…12b93a`. The product's `fs.stat`
+  (`debugFsStat`): size 209,715,200, `mtimeMs` 1,790,864,966,000.
+- Pending rows (`?includePending=1`, `is_pending=1`) under `Download/ConnectSuite/`: none; control on the same URI
+  (`is_pending=0`): 187. Snapshot R2-A (188 `ls` lines, 187 rows) **identical** to revision 1's snapshot C.
+  `sidekick-pass-stop-200mb.bin` still `bf375859…`.
+- Mac: ledger `[]`; `pull-resume/` 0 entries; no partials; 26.9 GB free (phone 1.8 G). Receive folder **53**
+  entries hashed and identical (size, mtime, inode, SHA-256) to the 20:49 inventory, including the published H0
+  copy (inode 88326151, `b49846cb…`) and the T4-A marker (430 B, inode 88280480, `a63f1fb5…`).
+- Destination by the product's `pullDestination`: **`sidekick-t5-source-change-200mb (2).bin`**; final, partial and
+  `.failed` absent (control: the base name present).
+- Pane: root `downloads:connectsuite`, path `''`, 187 entries; batch settled (one item, `arrived`, verified); one
+  **Done**, no Stop; the entry local; nothing copying, paused, pending or pushing; `__t5w` `missed: true`.
+  **One difference: nothing was selected.** Explained from code: the reconnect's re-list runs `open()`, which sets
+  `selected = null` (`files.ts:403`).
+
+**Added step, outside the cap (23:14:3x) — selection only.** The T5 row was clicked once, in an expression gated on
+the entry being local, as T4-A did: `shouldPrefetchForDrag` returns false for an already-local entry, and the
+prefetch timer re-tests that when it fires. Read 1,547 ms later: selected `1000313356`, nothing copying, no pull
+id, still local. Recorded here because the approval did not list it.
+
+**Step 1 — Done (23:14:45, the cap's start).** Gated on the batch settled with its one verified `arrived` item, one
+`#files-send-done` reading *Done*, **no** `#files-send-stop`, and the selection. Pressed once. Then: `files.batch`
+`null`; the card's Done/Stop gone (the remaining `files-send-to-phone` is the pane's own Send control, present
+before Done too); selection `1000313356`; exactly one visible `#files-copy-to-mac` reading **Copy again**.
+
+**Steps 2–4 — watcher, destination, Copy again (23:14:53).** `__t5w` confirmed `missed: true`; a new one-shot
+`__t5r2` installed, bound at event time to `files.pullIds` for this key, ignoring revision 1's id and every other id
+(it saw 0 of either). Copy again pressed once with every gate in the clicking expression.
+
+**Step 5 — the real Pause, once.**
+- Pull **T_old = `tf-bTWOjSmaPsSNQB9S4_S_kA`** (≠ revision 1's). Mac *"claimed … offset 0"*; phone *"registered …
+  block-verified (blockSize=131072, 1600 blocks, from byte 0)"*, *"no resume asked"*.
+- Six progress events; **`#files-pull-pause` was present at every one**. The watcher pressed it at **98,041,856 B
+  (46.7 %)** after re-checking its name and the selection; no refusals.
+- Phone: *"fs.transfer.cancel … (reason=pause)"*, then *"block pull Cancelled: 101187584 of 209715200 bytes … —
+  cancelled by the Mac (reason=pause)"*. Mac: *"interrupted after 100925440 of 209715200 bytes: Paused."*, *"paused
+  by the person"*, *"paused by the person at 768 verified blocks of 1600; the partial and record are kept"*.
+- Record (`pull-resume/e78d39b6…json`): `size` 209,715,200, **`mtimeMs` 1,790,864,966,000 (= M0 × 1000)**,
+  `blockSize` 131,072, **`digests.length` 768 (≥ 101)**, destination `… (2).bin`, `partIno` 88373242. Partial
+  `.sidekick-t5-source-change-200mb (2).bin.sidekick-pull.part`, 100,925,440 B, inode **I_old 88373242**.
+- Pane: *"Paused: 96 MB of 200 MB is on this Mac, checked block by block. Resume continues from there."*; the
+  button reads **Resume**.
+
+**Step 6 — the guarded edit (23:15:11–23:15:12).** Guarded, on the phone, by inode 836493, size 209,715,200 and H0;
+the guard passed; `dd if=/dev/zero bs=4096 seek=3200 count=1 conv=notrunc` exited 0. After: 209,715,200 B, inode
+836493, file mtime **1790876712**, SHA-256 **H1** `b38a90524ee1ec644e83e95fe0ddbe1589e4e372e445522a302f90bc460da7ba`.
+
+**Step 7 — the gate, FAILED (23:15:22–23:15:52).** The product's `fs.stat` polled 16 times over 30,004 ms:
+`ok: true`, size 209,715,200, **`mtimeMs` 1,790,864,966,000 throughout (= M0)**. `probe.mjs` reported
+`stopped=deadline`, *not reportable*. MediaStore's row beside it: `date_modified=1790864966`. Still M0 at 23:17:31.
+So the file's own mtime moved, and the MediaStore row the product reads from (`DownloadsStore.statById`) did not.
+
+**Stopped as required.** Resume not pressed; no second edit; no `touch`, `content update`, media-scan broadcast or
+permission change.
+
+**After (23:16–23:17), read-only.**
+- Phone: snapshot R2-A → R2-B differs **only** in this file's `ls` mtime (19:59 → 23:15); all 187 rows identical
+  (MediaStore unchanged); no pending rows; `sidekick-pass-stop-200mb.bin` still `bf375859…`.
+- Mac: 53 → 54 entries; the only addition is the paused partial (100,925,440 B, inode 88373242). All 53 earlier
+  entries unchanged, the H0 copy and T4-A marker included. Ledger `[]`; `pull-resume/` 1 record (the paused one).
+- 60 s, sampled every 10 s from 23:16:29: 0 claims on the Mac and 0 registrations on the phone after the Pause
+  (control: the same counters from 23:14:50 find exactly 1 each, the paused pull). `link-up.sh` 3/3.
+- Pane: selected `1000313356`, paused 1, copying 0, **Resume** shown and not pressed.
+- Timeline: Done 23:14:45 → stop 23:15:52 → observation end 23:17:31, inside the 20-minute cap.
+
+**What this measured, and no more.** On this SM-S938B, a `dd conv=notrunc` by `adb shell` through
+`/sdcard/Download/ConnectSuite/` changed the file's bytes and mtime, and **did not update MediaStore's
+`DATE_MODIFIED` (or the row at all) within 140 s**. That is the runbook §1's "fact 1", unmeasured until now. It is
+one writer (the shell user, through FUSE) on one device. Other writers (an app writing through MediaStore, a
+media scan) are not measured.
+
+**What it means for T5-B (not graded).** The phone's resume check compares the Mac's size and `mtimeMs` with
+MediaStore's, so an in-place change by this kind of writer is **invisible** to the `source-changed` test. This
+stimulus cannot reach that refusal. A Resume now would ask for 768 blocks against a source whose size and
+MediaStore time match, and test the **prefix re-hash** (block 100, changed, is inside the verified prefix). That
+is a different case, not approved, and not done.
+
+**Left on the devices, nothing deleted:**
+- Phone: `sidekick-t5-source-change-200mb.bin` (`_id` 1000313356) is now **H1**, MediaStore row still M0.
+- Mac: the paused partial `.sidekick-t5-source-change-200mb (2).bin.sidekick-pull.part` (inode 88373242) and its
+  record `pull-resume/e78d39b6…json` (768 blocks, `mtimeMs` M0).
+- The pane: paused, with **Resume** showing. Two inert in-page listeners (`__t5w`, `__t5r2`, fired) remain until a
+  relaunch.
+- **Pressing Resume, or Cancel on the paused note, is an owner decision.** Resume tests the prefix re-hash, and
+  Cancel deletes the partial and record.
+
+**Unchanged, still unresolved and unnumbered:**
+- The send-card finding: pressing Done was the test workaround and is not a fix.
+- The misleading *"another app's file"* line.
+- The absent *"started again from the beginning"* wording. It was not reached.
+
+## Changed source with unchanged indexed metadata — resume prefix check (2026-10-01 23:38–23:50)
+
+This is a **separate result**, approved by the owner as one Resume on the state the T5-B retry left. **It is not
+T5-B.** The revision-2 T5-B result above stays **NO READING at the metadata gate**. The metadata-based
+`source-changed` refusal and T5-A are still **unproven**. No Cancel, no further source change, no manual retry,
+no build, install or relaunch.
+
+**The case.** The phone's source is H1 (block 100 changed), but MediaStore still reports M0, so the size+mtime
+check cannot see the change. The Mac holds a manually paused pull of the old bytes (768 verified blocks).
+Only the phone's re-hash of the retained prefix (owner decision D1) stands between the old prefix and the
+changed file.
+
+**Expected outcome, read from production code before the click** (no test covers this shape: both Mac
+`SOURCE_CHANGED` tests send every byte and then the verdict):
+- **Mac.** `prepareResume` → `verifyAndTrimPrefix` re-hashes its 768 blocks and truncates the unverified tail. It
+  then sends `resume {size, mtimeMs: M0, blockSize, verifiedBlocks: 768, prefixRoot}`.
+- **Phone.** `stat()` equals the record, so the ack accepts provisionally. `BlockPullSender.run` re-reads blocks
+  0–767; `prefixRoot` differs, so it returns `SourceChanged(0, "prefix-mismatch", …)`, sends **0 bytes** and
+  `fs.transfer.done {ok:false, code:SOURCE_CHANGED, why:prefix-mismatch}`, then closes the bulk socket.
+- **Mac recovery.** The bulk socket's `close` with `received ≠ expected` calls `fail()` (`bulk.ts` ~610),
+  the **interruption** path, which never reads the verdict. So the partial and record are kept, nothing is
+  published, no `.failed` is written, and the pull is logged *interrupted* and is auto-resumable on a reconnect
+  within 10 minutes (`files.ts:546`, `main.ts:1572`). **No restart from byte 0.**
+
+**Preflight (23:38–23:39), each with a control.**
+- Pin RZCY12330DT. `link-up.sh` 3/3, one session, the same one since 23:03:22 (0 handshakes after it; control:
+  1 since 23:00), `fs.blocks` negotiated 1. No service restart.
+- Probe disarmed: 0 probe lines after 16:51:26; control: the 16:50:56.799 arm line is found.
+- Phone source: 209,715,200 B, inode 836493, file mtime 1790876712, SHA-256 **H1**. Row `date_modified`
+  1790864966 (M0). The product's `fs.stat`: `mtimeMs` 1,790,864,966,000 (M0).
+- Mac record `pull-resume/e78d39b6…json`: `mtimeMs` 1,790,864,966,000, `blockSize` 131,072, **768** digests,
+  `partDev` 16777229 / `partIno` 88373242. The partial has the same dev and inode, so its identity matches.
+- **All 768 retained blocks re-hash to the record's digests** (0 mismatches).
+- `prefixRoot(768)` of the record is `3afe7cb8…`, equal to the H0 reference file's. The H1 reference file's is
+  `c5846169…`. Inside the prefix, only block 100 differs (`dc3cd178` → `4a10b498`).
+- **Partial length: 100,925,440 B on disk, of which 100,663,296 B (768 blocks) were verified. The extra
+  262,144 B (2 blocks) were unverified and are not counted as checked.**
+- Snapshots: Mac 54 entries (identical to 23:16), including the H0 copy (inode 88326151, `b49846cb…`), the T4-A
+  marker (430 B, inode 88280480, `a63f1fb5…`) and the partial. Phone: `ls` and 187 rows identical to R2-B;
+  `sidekick-pass-stop-200mb.bin` `bf375859…`. Ledger `[]`.
+- **Still manually paused:** the last Mac line for the pull reads *"paused by the person … it resumes only on
+  Resume"*, no reconnect since 23:03, and the pane shows **Resume** with paused 1.
+
+**The one action (23:40:07).** The real **Resume** (`#files-copy-to-mac`, *"Resume copying
+sidekick-t5-source-change-200mb.bin to this Mac"*) was pressed once, gated. A passive in-page recorder stored
+the new transfer's `fs.transfer.*` messages.
+
+**What happened** — new id **`tf-tVwJ8aHqZOekiaPoic4Qbw`**:
+- Mac 23:40:07.798: *"resumes at 100663296 of 209715200 bytes (768 blocks verified on this Mac and re-hashed by
+  the phone)"*. Logged **before** the phone had re-hashed anything.
+- Phone 23:40:07.875: *"registered … resuming at block 768 = byte 100663296"*; *"resume accepted provisionally at
+  block 768 (prefix is re-hashed before sending)"*.
+- Mac 23:40:07.832: *"claimed … offset 100663296"*.
+- Recorder: `fs.transfer.progress` `phase:"verifying"` at 262,144 and 82,313,216 B. Then the **exact mismatch
+  response**:
+  `{"transferId":"tf-tVwJ8aHqZOekiaPoic4Qbw","elapsedMs":330,"ok":false,"code":"SOURCE_CHANGED","why":"prefix-mismatch","message":"sidekick-t5-source-change-200mb.bin changed on the phone since the transfer paused, so it has to start again.","bytes":100663296,"verified":false}`.
+  No `fs.transfer.blocks` event, and no `sending` progress.
+- Phone 23:40:08.253: *"block pull SourceChanged: 100663296 of 209715200 bytes (0 sent this time, resumed at
+  100663296) in 330ms — prefix-mismatch: the first 768 blocks no longer hash to the Mac's record"*.
+- Mac 23:40:08.175: *"interrupted after 100663296 of 209715200 bytes: the phone closed after 0 of 109051904
+  bytes; the partial is kept … and the next attempt resumes from it; 1 frames / 61 bytes accepted"* (the one
+  frame is the bulk header). Then 23:40:08.177: *"pull of … interrupted at 768 verified blocks of 1600; the
+  partial and record are kept"*.
+- Pane: *"sidekick-t5-source-change-200mb.bin paused — the phone closed after 0 of 109051904 bytes What had
+  arrived is kept; Resume continues from there."* (sic, no separator), and **Resume** shown again.
+
+**Required evidence.**
+
+| | Reading |
+|---|---|
+| 1. The phone re-hashes the prefix and detects block 100 before accepting it | **Yes.** `verifying` progress, then `prefix-mismatch` with 0 bytes sent. Independently, H1's `prefixRoot(768)` ≠ the record's, and block 100 is the only difference |
+| 2. Old-prefix bytes not combined with the changed source and published as verified | **Yes.** No `sidekick-t5-source-change-200mb (2).bin`, no `fs.transfer.blocks` for the new id, 0 new bytes; the partial now holds exactly the 768 old blocks (block 100 = H0's `dc3cd178`), 0 bytes past them |
+| 3. Exact mismatch response; the Mac's actual recovery | Above. **The Mac discarded the phone's verdict and recorded an interruption** |
+| 4. An automatic restart from byte 0 | **None.** So there is no H1 copy, and no restart cleanup to verify |
+| 5. Refused without restarting | **This branch.** Recorded and stopped: no Retry, no second Resume, no Cancel |
+| 6. 60 s; pre-existing files unchanged | 23:40:56–23:41:57, every 10 s: 0 claims and 0 registrations (control from 23:40:00: 1 and 1); 54 entries; ledger `[]`. Only the partial changed: the app truncated it 100,925,440 → **100,663,296 B**, same inode 88373242. Every other entry, the H0 copy and the T4-A marker included, is unchanged in size, mtime, inode and SHA-256. Phone `ls` and rows identical, source still H1 |
+
+**Findings — unresolved, unnumbered, not fixed:**
+1. **The Mac treats a `prefix-mismatch` as an interruption.** A bulk socket closed with 0 bytes takes
+   `fail()`, which never reads the verdict, so `fs.transfer.done {SOURCE_CHANGED, prefix-mismatch}` is lost.
+   - The partial of old bytes and its M0 record are kept, so **every further Resume repeats the same mismatch**.
+     A changed source can never be fetched this way without Cancel.
+   - The pull is filed as **auto-resumable on a reconnect within 10 minutes**.
+   - This contradicts `docs/protocol.md` (*"A mismatch ends the transfer"*) and the phone's own message
+     (*"…so it has to start again"*).
+   - No test covers it: both `SOURCE_CHANGED` tests deliver every byte before the verdict.
+2. The Mac logs *"re-hashed by the phone"* at the provisional ack, before the phone has hashed anything — a
+   registration line worded as an execution line.
+3. The pane's sentence presents a refusal as a pause (*"the phone closed after 0 of 109051904 bytes What had
+   arrived is kept; Resume continues from there."*), with no separator between its two sentences.
+
+**Left on the devices, nothing deleted:**
+- Mac: the partial (100,663,296 B, the 768 old blocks) and its record (768 digests, M0). The pane shows
+  **Resume**.
+- Phone: the source is H1, its row M0.
+- Pressing Resume again will mismatch the same way. **Cancel is the only way out, and that is an owner
+  decision.**
+
+**Auto-resume window (23:40:09–23:50:43), passive, read-only — no additional transfer occurred:**
+- **0 reconnects** (`Connected to`). Control: the same pattern finds the 23:03:22 connect.
+- **0 claims** on the Mac. Control: the same counter from 23:40:00 found the Resume's 1.
+- The partial (100,663,296 B, inode 88373242), the H0 copy and the `pull-resume` record (1) were unchanged at the
+  close.
+- The auto-resume line (`resuming … automatically`) also counted 0, but that count has **no positive control**:
+  the line appears nowhere in the log. What rules an automatic resume out is the absence of a reconnect, which is
+  the only thing that triggers it (`main.ts:1572`), together with 0 claims.
+- The watch was not extended and no reconnect was triggered.
 
 ### Defect 158 — a resumed pull refused by the phone's prefix re-hash was kept as a resumable interruption
 
@@ -27681,6 +28082,89 @@ was never tested.
 - **Mac:** inventory identical: the paused partial, its record, the `.failed` marker, ledger `[]`.
 - **Link and repo:** link 3/3; the owner's files SHA-identical; status unchanged.
 
+## Camera case A with a timed Home — 2026-10-02, 23:14–23:17 IST: scripted procedure NO READING (the owner's own Home ended capture first); every product check held on that Home
+
+A separate result. The earlier batch (A NO READING; B, C, D NOT RUN) and the 23:01 retry (NO READING)
+keep theirs. B, C and D remain unapproved and were not run.
+
+**Preparation, no request:**
+- **The repaired core gained one timed action:** a single `KEYCODE_HOME` through the pinned wrapper,
+  scheduled only from the Mac's `live` transition for THIS stream id and re-checked against the Mac's
+  state at the moment it fires.
+- **21 / 21 local tests,** including:
+  - fires once, ACTION_MS after live;
+  - never on a pending request;
+  - never on the stale 22:10 line;
+  - never when the Mac never shows the stream live;
+  - a Home that does not end capture is a FAIL with no reopen;
+  - the real 20 s cap.
+- **Mutations:**
+  - H1 (scheduled from `connecting`), H3 (no FAIL label) and H4 (reopen after a deadline end) are red on
+    their named tests.
+  - H2, scheduled at the request press **and** not re-checked, is red. Its control H2a — scheduled at the
+    request, re-check kept — sent nothing on a pending request.
+- **The reopen is gated** on: the camera released, this stream's `stopped: LEFT_SCREEN` in the phone log,
+  and the Mac showing this stream ended.
+  It is a normal launch of the resolved launcher activity:
+  `am start -a MAIN -c LAUNCHER -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`,
+  with no force-stop and no clear-task flags.
+- **Bounds:** `r6/acceptance-A-home.md` (SHA-256 `90e0c6dc…`), written at 23:14:56, before the request.
+
+**Preflight (read-only), clean:**
+- builds: APK `1f3a0a00…`, Mac pid 39218, HEAD `a93ebdb`; link 3/3;
+- idle: no call, no camera client (ours 17), no projection, no recording, nothing on the Mac since;
+- protected Mac inventory identical;
+- dry gates passed: Sidekick in front, unlocked, awake, no call.
+
+The owner answered *Ready to tap Start camera*.
+
+**The session.** Phone order on the phone's clock, Mac order on the Mac's.
+
+| | Phone | Mac |
+|---|---|---|
+| request | 23:16:16.609 `camera.request` | 23:16:16.782 `request sent`; .788 `acknowledged: stream 51b9ac22…`; full id `51b9ac22a6d7c8b75479d4268d1760c8` read from the Mac's state |
+| approval | 23:16:20.017 `Start camera tapped for 51b9ac22…`; .060 `attached`; .068 `Camera bound: back` | 23:16:20.209 `allowed on the phone`; cap armed on `connecting` for this id |
+| live | — | 23:16:21.177 `live: first frame 960 × 720`; picture on screen 21.252 |
+| leave | `usagestats`: launcher **RESUMED 23:16:24**, `CameraActivity` PAUSED and STOPPED 23:16:25 | — |
+| end | 23:16:25.441 `Camera stream closed: 63 sent / 0 dropped`, `stopped: LEFT_SCREEN — 63 sent / 0 dropped` | 23:16:25.624 `socket closed: the phone closed the camera stream`, `ended: stream-lost — 63 received here, 0 not drawn here`; .625 `phone's account: left-screen … (replaces this Mac's guess, stream-lost)` |
+| reopen | the driver's launch at 23:16:27.143, confirmed at 23:16:27.314 (Mac clock): Sidekick's existing camera screen in front, unlocked | — |
+
+**The driver's Home was never sent** (`actionAt: null`). The launcher came up about 3 s after the picture
+went live — before the 5 s timer — and **the owner confirmed they pressed Home themselves.** The
+end was not the fallback Stop: no Stop of any kind was pressed.
+
+**Result:**
+- **The scripted timed-Home procedure is NO READING.** Its stimulus, step A, never ran, so steps A–B (the
+  driver's Home and the transition it causes) were not exercised.
+- **On the owner's own Home, every product check held:**
+  - **Home ended capture.** The launcher was RESUMED and `CameraActivity` PAUSED/STOPPED (phone clock),
+    then `stopped: LEFT_SCREEN` (phone clock), while the Mac showed this stream live. No Stop was pressed.
+  - **Picture and wording:** the Mac cleared its picture (canvas 0 × 0). Its final reason is
+    `left-screen`, reading *"The camera stopped because Sidekick's camera screen left your phone's
+    display."*, with no raw token and no network advice. The phone's screen was not read (no screen dumps
+    were approved); its log says `LEFT_SCREEN`.
+  - **Release:** our package was absent from `Active Camera Clients` at the first check after the Mac's
+    end. The camera service shows CONNECT 23:16:20 and DISCONNECT 23:16:25.
+  - **Frames:** 63 sent, 63 received, 63 drawn. **0 draws after the Mac's `ended:` line**, the last 52 ms
+    before it. No frame was in flight at the end, and nothing continued.
+  - **The reopen** brought Sidekick's existing camera screen forward and reused no consent.
+  - **The 60 s watch, from the confirmed reopen** (+1.2 s to +59.4 s, 20 samples):
+    - no camera client; our camera events constant at 19;
+    - no new phone `[camera]` line;
+    - one Mac `camera.request sent` (this attempt's);
+    - the pane `ended` / `left-screen` for this id, never live, canvas 0 × 0;
+    - no `[bulk]` or `[share]` line.
+
+**Instrument flaw, recorded rather than fixed:** two phone lines were each read twice (8 reads, 6
+distinct), because the final read after the pane loop ran while the poller was mid-read from the same
+cursor. It changed no decision — nothing arms on a duplicate — but it is a race in the driver.
+
+**Closing checks:**
+- **Phone:** identical to the preflight except the CAMERA app-op (this session, 4.7 s of use).
+- **Mac:** inventory identical; the paused partial, its record, the `.failed` marker and ledger `[]` are
+  unchanged.
+- **Link and repo:** link 3/3; the owner's files SHA-identical; status unchanged.
+
 ## Camera hardening overnight — 2026-10-03 (tests only; nothing on hardware)
 
 Written unattended under the owner's overnight approval. **No device or app was touched:** no `adb`, no
@@ -28007,6 +28491,639 @@ unbounded) red on HUNG REPORT; D-F (no rotation check) red; D-G (disposal leaves
 line-contract fixture; D-I (a fresh line for another stream does not shut down) red on WRONG STREAM.
 **Not mutated:** the core's refusal of a second request press is unreachable through `runSession`,
 which presses once by construction; it is a belt to the braces, and every fixture asserts the braces.
+
+## Camera supervised sessions — 2026-10-03, 13:07–14:22 IST: update done; Session 1 NO READING (the phone slept before the request); Session 2 NOT RUN
+
+**Approved scope:** one development-build update, then Session 1 (normal smoke: switch at ~5 s, Mac Stop at
+~15 s), then Session 2 (case D, tray Disconnect/Connect) only if Session 1 fully passed. No retry on any
+failure. Evidence (uncommitted): `docs/evidence/camera-supervised-2026-10-03/` with `MANIFEST.sha256`.
+
+| Item | Result |
+|---|---|
+| Update (phone `98187d17…`, Mac `dist` from `ad8dd55`) | **Done, verified** |
+| Driver validation (read-only) | **Passed** |
+| Actor local verification (fake pane, fake `adb`) | **41 / 41**, one mutation red |
+| Session 1 — normal smoke | **NO READING** — the driver's gate refused before any request: the phone was asleep and locked |
+| Session 2 — case D | **NOT RUN** (Session 1 did not pass) |
+
+### Preflight and update (13:07–13:19)
+
+- **Code:** HEAD `ad8dd55` on `clipboard-watcher-and-phase-5-close`; no uncommitted change under any code
+  directory. Fresh: Mac `npm test` **1,543 / 0** (`.test-run.json` 07:40:32Z, exit 0), `tsc` app and test 0;
+  phone `testDebugUnitTest --rerun-tasks` **1,248 / 0**, all 127 result files newer than the run, Gradle exit 0;
+  `camera-driver-core.test.mjs` 31/31, `camera-driver.test.mjs` 6/6, `probe.test.mjs` 24/24.
+- **Owner's edits:** SHA-256 recorded before anything ran (`PRODUCT.md` `bba7aac0…`, `skills-lock.json`
+  `b181c91a…`, `RESUME.md` `bfb27855…`, `camera-v1.md` `02a086b6…`, `testing.md` `7053eaa2…`) and identical at
+  the end of Session 1. Today the uncommitted diff is +933 / −6. The overnight report says "+884 / −6"; I
+  cannot reconstruct that figure. Every owner block is present as pure additions over HEAD (testing.md 484/0,
+  camera-v1.md 15/0). The only post-commit change is the overnight's 96-line handoff at the top of
+  `RESUME.md` (mtime 12:54:06, 13 s after `ad8dd55`).
+- **Phone:** pinned `RZCY12330DT` (SM-S938B, sdk 36). Before: `1f3a0a00…` (2026-10-02 21:28), signer
+  `cfee5fdb` = Android Debug, cert SHA-256 `d3a505d2…`, the same as `~/.android/debug.keystore`. Idle: `mCallState=0`;
+  `Active Camera Clients: []`; media projection `null`; appops running RECORD_AUDIO 0, CAMERA 0, PROJECT_MEDIA
+  0 (control: WAKE_LOCK 1, so the query does see running ops). No transfer on either end since 11:30.
+- **Snapshot before:** 27 granted runtime permissions (45 lines); the listener binding present;
+  **accessibility `null`** ("accessibility service is off"; recorded, unchanged); 6 prefs/DataStore files;
+  trust store read with its WAL: one row, the Mac `b59f4bba…`; 187 receive-folder entries, 0
+  `.failed`/`.part`/`.pending`. Mac: **65** artifacts (size, mtime, inode, SHA-256), among them the paused
+  partial (100,663,296 B, inode 88373242), its `pull-resume` record and `sidekick-pass-stop-200mb (7).bin.failed`.
+- **Update:** `:app:assembleDebug` reproduced `98187d17…` byte-for-byte (same signer); `install -r` through
+  the pin at 13:16:22–13:16:37; the installed APK pulled back hashes `98187d17…`. `PACKAGE_REPLACED` and
+  `LISTENER_REBIND` both logged *starting LinkService* at 13:16:38, so this install did **not** leave the phone
+  serverless. The documented `am start -n …/MainActivity` was still issued, and `link-up.sh` returned 3/3.
+- **Mac:** `npm run build` (260 files; `dist/main/camera.js` `bf9a10d1…`, `dist/renderer/camera.js`
+  `4d26cbe3…`); old pid 39220 sent SIGTERM; relaunched once at 13:18:25 as pid 28482 with only
+  `--force-renderer-accessibility --remote-debugging-port=9222`, with `CONNECTSUITE_DEBUG_SWITCHES` unset, and
+  no switch warning in the log. Connected 13:18:25.591 via last-known; the phone advertises `camera`.
+- **Nothing started by itself:** no `[bulk]`/`[share]`/`[camera]`/`[mirror]` line, and no pull/push on either
+  end. The one action on connect was the shipped clipboard auto-push (`clip.push → phone: 3678 bytes`).
+- **Snapshot after:** every phone reading identical. Mac: 64 of 65 identical, plus `sidekick.json`'s mtime
+  and inode (same bytes), which a relaunch always changes.
+
+### Driver validation (read-only), 13:19–13:26
+
+- **CLI schema:** read from the source (`--plan | --dry-run | --execute`, `--case plain|home`, `--report`,
+  `--owner-present`). Help exits 0; `--execute` without `--report`/`--owner-present` is refused.
+- **Stream identity:** the Mac's `requesting` state carries the 32-hex id after the ack
+  (`desktop/src/main/camera.ts` 376–384), and that is what the driver binds to.
+- **Milestone parsing:** run against the 56 real `[camera]` lines from 2026-10-02, the parser classified 43
+  (request 9, stopped 9, tapped 5, attached 5, bound 9, closed 5, reattributed 1). The new `running` and
+  `released` lines exist only in this APK, so the source-contract fixture is their only check before a session.
+- **Frame-ack contract:** the shipped painter's prototype has `paint` and `draw`, and `draw` is reached
+  through `this.draw`, so the instrument counts real draws.
+- **Instrument, on the idle pane** (`validate-instrument.mjs`):
+  - The fresh page carried no wrapper.
+  - The first install reported *removed 0*; a second install reported *removed 2*, still one layer.
+  - Dispose reported *2 wrapper(s), counters removed*, with `paint` and `draw` back to the prototype; a
+    second dispose was a no-op.
+- **Mac request counter:** the driver counts `camera.request sent` (written at `camera.ts:336`; 3 matches in
+  the then-`.1` log, the positive control).
+- **Dry-run, 13:22:** every gate passed except one, refused correctly: Instagram's capture screen was in
+  front. At 14:17:01 the dry-run passed fully.
+- **Tray (for Session 2):** reachable by name — `menu bar 2` → `● CS` / `status menu`. Opened once and closed
+  with Escape: *Open Sidekick*, *Reconnect now* (disabled), *Disconnect*, *Quit*. Closed was confirmed by
+  `selected=false` and a menu-bar screenshot; `exists menu 1` reads true even when closed, so it is not a
+  discriminator.
+
+**Pre-registered** at 13:26:51: `acceptance-2026-10-03.md` (`c3304cb7…`), with bounds S1-1…12, S2-1…7 and the
+stop conditions.
+
+### The actor, and its local verification (the driver's `plain` case has no switch, timed Stop or tray action)
+
+`actor.mjs` (`cbc57cd8…`) runs **beside** the unchanged driver. The driver keeps the one request, the
+stream id, the fresh log cursor, the independent 20 s cap and the 60 s watch. The actor:
+
+- binds to the first 32-hex id the Mac shows in `requesting` after it starts;
+- refuses to start unless the pane is idle or ended;
+- re-checks, at the moment of each press, that the state is `live` with that same id.
+
+It never presses the request and never retries. Its only device reads are pinned (`dumpsys media.camera`);
+the full-canvas pixel count runs only at the gates, never in the 100 ms poll.
+
+**Verified against a fake pane:** a throwaway Electron on :9333 with its own userData, plus a fake `adb`
+given through `CONNECTSUITE_ADB` that records every call. The real app and the phone were untouched.
+**41 / 41:**
+
+| Scenario | Switch | Stop | Other clicks |
+|---|---|---|---|
+| normal | 1, at live + 5.085 s | 1, at + 15.094 s | 0 |
+| stale earlier ended stream | 1 (+5.091 s) | 1 (+15.109 s) | 0; bound to the new id |
+| stream ended 1.2 s after live (before the switch) | 0 | 0 | 0 |
+| stream replaced by another id before Stop | 1 | **0** | 0 |
+| request expired before live | 0 | 0 | 0 |
+| request pending for 60 s | 0 | 0 | 0 |
+| pane live / requesting at start | 0 | 0 | 0 |
+
+**Beside the real `runSession` core**, with the actor:
+
+- **Not interfering:** the actor's Stop at live + 15.121 s; outcome `ended-by-stimulus`; no fallback stop;
+  one request, pressed by the driver.
+- **Frozen by SIGSTOP right after LIVE:** the driver's deadline stopped capture by itself at anchor
+  + **19.504 s** (`no-reading:deadline`, trigger `deadline`). Once resumed, the actor found the stream ended
+  and pressed nothing.
+
+The fake `adb` saw 36 calls, all reads.
+
+**Mutation:** with the Stop gate's same-stream check removed, the replaced-stream scenario went red (Stop
+clicked on the replacement). Restored, SHA-verified.
+
+The first harness run exposed a fault in the harness, not the actor: the fake `adb` reported an unknown
+serial, the pin refused it, and the actor's camera read showed `read: false`. That was a missing reading,
+not a negative. The fake was given the pinned serial; the binary is still the fake.
+
+### Session 1 — 14:17 IST: NO READING, aborted before any request
+
+| Time (IST, Mac clock) | Event |
+|---|---|
+| 14:17:01 | Dry-run: every gate passed. `MainActivity` resumed, keyguard false, awake; no call; clients `[]`; pane idle with one request button; phone log inode 848963 |
+| 14:17:45.48 | Actor started: pane idle |
+| 14:17:47.96 | Driver gates: `top: null`, `awake: false` → **ABORT before any request — NO READING** (exit 5): *"Sidekick is not the resumed activity (null)"*, *"the phone is locked or asleep"* |
+| 14:18:45.58 | Actor: *NO ACTION: this stream never went live within 60 s* (exit 4). The pane stayed `idle` throughout, by its own state reads |
+
+- **Nothing was sent:**
+  - 0 Mac `[camera]` lines and 0 `camera.request` since 14:17, out of 22 Mac lines in that window.
+  - 0 phone `[camera]` lines since 14:17; the same query finds 1 older `[camera]` line, the control.
+  - `Active Camera Clients: []`.
+- **Phone afterwards:** `mWakefulness=Dozing`, `isKeyguardShowing=true`.
+- **Cause:** not established. 46 s passed between the passing dry-run and the execute gates. Whether the
+  screen timed out or the phone was locked by hand, these readings cannot tell.
+- No driver report was written: the CLI returns before `runSession` when a gate fails, and none of
+  S1-1…S1-12 has a reading. The instrument was never installed, so there was nothing to dispose.
+- The Mac log rotated at about 14:17 (`sidekick.log` 8,708 B). That is ordinary rotation; the driver
+  reads from the size it saw at its start.
+
+**Closing checks:**
+- Phone (perms, bindings, prefs, trust, 187 receive entries, 0 markers) and all 65 Mac artifacts are
+  identical to the post-update snapshot.
+- Protected docs hash identically; the untracked set is identical; nothing is staged; HEAD `ad8dd55`.
+- Left changed by this sitting:
+  - the phone's APK (`98187d17…`);
+  - the Mac app relaunched (pid 28482);
+  - `sidekick.json` mtime and inode;
+  - the Mac's clipboard, pushed to the phone on connect;
+  - the Camera pane selected on the Mac.
+
+**Session 2: NOT RUN.** Next time, the request should follow the readiness reply with no read-only step
+in between that the screen timeout can outlast. Either the owner keeps the screen awake until the request
+appears, or the dry-run and execute are started together. Changing the phone's screen-timeout setting would
+need its own approval and is not proposed.
+
+## Camera Session 1, second attempt — 2026-10-03, 15:09–15:11 IST: 11 of 12 pre-registered bounds met; S1-8's phone line took the close-first route (final attribution correct); Session 2 held for the owner
+
+**Approval:** one fresh Session 1 attempt; Session 2 only after a full pass and the owner's fresh readiness.
+No rebuild, reinstall or full-suite rerun. The 14:17 NO READING above stands unchanged.
+
+Evidence: `docs/evidence/camera-supervised-2026-10-03/session-1b/` (`MANIFEST-session-1b.sha256`).
+Bounds: `acceptance-2026-10-03.md` (`c3304cb7…`, 13:26:51), unchanged.
+
+**Preparation, done before asking for readiness (15:07–15:08).**
+- Builds and link:
+  - HEAD `ad8dd55`, with code identical to it;
+  - driver `e379f070…` and core `dbf73aba…`; actor `cbc57cd8…`;
+  - installed APK updated at 13:16:37; Mac pid 28482 with one page target; link 3/3.
+- Idle: `mCallState=0`; clients `[]`; projection `null`; appops RECORD_AUDIO, CAMERA and PROJECT_MEDIA all 0
+  (WAKE_LOCK 1 as the control). No Mac camera or transfer line since the relaunch.
+- Baseline snapshot: identical to the one taken after Session 1. A read-only dry-run at 15:07:58 passed every gate.
+- After readiness there was nothing in between. `run-s1b.sh` started the actor and the driver at the same
+  moment; the driver's own gates were the final check, and its request followed them in the same process.
+
+**Request confirmation.** "Request sent" was reported only after three readings agreed:
+- the driver: `REQUEST pressed once {"landed":true}` at 15:09:20.493;
+- the Mac: `camera.request sent: back camera — 1 requested since launch` at 15:09:20.487, then
+  `acknowledged: stream 35bca7ce…`;
+- the driver's id read from the Mac's own `requesting` state: `35bca7ce82c5d56fe49f001a7cb370ee`, at +1.240 s.
+
+**Timeline.** Mac clock for Mac and driver/actor events, phone clock for phone lines, as each endpoint's
+own order:
+
+| Mac | Phone |
+|---|---|
+| 15:09:20.487 `camera.request sent` | 15:09:20.387 `camera.request … Ack, ShowRequest(screen), ArmTimer`; .398 *request screen opened over Sidekick* |
+| 15:09:31.906 allowed; 31.927 `connecting` → **cap armed from the Mac's state** (19,000 ms) | 15:09:31.788 `Start camera tapped`; .852 `attached for Chetans-MacBook-Pro`; .883 `bound: back, epoch 0` |
+| 15:09:32.751 `live: first frame 960 × 720 from the back camera`; actor LIVE 32.768 | 15:09:32.566 `running: first frame 960 × 720 from the back camera, epoch 0` |
+| 15:09:37.775 actor gate (live, same id, back, one *Switch to front camera*); `camera.switch to front requested` 37.778 | 15:09:37.673 `camera.switch … SwitchCamera(front, epoch 1)`; .675 `released (replaced by a switch) … back epoch 0 — 1 released of 1 bound`; .690 `bound: front, epoch 1` |
+| 15:09:38.614 `switch confirmed: frames now from the front camera`; the actor saw `facing: front` 833 ms after its click | 15:09:38.463 `switch confirmed: first frame 960 × 720 from the front camera, epoch 1` |
+| 15:09:47.814 actor gate: live, same id, front, 206 draws, newest 111 ms old, **37,230 of 49,626 sampled pixels lit** | |
+| **15:09:47.826 Stop pressed** (live + 15.058 s); 47.828 `ended: stopped-by-mac — 207 received here, 207 drawn, 0 not drawn here` | 15:09:47.721 `closed by the Mac`; .722 `closed: 208 sent / 0 dropped`; .723 **`stopped: STREAM_CLOSED — 208 sent / 0 dropped`**; .724 `camera.stop … re-attributed STREAM_CLOSED → STOPPED_BY_MAC`; .751 `released (closed) … front epoch 1 — 2 released of 2 bound` |
+| 15:09:47.837 `phone's account: stream-closed, 208 sent / 0 dropped there (this Mac's stopped-by-mac stands)` | |
+
+**Bounds:**
+
+| # | Reading | Verdict |
+|---|---|---|
+| S1-1 | `requestsPressed: 1`; the 32-hex id at +0.113 s after the press | met |
+| S1-2 | live for that id; `anchorSource: Mac state connecting for this stream id` | met |
+| S1-3 | at the Stop gate: stage visible, 37,230 / 49,626 sampled pixels lit, 206 draws, newest 111 ms old | met |
+| S1-4 | `running: first frame 960 × 720 from the back camera` (fresh, prefix-8) | met |
+| S1-5 | switch at live + 5.007 s; `front` on the Mac 833 ms later; both sides' `switch confirmed` lines | met |
+| S1-6 | Stop at live + 15.058 s; anchor → end **16,494 ms**; `fallbackStops: []`, no emergency | met |
+| S1-7 | at Stop + 0.3 s: `ended`, stage hidden, **0 / 49,626** lit | met |
+| S1-8 | clients `[]` at Stop + 1 s (the first read); released 1 of 1, then 2 of 2. **But the phone's `stopped` line reads `STREAM_CLOSED`, not `STOPPED_BY_MAC`:** the Mac's socket close reached the phone 2 ms before its `camera.stop`, and the phone then re-attributed the ending to `STOPPED_BY_MAC` (defect 167's close-first path) | **not met as written**; final attribution correct |
+| S1-9 | Mac `ended: stopped-by-mac`, headline *Camera off*, *"You stopped the camera from this Mac."*; phone recorded `STOPPED_BY_MAC` via the re-attribution | Mac met; phone as S1-8 |
+| S1-10 | Mac `207 received, 207 drawn, 0 not drawn`; phone `208 sent / 0 dropped`. Draws after Stop: **0** at +0.3, +1, +3 and +10 s (newest draw 8 ms before Stop) | met |
+| S1-11 | 24 samples (+29.6 → +88.3 s): all `ended`, clients `[]`, never live, Mac `camera.request sent` stayed at 1, phone fresh lines stayed at 16 | met |
+| S1-12 | `installed once (removed 0 earlier wrapper(s))` → `disposed (2 wrapper(s), counters removed)` | met |
+
+**Buffered frames vs continued capture.** The phone sent 208 frames and the Mac received 207. One frame
+was in transit when the Mac closed the socket and was never received. That is not continued capture:
+- the phone's sent count stops at 208 on its `closed` line;
+- the camera was released 29 ms later (phone clock);
+- the client list was empty at the first read, Stop + 1 s;
+- the page drew nothing after the Stop.
+
+**Two readings agree on one fact** (the Mac's state and the phone's own log): this Mac stopped it. The
+phone's *first* line names the transport event that reached it first. The order is the one the 2026-10-02
+22:53 retry showed. In this run the Mac's sequence wrote its `ended` line 2 ms after the click, and the
+phone saw the close 1–2 ms before the stop message; those two clocks are not compared.
+
+**Not claimed:** the late-bind race (169), blocked or notification routes (171 took the `SCREEN` route here:
+*request screen opened over Sidekick*), and the undrawable-frame branches (172). This was a production-wiring
+smoke test.
+
+**Closing checks:**
+- Phone (perms, bindings, prefs, trust, 187 receive entries, 0 markers) and all 65 Mac artifacts are
+  identical to the pre-session snapshot.
+- No Mac transfer line in the window. Afterwards: clients `[]`, appops RECORD_AUDIO and CAMERA 0, and
+  Sidekick's `CameraActivity` resumed.
+- Owner files `PRODUCT.md`, `skills-lock.json` and `camera-v1.md` are unchanged; nothing is staged.
+
+**Session 2: held.** The pre-registered S1-8 is not met as written, and the rule was *Session 2 only after
+a full pass*. Whether the close-first wording counts is the owner's call, not this record's.
+
+### Owner decision on Session 1 (second attempt), recorded 2026-10-03 after the run
+
+**11/12 matched as pre-registered; owner accepts the documented close-first alternative because it satisfies
+the established Stop contract.** This is an acceptance deviation, not a retrospective 12/12. The expectations
+and readings stay as recorded above:
+- S1-8 and S1-9 expected the phone line `stopped: STOPPED_BY_MAC`;
+- the phone's initial ending was `STREAM_CLOSED`;
+- the same stream (`35bca7ce…`) was then re-attributed to `STOPPED_BY_MAC`;
+- the Mac kept `stopped-by-mac`;
+- camera release, picture clearing, the capture cap and the no-restart watch all held.
+
+Session 1 checked no wording on the phone's screen: every phone-side reading in it comes from the phone's log.
+Session 2 (case D) is approved on this basis, with no Session 1 rerun.
+
+## Camera Session 2, case D — 2026-10-03, 15:59–16:01 IST: NO READING — the actor's tray AppleScript did not compile, so no Disconnect occurred; the 20 s cap stopped capture; no retry
+
+**Approval:** one case D session after the owner accepted Session 1's documented deviation. It used the
+running builds, with no rebuild, install or relaunch. Evidence: `docs/evidence/camera-supervised-2026-10-03/session-2/`
+(`MANIFEST-session-2.sha256`, 16 files). The earlier NO READING records and Session 1's records are unchanged.
+
+### Before the request
+
+- **Actor, disconnect mode, checked locally with an INJECTED tray.** The fake pane on :9334 exposes
+  `window.__fakeTray`; a fake `adb` and a fake Mac log play the phone and the link. This is **not** the
+  macOS menu integration (`osascript` → System Events → `menu bar 2`). **71 / 71**:
+  - Disconnect exactly once, at live + 5.108 s, on the bound stream, with `["camera"]` the only visible
+    section; the route was unchanged afterwards and no nav was clicked.
+  - Connect exactly once, only after the Mac's `ended`, the empty client list and this prefix's released line
+    (about 1.43 s after each).
+  - Reconnect confirmed from a **new** `[link] Connected to` line; an older one was present and ignored. The
+    60 s watch then took 30 samples.
+  - Stale ended stream: bound to the new id.
+  - No action for:
+    - a stream ended, replaced, expired or pending for 60 s;
+    - a pane already live at the start;
+    - the route changed.
+  - Stopped without Connect when the release or released line never came. Refused when the tray title was
+    wrong. Did not repeat Connect when the reconnect was never confirmed.
+  - Beside the real driver core: `ended-by-stimulus` (`disconnected-here`) with no fallback stop. With
+    the actor frozen after LIVE, the cap stopped capture alone at anchor + 19.504 s and the resumed actor took
+    no tray action.
+  - Two mutations went red, both restored and SHA-verified (actor `1cc5a51c…`): released line not required
+    (Connect pressed), and the stream-id check removed from the Disconnect gate (disconnected the
+    replacement). The fake `adb` saw 508 calls, all reads.
+- **Acceptance:** revision 1 `acceptance-case-d-2026-10-03.md` (`1131a41a…`) is preserved. **Revision 2**
+  (`…-rev2.md`, `f3940a02…`) was approved by the owner before the run and changes only D-5:
+  - either `MAC_DISCONNECTED` or `STREAM_CLOSED` is valid;
+  - release, clearing, no frame drawn after the Disconnect, truthful attribution and no restart remain
+    required;
+  - no network-fault diagnosis is allowed;
+  - phone wording comes from logs and source only.
+- **A carrier call was active during preparation** (`mCallState=2`; telecom `mCalls` held `TC@37
+  state=ACTIVE`). The test was paused and the call was not touched. It ended before readiness was asked:
+  `mCalls` empty, `mCallState=0`.
+- **Read-only checks:**
+  - builds, link 3/3, code identical to `ad8dd55`;
+  - idle with no camera client;
+  - snapshot identical to the post-Session-1 one;
+  - Mac log 149 KB, so no rotation risk;
+  - phone log 512,875 B against its 524,288 B rotation threshold, with an estimated 7–8 KB needed (it did not
+    rotate: 514,998 B afterwards, same inode);
+  - dry-run at 15:57:05 passed every gate; tray `● CS`.
+- **The gap, named before the run and not closed:** the local tests replaced `osascript`, and the read-only
+  tray check at 13:2x used a *different* script, which listed the item names. **The actor's own AppleScript
+  was never compiled before the live run.**
+
+### The run (Mac clock for Mac/driver/actor, phone clock for phone lines)
+
+| Mac | Phone |
+|---|---|
+| 15:59:48.988 `camera.request sent: back camera — 2 requested since launch`; driver `REQUEST pressed once {"landed":true}` 49.029; id `b836d49848e67c4fd7a22e8e2a201ff4` at +0.007 s | 15:59:48.865 `camera.request … ShowRequest(screen)`; .871 *request screen opened over Sidekick* |
+| 15:59:55.317 `connecting` → **cap armed from the Mac's state** (anchor 15:59:54.817); live 55.955 | 15:59:55.132 `Start camera tapped`; .159 `bound: back, epoch 0`; .172 `attached`; .598 `running: first frame 960 × 720 from the back camera` |
+| 16:00:00.815 actor gate **held** (live, same id, picture visible, 70 draws) → `TRAY Disconnect`: **`syntax error: A "to" can't go after this "its". (-2740)`** → *Disconnect did not land — stopping; the driver's cap stays armed*. Nothing clicked: AppleScript compiles the whole script before running any of it | |
+| 16:00:14.319 `FALLBACK STOP requested (deadline)`; **Stop clicked 14.320**; 14.323 `ended: stopped-by-mac — 267 received here, 265 drawn, 2 not drawn here (replaced-here 2)` | 16:00:14.196 `closed by the Mac`; `closed: 267 sent / 0 dropped`; re-attributed `STREAM_CLOSED → STOPPED_BY_MAC`; .197 `stopped: STREAM_CLOSED — 267 sent / 0 dropped`; .199 `released (closed) … 1 released of 1 bound` |
+| attempt 1 `landed: false` (button clicked; the immediate read did not yet show the release); attempt 2 at 15.513 found no button and confirmed `landed: true` | |
+
+### Results
+
+- **Case D: NO READING.** The tray was never touched: the title stayed `● CS`, never `selected`; the Mac log
+  window holds 41 lines and no `[link]` line; `link-up.sh` 3/3. So none of D-3 to D-7 has a reading:
+  - nothing about the Mac's *Disconnected from this Mac*;
+  - nothing about the phone's `MAC_DISCONNECTED` / `STREAM_CLOSED` after a disconnect;
+  - nothing about Connect or the post-reconnect watch.
+
+  Per the rules, no retry and no repair.
+- **Root cause, reproduced offline without execution.** `osacompile` on the exact script as run gives
+  `:7: error: A "to" can't go after this "its". (-2740)`. `its` and `it` are AppleScript reserved words used as
+  variable names. With them renamed, the script compiles. **That rename is not applied to the actor**; both
+  scripts are in the evidence.
+- **What the cap ending shows, as a by-product, not as a case D reading:**
+  - Capture stayed inside 20 s on each clock. Mac: anchor → Stop click **19.503 s**, `ended` line 3 ms
+    later. Phone: `attached` → `closed` **19.024 s**; `bound` → `released` **19.040 s**.
+  - Released 1 of 1; `Active Camera Clients: []` afterwards.
+  - No draw after the Stop: the instrument's final total of 265 equals the Mac's `265 drawn` at its `ended`
+    line. The 2 `replaced-here` frames were superseded while decoding.
+  - The phone's ending took the close-first route again (`STREAM_CLOSED` → re-attributed `STOPPED_BY_MAC`);
+    the Mac kept `stopped-by-mac`.
+  - Picture clearing was **not measured** in this run: the actor had exited, and the driver records `ended`
+    state only.
+  - 60 s watch: 23 samples, all `ended`, clients `[]`, Mac `camera.request` count at 1 for this run, no fresh
+    phone line. No transfer line on either end; no phone `[camera]` line after 16:00:15.
+- **Driver finding (not fixed):** the report says `anchorToEndMs: 20696, withinLimit: false`. It dates the
+  end from the **confirming** attempt (15.513), not the Stop click (14.320). `pressStop` counts a click as
+  landed only if the immediate post-click read already shows no button and no camera client, so attempt 1
+  read `false` though its click did end capture. The cap itself fired on time (19.502 s after the anchor).
+  The 20.696 s is an instrument dating artifact; the per-endpoint readings above are what the record relies on.
+
+**Closing checks:**
+- Phone (perms, bindings, prefs, trust, 187 receive entries, 0 markers) and all 65 Mac artifacts are
+  identical to the pre-session snapshot, `sidekick.json` included.
+- Your files are unchanged; nothing is staged; HEAD `ad8dd55`.
+- Afterwards: no call; RECORD_AUDIO, CAMERA and PROJECT_MEDIA all 0; Sidekick's `CameraActivity` in front.
+- Earlier evidence manifests verify 17 / 17.
+
+**Needed before any further case D attempt (not done):**
+- the actor's AppleScript renamed;
+- **compiled with `osacompile` during preparation**, with no click;
+- the driver's capture-end dating noted or fixed.
+
+Each needs the owner's approval.
+
+## Camera v2 (Sidekick Camera) — W0 contract and W1 Mac logic, 2026-10-03: local only, nothing signed, installed or captured
+
+**Approved scope:** W0 and W1 only. Commits **`95a5485`** (W0) and **`28d69d5`** (W1), local, not pushed.
+Evidence: `docs/evidence/camera-v2-w1-2026-10-03/` (`MANIFEST.sha256`). The package README
+(`desktop/native/SidekickCamera/README.md`) maps every test the brief asked for to its suite, and says
+what each stands on.
+
+**W0, the contract.** `docs/protocol.md` → *Webcam*:
+- the device versus the approved session;
+- consumer episodes, with no automatic re-request;
+- four messages, the claim and the 16-byte AU header;
+- the golden fixture `docs/fixtures/webcam-au-v1.hex`;
+- formats, cards, timestamps and bounds;
+- the Mac-local main ↔ bridge ↔ extension contract;
+- older peers and gates.
+
+Control: `check-protocol-spec` reported exactly the four `webcam.*` names as unaccounted for until they
+were recorded spec-only with their W2/W3 gate. Now 8 spec-only, 0 unaccounted for. Its tests: 28/28.
+
+**W1, results:**
+
+| Reading | Result | Control |
+|---|---|---|
+| `node run-tests.mjs` (Swift Testing, CLT) | **78 tests / 20 suites, 0 failing**. 8 consecutive green runs to rule out the intermittent crash, after which one test changed (the `#require` fix). The final code is green on **3** full runs: the working tree, the isolated copy, and the evidence run | a deliberately failing probe test went red in the toolchain check; 14 mutations below |
+| Isolated build (a clean copy in the scratchpad) | debug 36 s and release 38 s, **0 warnings**; tests 78/78 there too | toolchain recorded: macOS 26.6.1, Swift 6.3.2, CLT SDK 26.5, no Xcode |
+| Release binaries | arm64, **ad-hoc linker-signed, TeamIdentifier not set** (read with `codesign -dv`, no signing run) | — |
+| Red-first mutations | **14 of 14 red on the test named for each** | each run printed its record's age (0.0 s) and exit code |
+| CoreMediaIO enumeration from a plain process | one device: `FaceTime HD Camera`. No Sidekick Camera → `deviceNotInstalled` | the Mac's own camera is the positive control |
+| Real code-signature checks | `/bin/sleep` satisfies `anchor apple`; it, the test runner and a dead pid all fail a Team-ID requirement | the Apple binary is the positive control. **Not proof that a signed bridge is accepted** |
+| `check-suites-run` Swift leg | GREEN in staged mode at the W1 commit; 19/19 fixtures | red with the classification removed |
+
+**What W1 measured that the plan did not have:**
+1. **One `CMIOExtensionProvider` per process.** A second one raises an NSException.
+2. **On an unattached device, `notifyPropertiesChanged` and `stream.send` crash** (SIGSEGV in
+   `dispatch_async`).
+3. **The decode stage's first bound was wrong: 11 against 4.** Superseded items stayed in dispatch slots.
+   The test caught it, and the stage now owns its list.
+4. **`swift test` needs Testing.framework's path passed explicitly under the CLT.**
+
+Two of the mutations corrected tests rather than code:
+- **M1** stayed green against a stop test that pressed Stop with no frame on screen;
+- **M4**'s first form crashed the process through an index in a test.
+
+**Not proven, and the stimulus for each:**
+- activation, `cmioextension` hosting, fan-out and pacing: §11.2 after B1–B5;
+- a signed bridge passing `ProducerAuthorizer`: §11.2 item 3;
+- Q7, Q8 and Q9: the first signed build;
+- `CMIOSinkPort`'s sink path and `ConsumerWatcher`'s listener: the first activated extension;
+- every latency, CPU, frame-rate and quality figure: W5. They remain targets.
+
+---
+
+## Camera v2, W3 — Electron main's webcam controller and the bridge process (2026-10-04, local only)
+
+**Scope approved:** W3 only — the main-process controller and its integration with the built Swift bridge,
+tested locally. W2 (phone) and W4 (signing, deployment) are not approved. **Nothing touched a device**: no
+`adb`, no install, no relaunch, no capture, no signing, no system-extension command. `desktop/dist` (the
+running app) is unchanged — no `npm run build`.
+
+**Commits:** `46c4e24` (the bridge's `ready` record; contract row first) and `a7f708b` (controller,
+`BridgeProcess`, wire/record codecs, 64 tests, evidence). Evidence: `docs/evidence/camera-v2-w3-2026-10-04/`.
+
+| Reading | Result | Control |
+|---|---|---|
+| `npm test` (full Mac suite) | **1,607 / 0** (+64 over 1,543) | the record's own exit code and age (`mac-test-run.json`) |
+| `npm run typecheck` | clean, both configs | — |
+| Swift `node run-tests.mjs` (full, unfiltered) | **78 / 0** after the `ready` change | the M11 mutation below went red in it |
+| Isolated release build of the bridge (scratchpad) | **0 warnings** | — |
+| `check-script-fixtures` | 23 / 23 | — |
+| Guards | protocol-spec (webcam.* still spec-only), renderer-scripts, orphan-tests, debt-claims, apps-verb, renderer-views: all OK | protocol-spec's spec-only list printed the four names |
+| Integration suite, 3 consecutive runs | 14 / 14 each | — |
+| Mutations | first pass 20: **17 red on the named test**, 3 survived (below); re-runs: M5b, M16 red; M7/M8/M10/M21 re-run with complete counts and fresh TAP; Swift M11 red on both sides | every run printed TAP age and exit code; every restore verified by SHA-256 |
+| Orphans | none after the final runs (`ps`) | the suite's last test asserts every spawned pid is gone; it went red under M7, M8, M10, M21 |
+
+**Survivors, each explained:**
+- **M1** (the episode's `asked`/`spent` guard removed): unreachable — only the 0 → ≥1 edge and one deferred
+  call after a withdrawal reach it. M6 (a second caller on reconnect) shows the guard carrying the rule: 8 red.
+- **M5** removed one of two guards against a closed socket's bytes; **M5b** removed both: 5 red.
+- **M16** survived a weak fixture (a control record whose body failed on its op, not its type). The fixture
+  is now a valid status body under the control type: red.
+
+**Readings W3 took:**
+1. **A SIGSTOPped bridge dies to SIGTERM on Darwin** — the default action is applied, not held pending — so
+   that run ends at the first escalation. SIGKILL's step is held to its job by a stand-in that ignores
+   SIGTERM.
+2. **The mutation runner itself left orphans.** M7, M8, M10 and M21 made the code fail to reap a child; the
+   test process stayed alive on that child's handles until the runner's 120 s timeout killed it, and three
+   children kept running (a stopped bridge, the SIGTERM-ignoring stand-in, the silent stand-in). They were
+   verified by command line and killed. `webcamBridge.test.ts` now SIGKILLs any child whose exit it has not
+   seen, in `after()` — only unreaped pids, so it can only signal processes it started.
+3. **The bridge's device and identity were not readable by main** before W3: only stderr said "not
+   installed", and the Team ID lived only in Swift. `ready` (one contract row) makes both a framed record.
+
+**Real versus stood-in:**
+
+| Boundary | In the tests |
+|---|---|
+| The Swift bridge | **REAL** (built debug binary): framing, `ready`, split/coalesced records, malformed input → exit 2, stdin close → exit 0, SIGSTOP/bound, the controller refusing to ask |
+| Sidekick Camera installed / producer identity configured | **INJECTED** (stand-in reports, or a stand-in child). On this Mac the real bridge reports neither |
+| The phone (link, `webcam.state`, acks) | **STAND-IN**. No phone implements `webcam.*` |
+| The 42502 stream socket | **STAND-IN** fed the golden AU and AUs generated from it. `openCameraSocket` (v1's pinned TLS opener) is what wiring would use; W3 does not exercise it |
+| Consumers | **STAND-IN** counts. The real count comes from `ConsumerWatcher`, which has never fired (no device) |
+| Garbage output, crash, no ready, SIGTERM ignored | **STAND-IN** node children |
+
+**Not proven, and what would prove it:**
+- the controller against a real phone: W2 plus approved wiring and a sitting;
+- the controller against a real consumer count and a real sink: W4 (an activated extension);
+- `resolveBridgeExecutable`'s packaged path against a real bundle: W4 packaging.
+
+## Camera v2, W3 corrections — 2026-10-04 (code only; committed as `510d808`)
+
+Two contract gaps W3 found, closed before any phone implements `webcam.*`. Nothing wired, signed,
+installed or captured.
+
+1. **`webcam.stop` cause `failure`**, with a closed `detail` (`stream-malformed`, `stream-unavailable`,
+   `bridge-failed`, `producer-refused`, `device-unavailable`, `no-answer`); the phone's reason is
+   `mac-failed`. Every Mac-side failure that sent `shutdown` now sends it. The phone never displays the
+   detail string; it chooses its own sentence.
+2. **The bridge's `stream-rejected {sessionId, generation, violation}`** for a structural or codec-contract
+   violation in the **live** session. The gate decides whose AU it is before reading it, so bytes tagged
+   with an ended, unknown or other session are dropped unread and cannot end the live one. The session is
+   ended locally first (sink stopped, queue flushed, card shown, id buried) and reported at most once; main
+   acts only when the id is its current session's, and never re-asks.
+
+`docs/fixtures/webcam-vocabulary-v1.json` holds the stop causes, details, the phone's reasons and the
+stream faults once; TypeScript, Swift and (in W2) Kotlin read it in place.
+
+**Fresh results:** Mac **1,615 / 0** (was 1,607), typecheck clean; Swift **87 / 0** (was 78).
+**Red-first:** 12 TS tests red before the implementation (`ts-red-first.tap`). **Mutations:** MT1–MT3 and
+MA1–MA3, each red on the test named for it; MA3 also showed the ended session's last frame staying on
+screen (`.repeat`) where the camera-off card belongs. Evidence: `docs/evidence/camera-v2-w3-corrections-2026-10-04/`.
+
+**Two existing tests encoded W1's reading that a generation's first non-IDR AU is a wait.** The contract
+listed it as malformed, and Electron main's keyframe rule means it cannot reach the bridge from a phone
+that keeps the contract, so it is now fatal; the two tests were changed to say so, with the reason.
+
+## Camera v2, W2 — 2026-10-04 (the phone, code only)
+
+Approved: code only. **No ADB, no install, no capture; the phone's capture path has never executed on a
+device.** `WebcamFeature.install` is gated to debuggable builds and **nothing calls it**: `ConnectSuiteApp`
+is unchanged, so the running phone neither advertises `webcam` nor serves its claim. The Mac's
+`MessageType` gained the four names as the twin of the phone's (the spec checker requires it); nothing on
+the Mac sends or handles them, `MAC_EXT` is unchanged and no controller is constructed.
+
+**Built** (`camera-module/.../camera/webcam/`, and the seams in `core`):
+
+| Piece | What it is | Reached by a JVM test? |
+|---|---|---|
+| `WebcamSessionMachine` | request, tap, start, run, switch, every ending; generations; the claim; thermal; busy | **yes, the production class** |
+| `WebcamAuCodec`, `WebcamAuAssembler` | the 16-byte header; SPS/PPS prepended to every MediaCodec IDR | **yes**, against the golden fixture and real H.264 |
+| `WebcamStreamWriter` | the socket: 2 AUs in flight, the keyframe rule, discontinuity, one IDR request per episode | **yes**, with stand-in streams |
+| `WebcamCaptureCore` | open/switch/close tickets; a late capture released unused; release once | **yes**, with a recording stand-in backend and the real machine |
+| `CameraUseArbiter` | Camera v1 and the webcam: one lock, one decision, neither stops the other | **yes**, both production machines, a 300-round race |
+| `Camera2WebcamBackend` | Camera2 (preview + encoder surfaces, P1) → MediaCodec H.264 with the mirror's keys; the ladder at start | **no** — compiled only; Android |
+| `WebcamEngine`, `WebcamActivity`, `WebcamNotifications`, `WebcamFeature` | the executor, the screen, the request route, the gated install | **no** beyond source scans for the gate and the wiring |
+| `core`: claim word `webcam`, `webcamChannelSink`, `ext.webcam` (installed **and** debuggable/released), the `webcam` contract | | **yes** (`WebcamLinkTest`) |
+
+**Fresh results** (all written by the runs, ages checked): phone **1,325 / 0** across six modules (core
+233, camera-module 176, mirror 60, sync 624, input 52, app 180); Mac **1,616 / 0**, typecheck clean; Swift
+**89 / 0**; every guard OK; spec checker 77 of 78 specified, 4 spec-only (`webcam.*` left the list), 0
+unaccounted.
+
+**Mutations:** 17, each red on the test named for it after one fix
+(`docs/evidence/camera-v2-w2-2026-10-04/phone-mutations.md`). **MB14 was green on the first run**: the
+coexistence test re-implemented the engines' busy wiring instead of calling it — `CLAUDE.md`'s *second
+expression of the rule*. The decision now has one home (`CameraUseArbiter.admitCamera` / `admitWebcam`),
+called by both engines and the test; the remaining plumbing line inside each Android singleton is held by a
+source scan, and the test says so.
+
+**A finding no mutation was aimed at:** `WebcamStreamWriterTest`'s hang-up test failed 8 of 8 when run
+alone and passed in the suite. It settled on `!isOpen` and asserted the close callback, which the writer
+runs after clearing `open` — one of two clocks. The writer is right; the test waits for both now (6 of 6).
+
+**Real H.264 across the three readers.** `Tools/make-mediacodec-sample.swift` cut VideoToolbox output into
+MediaCodec's shape (SPS+PPS in a separate config buffer, IDRs without them; two encoders, a switch).
+camera-module's production machine, assembler and writer turn it into `webcam-phone-stream-v1.hex` byte for
+byte; the Swift gate admits all 9 AUs and VideoToolbox decodes them (6 × 320×180, 3 × 256×144); Electron
+main's reader frames them in any chunking. **The encoder is a Mac's, standing in for the phone's**: this
+proves the wrap and the decode, not this phone's MediaCodec.
+
+**Not proven, and what would prove it** (each needs its own approval):
+- that Camera2 opens both cameras with preview + encoder outputs, the encoder's real rate, size, heat and
+  latency on the SM-S938B — spike S1, a supervised sitting (install + capture);
+- the request screen, the permission flow and the foreground rule on a phone — the same sitting;
+- a phone ↔ Mac session — W2 app wiring (`ConnectSuiteApp` → `WebcamFeature.install`) **and** W3 wiring
+  (`main.ts`, `MAC_EXT`, `webcam.state` dispatch), approved together;
+- the picture in a meeting app — W4 (signing, the extension), blocked on the Apple Developer Program.
+
+## Camera v2, app wiring and mirror coexistence — 2026-10-04 (code only)
+
+Approved: production wiring and integration tests, code only. **Neither app was installed, relaunched or
+operated; no ADB; no capture; nothing signed or activated.** Commits `e7fb646`, `4e20782`, `73ec308`.
+
+**Mirror coexistence, closed before wiring.** A mirror start — `mirror.start` or Start in the phone's
+Mirror tab — is refused while a webcam request or session is open, with the mirror's ordinary `stopped`
+ack and `MirrorFailure.CaptureBusy` (`CAMERA_BUSY`), before consent and before any session state is
+touched. The webcam refuses while the mirror runs, waits for consent, is coming up or is being admitted.
+Both, and Camera v1's request, decide under one lock (`core` → `CaptureAdmission`). Nothing is stopped to
+make room. Camera v1's behaviour toward the mirror is unchanged (it still neither refuses nor is refused by
+a running mirror's start, as its notes record).
+
+**Wired:**
+
+| Side | What runs now |
+|---|---|
+| Phone | `ConnectSuiteApp` → `CaptureWiring.connect` + `WebcamFeature.install(mirrorBusy = …)`; installs only in a debuggable build (`WEBCAM_RELEASE` false); then `webcam` and `ext.webcam` 1 are advertised and the claim is served |
+| Mac | `main.ts` → `planWebcam` (ext only unpackaged + `webcamDev` + bridge at `.build/release/…`) → `wireWebcam` (real `LinkClient`, `BridgeProcess`, v1's pinned socket opener, `ipcMain`, `powerMonitor`); quit prepended to `before-quit` and bounded |
+| Mac UI | a separate *Use as webcam* card (`WebcamView`) under Camera v1's; not bound to the route; no preview |
+
+**Integration tests and their boundaries:**
+
+| Test | Real | Stand-in / injected |
+|---|---|---|
+| `webcamWiring.test.ts` (22) | the production `wireWebcam`, the controller, `BridgeProcess`, the codecs; the **built Swift bridge** through the planned dev path (it reports *not installed* / *unconfigured*; nothing is asked; reaped on quit) | **STAND-IN** phone link, 42502 socket, `ipcMain`, `powerMonitor`; an **INJECTED** bridge child (real framing; device installed, identity configured, consumers moved by signals) |
+| `webcamView.test.ts` (9) | the production `WebcamView` on the DOM double | a recording preload bridge |
+| `CaptureCoexistenceTest` (:app, 8) | the app's own `CaptureWiring`, the production webcam and Camera v1 machines, the mirror gate, one shared lock, a 300-round race | **INJECTED** mirror running state and phase (MediaProjection is not on the JVM) |
+| `WebcamFeatureWiringTest` (4) | the production `WebcamFeature.wire`, `CapabilityContract.advertisable`, `Extensions.handshake` | a recording `LinkServer` |
+| `MirrorAdmissionTest` (5) | the mirror gate | a source scan for `MirrorEngine`'s two start routes |
+
+**Fresh results:** phone **1,342 / 0** (six modules); Mac **1,647 / 0**, typecheck clean; Swift **89 / 0**;
+scripts **227 / 0**; every guard OK. Camera v1: **108 / 0** phone, **78 / 0** Mac.
+
+**Mutations:** 9 Mac + 7 phone, all red on the test named for them after one fix. **MW2 and MW3 survived
+first**: the power-event tests iterated over the production table, so deleting an entry deleted its test.
+The events are now written in the test. Evidence: `docs/evidence/camera-v2-wiring-2026-10-04/`.
+
+**Two text-search faults caught while writing the tests**, both the repo's known shape — a source scan
+matching the prose about the thing: `WEBCAM_RELEASE` found in the app's own comment, and
+`CameraFeature.install` found in a comment above the call. Both scans strip comments now. A proximity regex
+("routeChanged near webcam") was replaced by two facts: the view has no route method, and its construction
+subscribes to no route.
+
+**Not proven, and what would prove it:** the phone's capture on hardware (the Samsung plan in
+`docs/RESUME.md`); a picture in Sidekick Camera (W4: signing and activation); Meet/Zoom (after W4).
+
+## Camera v2, encoder spike preparation — 2026-10-04 (code and fixtures only; nothing on hardware)
+
+**Approved:** prepare ONE short Samsung encoder spike and a signing-readiness checklist. **Not approved
+and not done:** any device command, install, capture, Mac relaunch, extension activation, signing,
+tethering, push. The runbook is `docs/camera-v2-encoder-spike.md`; the checklist is
+`docs/camera-v2-signing-readiness.md`. Commits `5386814` (the decode probe) and `0f9fb01` (runner,
+driver, docs), local, not pushed.
+
+**Why tooling was needed, and why it is safe.** The production `WebcamController` refuses every request
+while Sidekick Camera is not installed and the build has no Team ID, so nothing in the app could receive
+the phone's real stream. That gate is **not touched**. A separate development runner
+(`desktop/src/main/webcamSpike.ts`) is armed only unpackaged with `webcamDev` **and** `webcamSpike`,
+`ext.webcam` advertised, and `sidekick-camera-decode-probe` built at its one path. It uses the live
+link (the token never leaves Electron main), Camera v1's pinned opener, the contract's exact-session
+claim and the phone's unchanged consent (`trigger: person`). The probe is the bridge's own `BridgeCore`
+ending in a counting sink: no listener, nothing published, nothing drawn, nothing written. It is not the
+deferred development preview.
+
+| Proof | Real / stood in | Result |
+|---|---|---|
+| SPS reader vs VideoToolbox's own parse, 7 real parameter sets incl. two that crop horizontally | real VT | agree |
+| Probe pipeline: 60 real 1080p High AUs → 60 decoded, 2 IDR / 58 P, header = SPS = decoded, coded 1088; header/SPS disagreement counted; garbage slices = failures; nothing after the end; non-IDR first generation rejected | real `BridgeCore`, real VT decode | green |
+| Probe executable: real H.264 decoded and counted, empty working directory afterwards; self-exit at its bound | built binary | green |
+| Runner with the phone-writer fixture through the **built** probe: one request, exact claim, Stop before socket close, 6/6 decoded, no token/whole id in report or log; and 12 more cases | stand-in phone and socket; real probe | 13 / 13 |
+| Pre-registered verdict: PASS, lower-rung PASS, 25 single-criterion FAILs, NO READING apart; Kotlin still writes every parsed line; driver bounds = runner bounds; verdict run on the real runner report | generated reports + one real | 32 / 32 |
+
+**Fresh totals:** Swift **99 / 0** (26 suites), Mac **1,660 / 0**, phone **1,342 / 0** (camera-module
+recompiled and re-run; other modules' inputs unchanged), scripts **259 / 0**; both typechecks clean;
+every guard OK. **Mutations:** 19, all red on the test named for them — MS7, SW1 and SW5 green first,
+SW6 hung first; each exposed a real gap fixed before the record. Evidence:
+`docs/evidence/camera-v2-encoder-spike-prep-2026-10-04/mutations.md`.
+
+**Found while preparing, and it changes the W4 plan:** per Apple DTS (Developer Forums thread 710046), a
+**Developer ID**–signed system extension does not load until it is **notarized**. The README's *Blocked*
+steps assumed Developer ID throughout, which would have made the local activation test depend on an
+upload to Apple. Local activation uses **Apple Development** signing and development profiles;
+Developer ID + notarization is distribution only. `ProducerAuthorizer`'s requirement (`anchor apple
+generic` + Team ID OU) accepts both — read from source, not measured.
 
 ## Camera v2 encoder spike — the run, its accounting, its evidence, and defect 177 (2026-10-04)
 
@@ -28483,6 +29600,224 @@ there is no foreground reading.
   `MainActivity` **not running** — the only matches in `dumpsys activity activities` were refresh-rate history from 2026-10-06
   23:57, not a live record; the top resumed activity was another app in profile 95. So an open would have been a real cold start
   of the Activity, not a no-op. Phone `link.log` 1,295 lines; Mac log 4,574 lines.
+- *Audit note, 2026-10-07 16:3x:* these pre-checks were taken at **≈14:14** (`LinkService` created ~18 min after
+  its 13:56:09 restart), i.e. **before** the owner's own 14:18:43 open recorded in the next section — so *MainActivity
+  not running* here and the 15:33:51 *HOT* resume of the Activity from that 14:18 open do not conflict.
+
+### Stage D resumed — autonomous synthetic batch (2026-10-07 14:51–15:19 IST): **STOPPED after step 1** (non-test Mac clipboard)
+
+Owner-authorised 60-minute batch on the deployed builds (Mac `bf096e1` dist `0c074f7d…`, PID 88287; phone `c05efcc`
+`0d42e27d…`, user 0). Markers named by label only (M-BASE-2, M-OFFER-3, M-NEWER-2, M-OFFER-4, M-SYNC-2); their text is not in
+this file. Clipboard checks used a helper printing only *which marker* or *matches none*; every log read counted marker strings
+(**0** on both sides throughout). UI trees were streamed into memory and filtered to marker nodes and toolbar labels — Keep's tree
+carries the owner's other notes; the one unfiltered dump taken first was deleted unread, as was a full logcat. **No screenshots.**
+
+- **Owner actions outside the supervised steps (confirmed by the owner):** 14:18:43 Sidekick opened on the phone — `Foreground
+  RE-claimed as USER, types=0x10` (and `UNKNOWN`, `0x10`), focus sync `EMPTY`; 14:19:12 one toolbar send, `selection route:
+  PROCESS_TEXT (Text) chars=4 → Sent`, offered on the Mac (expired 14:29), banner FAILED; 14:21:07–14:21:10 the Mac watcher on for
+  ~3 s (one 22-byte push to the phone, applied), then off. Evidence about the routes, not supervised passes.
+- **Baseline 14:51:14:** M-BASE-2 written to the Mac clipboard and verified; 0 `[clipboard]` lines (watcher off, nothing sent).
+- **First step-1 attempt (owner, 14:51–14:56): no send started; what was tapped is unknown.** 0 mentions of
+  `SendSelectionActivity`/`PROCESS_TEXT` in logcat since 14:51:14 (272,487 lines from 14:02) against **36** in the 14:19 window of
+  the same buffer; phone 0 `clip` lines; Mac 0 offers. Not counted against either route.
+- **Toolbar route (`PROCESS_TEXT`) in Keep: BLOCKED, by configuration rather than dispatch.** Long-press inside `edit_note_text`
+  (premise re-checked: focused, text equal to M-OFFER-3) raised the floating toolbar, read through `uiautomator dump --windows`
+  (the active-window dump cannot see it). Enumerated in full: *Writing toolkit, Cut, Copy, Paste, Translate, More options* →
+  *Share, Clipboard, Manage apps*. **No Send to Mac.** Control: `query-activities PROCESS_TEXT` lists **13** resolvers for user 0,
+  ours among them — so the handler is registered and One UI's per-app selection-menu filter (*Manage apps*) is hiding it here. Not
+  changed (a system setting). The 14:19 owner send shows the route does dispatch where the menu offers it.
+  - *Audit note, 2026-10-07 16:3x (PC-only, `docs/pc-only-audit-2026-10-07.md` F4):* the cause above is **not
+    established** and the heading's *"by configuration rather than dispatch"* overstates it. A registered resolver
+    plus an absent menu item is equally consistent with the menu Keep itself builds, an overflow/ordering limit, or a
+    filter state set earlier; and on 2026-09-04 (Phase 7 Slice 21) Keep **did** raise the platform toolbar and
+    deliver from it. Read this entry as: *unavailable in the observed Keep toolbar; handler registered; cause not
+    established* — as the 15:23 record below already says. Original wording kept for provenance.
+- **Step 1 — Share route (`ACTION_SEND`): PASS.** Select-all (Ctrl+A to the focused editor) → *More options* → *Share* →
+  ChooserActivity → the *Sidekick / Send to Mac* target, each tapped at the centre of a control found by name in a fresh dump.
+  Phone 15:17:07.008 `selection route: SEND (Text) … chars=11 → Sent` (11 = M-OFFER-3's length); Mac 15:17:07.200 `Offered an
+  arriving entry (origin selection): 11 bytes, NOT applied`. It proves nothing about `PROCESS_TEXT`.
+- **Step 4 — offer-notification diagnostics: counters and pane PASS; banner NOT shown.** `requested 2 / reported shown 0 / failed
+  2 / clicked 0`; `lastFailure` *The operation couldn't be completed. (UNErrorDomain error 1.)*. With one offer pending,
+  `#clip-notice` was shown, visible at rest (top 336 of 1,050 px), said the offer is not on the clipboard, and ended with the
+  194-character guidance. A macOS refusal is not a displayed-banner pass; the guidance is drawn only while an offer is pending
+  (14:5x read: 0 pending → not drawn, by design).
+- **STOP 15:17:** the Mac clipboard **matched none of the markers** after step 1, with no Sidekick apply since 14:51:14 — replaced
+  outside Sidekick. Not read, printed, cleared or restored. Device actions stopped there, per the batch's stop rule.
+- **Not run:** step 2 (Restore over newer), step 3 (Dismiss), step 5 (focus sync + supervised USER-start reading). The
+  M-OFFER-3 offer was left pending (expires ~15:27 without touching the clipboard).
+- **State at 15:19:** `LinkService` `types=0x10`; newest exit record still 13:56:08.525; `link-up.sh` three OKs; Mac v2 connected,
+  watcher off (setting + IPC; 0 watcher lines since 14:51). Keep left showing the test note with its selection.
+
+### Stage D — final continuation (2026-10-07 15:23–15:35 IST): **Restore guard PASS · Dismiss PASS · focus sync PASS**
+
+Owner-approved 15-minute continuation on the same builds (Mac `0c074f7d…` PID 88287; phone `0d42e27d…`, user 0); the owner
+confirmed once that both clipboards could be replaced with markers and avoided other copying. Markers by label only. Keep UI read
+through in-memory filtered dumps (the editor's marker equality and toolbar/share labels only); no screenshots, no raw trees saved.
+Offers sent by `ACTION_SEND` (the route proven at 15:17); the toolbar route stays **unavailable in the observed Keep menu**, cause
+not established. Not repeated: share delivery as a separate check, notification guidance.
+
+- **Baseline 15:24:17:** M-BASE-2 written and verified on the Mac. The 15:17 M-OFFER-3 offer was left alone and expired at
+  15:27:07 (*clipboard not touched*). The toolbar's layout varied between selections (Share in the overflow at 15:15, in the main
+  row at 15:26) — every tap went to a control found by name in a fresh dump.
+- **1. Restore guard — PASS.** New offer M-OFFER-5: phone 15:27:13.325 `selection route: SEND (Text) chars=11 → Sent`, Mac
+  `Offered … 11 bytes, NOT applied`. *Copy* (row chosen by exact marker equality and its OFFER badge; detail re-checked in the
+  click): 15:30:02.051 `Applied an arriving entry … 11 bytes, previous clipboard captured`; clipboard = M-OFFER-5; notice *On this
+  Mac's clipboard now*; one UNDO row. M-NEWER-2 then copied locally (verified). *Restore* on the only UNDO row: 15:30:39.134
+  `Refused a Restore: the clipboard changed since the entry was replaced`; problem-toned notice *Your clipboard has changed since
+  this was replaced, so Restore would overwrite what is on it now. Nothing was changed.*; clipboard **still M-NEWER-2**.
+- **2. Dismiss — PASS.** New offer M-OFFER-6 (15:31:33.536 `SEND … chars=11`, Mac `Offered … NOT applied`). *Dismiss*: 15:32:12.962
+  `Offer dismissed; the clipboard was not touched`; notice *Dismissed. This Mac's clipboard was not touched.*; 0 pending; clipboard
+  **still M-NEWER-2**.
+- **3. Focus sync + USER foreground claim — PASS.** Editor set to M-SYNC-2, toolbar *Copy* pressed by name (phone clipboard not
+  read — the phone cannot be read in the background). `am start -W --user 0 -n …/MainActivity` once at 15:33:51: *Activity not
+  started, its current task has been brought to the front*, `LaunchState: HOT` — the Activity from the owner's 14:18 open was
+  resumed, not created — top resumed `u0 …/MainActivity`. Phone 15:33:51.224 `Foreground RE-claimed as USER, types=0x10`, .226
+  `RE-claimed as UNKNOWN, types=0x10` (the capability refresh), .237 `clip.push → Mac via focus (origin clipboard): 10 bytes` and
+  `focus sync: SENT` (reasons since start: EMPTY=1, SENT=1, every other 0). Mac 15:33:51.434 `Applied an arriving entry … 10 bytes`;
+  clipboard **= M-SYNC-2**. `dumpsys`: `LinkService` and `ConnectionService` both `types=0x00000010`; newest exit record still
+  13:56:08.525.
+- **After (15:35):** `link-up.sh` three OKs; Mac connected, `pairing.kind: paired`, stored `pairing: 2`, 0 reconnects since 14:51;
+  watcher off (setting + IPC, 0 watcher lines since 14:51). Warnings since 15:24: Mac 2 (the two expected banner refusals), phone 0;
+  errors 0. Marker strings in either log: **0**.
+- **Left on the devices:** Mac clipboard = M-SYNC-2; phone clipboard = M-SYNC-2; Keep test note holds M-SYNC-2; Sidekick in the
+  foreground on the phone; Sidekick's in-memory history holds the session's entries until the next disconnect.
+
+**Stage D overall:** Share route, offer, Copy, duplicate-Copy refusal, Restore, Restore-over-newer refusal, Dismiss, the pane's
+refusal guidance and one focus sync have passed on hardware. **Still not shown:** a banner actually displayed and clicked (macOS
+refuses the development build — needs a packaged build), and the toolbar (`PROCESS_TEXT`) route end to end in a supervised step
+(dispatch seen once in the owner's own 14:19 send; unavailable in the observed Keep menu).
+
+*Audit note, 2026-10-07 16:3x (`docs/pc-only-audit-2026-10-07.md` §4):* the line above spans **two build pairs**. On
+the deployed `bf096e1` / `c05efcc` (14:51–15:35): Share route, offer, Copy, Restore-over-newer refusal, Dismiss, the
+pane's guidance and counters, and one focus sync — a **HOT resume** of an existing Activity, not a cold start. The
+duplicate-Copy refusal and a successful Restore passed only on `4661015` / `286e2b0` (01:11–01:42) and were not re-run
+on the deployed builds. Defect 199 remains open; no soak has run.
+
+## PC-only audit — 2026-10-07 16:05–16:40 IST (phone disconnected; nothing on hardware)
+
+Report: `docs/pc-only-audit-2026-10-07.md`. Fresh on HEAD `ccc185d`: Mac **1,964 / 0** + typecheck; phone **1,454 / 0**
+(`--offline --rerun-tasks --no-build-cache`, 153 result files, 0 older than the run); 15 guards and 24 fixture suites
+exit 0. Findings F1 (disconnect clears log on every non-connected tick and rotate evidence out), F2 (privacy draft
+narrower than the code: file names and opened link hosts), F3–F6 (Low), F7 (the planned soak cannot discriminate 199's
+fix from the old build). Corrections in this file are the three dated *Audit note* insertions above; nothing else
+here was changed. Not run: the soak, stages E–G, and every other hardware item (the report's §7).
+
+## Hardware verification resumed — 2026-10-07 17:47–23:5x IST: stages E and F partly run; Return-cancels NOT PASSED; mirror, toolbar, banner, reconnect, H4b incomplete
+
+Deployed and unchanged throughout: Mac dev `desktop/dist` `0c074f7d…2f29` (= `bf096e1`, Electron 43.4.1, PID 88287 since
+10:39:53); phone `0d42e27d…0af6` (= `c05efcc`, user 0, process PID 23946 since 13:56:07). Defect 200's quit coordinator
+(HEAD `ccc185d`) is **not** deployed. Nothing installed, relaunched, re-paired, granted, deleted or committed. Synthetic
+files only (one 129-byte file; total moved < 1 KiB). No screenshots. Full readings: the session scratchpad's
+`RECORD-interim.md`.
+
+- **Preflight (read-only, exit-info first, 17:47):** no new exit record since install B (user 0 newest 13:56:08.525
+  `PACKAGE UPDATED`; user 95 `LOW_MEMORY` 13:58:49, the cached u95 process); crash buffer only the 07:14 crash; installed
+  `base.apk` = `c05efcc`'s; `LinkService` / `ConnectionService` `types=0x00000010`; every claim line today `0x10`;
+  `link-up.sh` three OKs; watcher off (setting + live IPC, control answered); v2 paired. `MainActivity` last stopped
+  15:36:23 — **not** counted as soak time.
+- **Network, while away and while waiting (Mac side):** heartbeat lost 15:39:46 → reconnected 16:02:02, and 19:11:19 →
+  22:06:36; both on last-known, v2, no pairing request. The phone process was unaffected. F1 seen on hardware: one
+  outage wrote 148 × `Cleared 0 clipboard entries` + 1 real clear; the Mac log rotated at 15:59 and ≈22:00.
+- **Topology:** phone Wi-Fi **off**; the Mac is on the **phone's hotspot** (`swlan0` 10.225.215.199), so "phone Wi-Fi
+  off/on" tests nothing here.
+- **Drag method.** An owner-reported drag (~19:0x, "sheet appeared, Return closed it") left **no** trace in the Mac log or
+  the page recorder and is not counted. The drags below are genuine OS-level drags: CGEvent mouse down → drag → up from
+  the Finder row to the AX-located tile, with the element under each end re-identified immediately before mouse-down
+  and before mouse-up (two attempts were refused by those gates and carried back; the file and `~/Downloads` were
+  verified unchanged).
+
+**Stage E (defect 190)**
+
+| Check | Observed | Status |
+|---|---|---|
+| Genuine Finder drop reaches the tile | page recorder `drop` on `#files-drop`, 1 file, 22:16:13.620 | observed |
+| Sheet is Sidekick's and names the file | window *Sidekick*, pid 88287: *"Send “drop-me.txt” to your phone?"* / `~/.s7-run/drop-me.txt`; buttons *Send*, *Cancel*; AX cancel button *Cancel*, no AX default button | **PASS** |
+| Return cancels | Return once at 22:16:41 (Sidekick frontmost, focus on the sheet's *Cancel*): **sheet stayed open, no log line** | **NOT PASSED** |
+| Escape (control, not in the plan) | Escape once at 22:20:05 (focused window `AXSheet`): `drop of 1 file(s) not confirmed — nothing granted` (22:20:05.697), sheet gone; no transfer on either side (phone `Download/ConnectSuite` still 184, no `[bulk]`/`[fs]` lines) | observed as stated |
+| Explicit Send dispatches once | *Send* pressed by name 22:25:27: `confirmed in the native sheet`, **one** `fs.transfer.begin`, 129/129 B; phone `verified=true`; saved file 129 B, full SHA-256 `351b49cf85e228de6438b98a285781e93cf24653aee62a621092bd83c5c321b9` = source | **PASS** |
+| Destination | the push landed in **`app:files`** (`files/shared/drop-me.txt`, app-private), **not** `Download/ConnectSuite` | see below |
+
+*Candidate finding (not registered): Return answers no button on the drop sheet.* Electron 43.4.1's
+`shell/browser/ui/message_box_mac.mm` gives the `default_id` button `\r` and then the `cancel_id` button `\e`; the
+deployed `dist/main/main.js` passes `defaultId: 1, cancelId: 1` (`main.ts:2702`), so Cancel's `\r` is overwritten. This
+is consistent with the reading and fails safe (Return cannot Send), but the audit's "Return and Escape cancel" is wrong.
+No source change tonight. Fix direction for later: do not make one button both default and cancel; re-test on a real
+sheet. Wrong fix: making *Send* the default.
+
+*Pane/destination mismatch (instrument fault, mine):* the root list labels `Download/ConnectSuite` **"Received files"**
+and the app-private `app:files` **"ConnectSuite"**. I selected by the label "ConnectSuite", and after the 22:06 reconnect
+the pane showed `app:files` (0 items) with the drop tile reading *"…send them to ConnectSuite"*. The plan's destination
+was named by path, the UI by a label that names the other root.
+
+**Stage F**
+
+| Check | Observed | Status |
+|---|---|---|
+| Push into `Download/ConnectSuite` (*Received files*, confirmed by the phone's `fs.list downloads:connectsuite/`) | genuine drag + *Send* 22:29:15; one dispatch; published id 1000316911; `/sdcard/Download/ConnectSuite/drop-me.txt` 129 B, SHA-256 = source; 184 → 185 entries | **PASS** |
+| Pull to the Mac (`#files-copy-to-mac`) | 22:30:22 → `~/Downloads/Sidekick/drop-me.txt`, `verified=true`, 129 B, SHA-256 = source; `quarantine absent` (dev build, expected); xattrs: `com.apple.provenance` only | **PASS** |
+| Drag-out to Finder | genuine drag 22:32:02 from the tile to an empty `~/.s7-run/drag-out`: a 129 B file with SHA-256 = source appeared there; the pulled original remained; Mac log `dragged 1 file(s) to Finder — drop-me.txt — 1 started / 0 refused` | evidence as stated |
+| Photos save checksum sentence | — | NOT RUN (personal photos) |
+| Mirror 30 s | phone locked, then unlocked by the owner ≈23:35; two starts (23:36:43, 23:39:10) both `awaiting-foreground` → `consent-timeout` (no tap reached the consent notification; my script's gate refused the one found) | **INCOMPLETE** |
+
+**Mirror confirmed inactive (23:5x, read-only):** phone `[mirror]` last lines are the two `consent-timeout`s; no
+`MirrorService` record; `dumpsys media_projection` → `null`; no Sidekick notification on a mirror channel (3101 is the
+`file_transfer` received-file notice); Mac `#mirror-start` shown and enabled, `#mirror-stop` hidden.
+
+**Other items:** toolbar `PROCESS_TEXT` — **NOT RUN**; native banner display/click — **BLOCKED** (needs a packaged build,
+ideally on a fresh macOS user); reconnect check — **NOT RUN** (Mac Wi-Fi off/on was approved, then withdrawn by the
+owner's "no network changes"); H4b — **DEFERRED** (owner); Restore / duplicate-Copy re-run — not required (main-process
+clipboard code unchanged `4661015` → `bf096e1`).
+
+**Created (synthetic, all 129 B, SHA-256 `351b49cf…c321b9`; nothing deleted):** Mac `~/.s7-run/drop-me.txt`,
+`~/.s7-run/drag-out/drop-me.txt`, `~/Downloads/Sidekick/drop-me.txt`; phone `files/shared/drop-me.txt` (app-private),
+`/sdcard/Download/ConnectSuite/drop-me.txt` (MediaStore 1000316911). Activity rows naming `drop-me.txt`. The Sidekick
+window was moved to the built-in display; a Finder window on `~/.s7-run/drag-out` was left open.
+
+### Defect 199 background soak — STARTED 2026-10-07 23:54:41 IST; end check due ≥ 2026-10-08 06:04:41 (T0 + 6 h 10 min)
+
+Plan item 2 of defect 199, on the deployed `c05efcc` phone build, no acceleration. **Started, not finished — nothing
+below is a result.** What a pass will mean is limited by audit F7: endurance of the installed build in the background,
+not proof that 199's cause is removed.
+
+- **Baseline (read-only, 23:52–23:55):** user 0 newest exit record 13:56:08.525 `PACKAGE UPDATED` (user 95: 13:58:49
+  `LOW_MEMORY`), 32 records; crash buffer 770 lines, the only 2 package lines being the 07:14 crash; app process PID 23946
+  (started 13:56); `LinkService` `isForeground=true types=0x00000010`, created ≈13:56 (same instance as install B's restart);
+  `ConnectionService` `0x10`; 7 claim lines today, all `0x10`; `link-up.sh` three OKs; phone `link.log` 251 KB (rotation at
+  ≈512 KB; `link.log.1` from 2026-10-06); Mac `bf096e1` dist, PID 88287, log 2,457 lines + `.1` rotated 22:00; Mac
+  connected, v2, watcher off (stored + live IPC). Mirror inactive: 0 `mirror.v2.MirrorService` records (control: 9
+  `NotificationMirrorService` lines, 3 service records), `media_projection` `null`.
+- **T0 = 23:54:41**, the reading at which the top resumed activity was not Sidekick (control: one `topResumedActivity`
+  line read) and Sidekick's last activity event was `MainActivity` STOPPED at 15:36:23. Sidekick was **not** opened to
+  take it.
+- **Conditions:** USB connected and powering the phone since 23:34:55 (charging, so deep Doze is not exercised). Earlier
+  that evening the phone was on battery (USB not powering it from ≥ 23:13 until 23:34:55). The Mac is on the phone's
+  hotspot.
+- **Monitoring:** a read-only background script in the session scratchpad (`soak/monitor.sh`, log `soak/monitor.log`)
+  checks every 30 min and at the end: exit-info newest per user, crash buffer, process, service types / createTime,
+  mirror/projection, top activity, `link-up.sh`, claim / timeout / autostart lines since T0 across `link.log` and
+  `link.log.1`, phone and Mac log sizes, and Mac link up/down lines. It exists only while this Claude Code session is
+  running; if the session ends, the record holds until its last check and the end check must be run by hand.
+- **Interval rules:** no opening Sidekick on the phone, no `am start`, install, force-stop, reboot, network or settings
+  change, transfer, mirror, clipboard watcher or Mac app quit/relaunch. A Mac-side or hotspot outage is recorded with its
+  times and does **not** end the interval (the claim is about the phone's service); it also does not, by itself, show a
+  service timeout, and a stable phone process does not show uninterrupted connectivity — the two are reported separately.
+- **End check (≥ 06:04:41):** no new user-0 exit record and nothing new for the package in the crash buffer; same PID and
+  `LinkService` createTime older than T0; `types=0x00000010`; `link-up.sh` three OKs; every claim line since T0 `0x10`;
+  coverage gaps (log rotation, missed checks) named rather than read as "nothing happened".
+- **Interim, 2026-10-08 06:07 — end check NOT yet valid.** All 14 scheduled checks ran (last at 06:04:41, T0 + 370 min),
+  but the pinned phone was on adb only for the first two (23:55:55 and 00:25:57: baseline unchanged — same exit records,
+  PID 23946, `LinkService` same instance `0x10`, three OKs, no claim/timeout lines since T0). From the 00:55:59 check on,
+  `adb devices` listed no device, and at 06:06 nothing Samsung is on the USB bus. **Why USB went away is not known.**
+  The phone has therefore been unpowered by USB for part of the interval (closer to real use, but not the condition
+  recorded at T0). **Instrument fault:** the monitor printed `top resumed is Sidekick: 0` even with no device, so those
+  12 lines are missing readings, not zeros; it now says `NO PHONE READING` instead (first version kept as `monitor.v1.sh`).
+  - *Network side, reported separately:* the Mac log has **no** `Heartbeat lost` / `Disconnected` line since `Connected
+    to Samsung SM-S938B` at 23:35:18 (control: 411 `[link]` lines in the file); the phone kept delivering notification
+    events until at least 05:27:35; at 06:07 the Mac's live status is `connected / paired`, watcher off. This suggests
+    the control session stayed up, but it is the Mac's view and it is **not** the defect-199 end check.
+  - The end check will be taken from the phone itself (exit-info history, PID, `LinkService` createTime and types,
+    `link-up.sh`, claim lines since T0) when USB is reconnected; exit-info records carry their own timestamps, so an
+    exit during the unobserved hours would still show.
 
 ## Release-verification run, Phase 1 — 2026-10-08 00:08–01:3x IST (soak running; code, tests and isolated builds only)
 
