@@ -63,3 +63,10 @@ graphify-out/
 # else's reading, served with no indication of whose.
 desktop/.test-run.json
 desktop/.test-run.tap
+
+# Release artefacts and dependencies anywhere in the tree, not only under desktop/. A .dmg, a zipped
+# build or an installed dependency tree is never source; binaries go to GitHub Releases. (The one
+# tracked zip, under "Mac app UI mockups (1)/", predates this and stays tracked.)
+*.dmg
+*.zip
+node_modules/
