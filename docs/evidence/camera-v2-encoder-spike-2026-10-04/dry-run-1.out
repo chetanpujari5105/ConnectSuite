@@ -1,0 +1,2 @@
++0.951s gates (read-only) {"spike":{"armed":true,"phase":"idle","spent":false,"reason":null},"phone":{"top":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","keyguard":false,"awake":true,"callActive":false,"thermal":0},"camera":{"clients":"[]","oursActive":false,"read":true},"phoneLog":{"inode":858433,"size":124398}}
++0.952s DRY RUN: every gate passed; no request, no key, no launch

@@ -1,0 +1,3 @@
+08:47:47.959 +0.998s gates (read-only) {"resolved":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","paneVisible":true,"phone":{"top":null,"keyguard":false,"awake":false,"callActive":false},"camera":{"clients":"[]","oursActive":false,"read":true},"pane":{"kind":"idle","request":["Ask phone for camera"],"stop":0,"cancel":0},"phoneLog":{"inode":848963,"size":498920}}
+08:47:47.960 +0.999s ABORT before any request — NO READING {"fail":["Sidekick is not the resumed activity (null)","the phone is locked or asleep"]}
+driver exit 5

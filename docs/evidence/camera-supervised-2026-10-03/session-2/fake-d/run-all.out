@@ -1,0 +1,89 @@
+PASS  dNormal: Disconnect actions = 1  {"got":1}
+PASS  dNormal: Connect actions = 1  {"got":1}
+PASS  dNormal: actor exit 0  {"got":0}
+PASS  dNormal: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+PASS  dNormal: Disconnect only on stream Y while live, Camera the only route, at live+5 s ±1 s  {"dtMs":5055,"route":["camera"]}
+PASS  dNormal: route unchanged after Disconnect
+PASS  dNormal: Connect once, only after the Mac ended the stream AND release AND the released line  {"connectMinusRelease":1739,"connectMinusLine":1739,"kindAtConnect":"ended"}
+PASS  dNormal: actor bound to this attempt's id  {"bound":"aaaaaaaa111111112222222233333333"}
+PASS  dNormal: reconnect confirmed from a NEW log line (the old one ignored) and a 60 s watch from it  {"watchedS":59.395,"samples":30}
+      actor exit 0; [actor] 09:54:43.865 +72.876s watch summary (60 s from confirmed reconnect) {"samples":30,"everOurs":false,"everUnread":false,"kinds":["ended"],"macCameraRequests":0,"macCameraLinesSinceConnect":[],"macTransferLinesSince
+PASS  dStale: Disconnect actions = 1  {"got":1}
+PASS  dStale: Connect actions = 1  {"got":1}
+PASS  dStale: actor exit 0  {"got":0}
+PASS  dStale: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+PASS  dStale: Disconnect only on stream Y while live, Camera the only route, at live+5 s ±1 s  {"dtMs":5104,"route":["camera"]}
+PASS  dStale: route unchanged after Disconnect
+PASS  dStale: Connect once, only after the Mac ended the stream AND release AND the released line  {"connectMinusRelease":1836,"connectMinusLine":1836,"kindAtConnect":"ended"}
+PASS  dStale: actor bound to this attempt's id  {"bound":"aaaaaaaa111111112222222233333333"}
+PASS  dStale: reconnect confirmed from a NEW log line (the old one ignored) and a 60 s watch from it  {"watchedS":59.421,"samples":30}
+      actor exit 0; [actor] 09:55:57.560 +72.979s watch summary (60 s from confirmed reconnect) {"samples":30,"everOurs":false,"everUnread":false,"kinds":["ended"],"macCameraRequests":0,"macCameraLinesSinceConnect":[],"macTransferLinesSince
+PASS  dEndedEarly: Disconnect actions = 0  {"got":0}
+PASS  dEndedEarly: Connect actions = 0  {"got":0}
+PASS  dEndedEarly: actor exit 5  {"got":5}
+PASS  dEndedEarly: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 5; [actor] 09:56:06.612 +8.353s actor stopped {"error":"gate"}
+PASS  dReplaced: Disconnect actions = 0  {"got":0}
+PASS  dReplaced: Connect actions = 0  {"got":0}
+PASS  dReplaced: actor exit 5  {"got":5}
+PASS  dReplaced: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 5; [actor] 09:56:15.743 +8.350s actor stopped {"error":"gate"}
+PASS  dExpired: Disconnect actions = 0  {"got":0}
+PASS  dExpired: Connect actions = 0  {"got":0}
+PASS  dExpired: actor exit 4  {"got":4}
+PASS  dExpired: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 4; [actor] 09:56:20.997 +4.476s actor stopped {"error":"never live"}
+PASS  dStartLive: Disconnect actions = 0  {"got":0}
+PASS  dStartLive: Connect actions = 0  {"got":0}
+PASS  dStartLive: actor exit 3  {"got":3}
+PASS  dStartLive: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 3; [actor] 09:56:21.742 +0.036s actor stopped {"error":"not idle"}
+PASS  dRouteChanged: Disconnect actions = 0  {"got":0}
+PASS  dRouteChanged: Connect actions = 0  {"got":0}
+PASS  dRouteChanged: actor exit 5  {"got":5}
+PASS  dRouteChanged: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 5; [actor] 09:56:32.276 +8.359s actor stopped {"error":"gate"}
+PASS  dReleaseNeverConfirmed: Disconnect actions = 1  {"got":1}
+PASS  dReleaseNeverConfirmed: Connect actions = 0  {"got":0}
+PASS  dReleaseNeverConfirmed: actor exit 7  {"got":7}
+PASS  dReleaseNeverConfirmed: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+PASS  dReleaseNeverConfirmed: Disconnect only on stream Y while live, Camera the only route, at live+5 s ±1 s  {"dtMs":5090,"route":["camera"]}
+PASS  dReleaseNeverConfirmed: route unchanged after Disconnect
+      actor exit 7; [actor] 09:56:57.189 +24.126s actor stopped {"error":"release"}
+PASS  dReleasedLineMissing: Disconnect actions = 1  {"got":1}
+PASS  dReleasedLineMissing: Connect actions = 0  {"got":0}
+PASS  dReleasedLineMissing: actor exit 7  {"got":7}
+PASS  dReleasedLineMissing: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+PASS  dReleasedLineMissing: Disconnect only on stream Y while live, Camera the only route, at live+5 s ±1 s  {"dtMs":5098,"route":["camera"]}
+PASS  dReleasedLineMissing: route unchanged after Disconnect
+      actor exit 7; [actor] 09:57:07.389 +9.484s actor stopped {"error":"release"}
+PASS  dTrayTitleWrong: Disconnect actions = 0  {"got":0}
+PASS  dTrayTitleWrong: Connect actions = 0  {"got":0}
+PASS  dTrayTitleWrong: actor exit 6  {"got":6}
+PASS  dTrayTitleWrong: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      tray refusals: ["Disconnect@○ CS"]
+      actor exit 6; [actor] 09:57:16.495 +8.362s actor stopped {"error":"tray"}
+PASS  dReconnectNeverConfirmed: Disconnect actions = 1  {"got":1}
+PASS  dReconnectNeverConfirmed: Connect actions = 1  {"got":1}
+PASS  dReconnectNeverConfirmed: actor exit 9  {"got":9}
+PASS  dReconnectNeverConfirmed: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+PASS  dReconnectNeverConfirmed: Disconnect only on stream Y while live, Camera the only route, at live+5 s ±1 s  {"dtMs":5021,"route":["camera"]}
+PASS  dReconnectNeverConfirmed: route unchanged after Disconnect
+PASS  dReconnectNeverConfirmed: Connect once, only after the Mac ended the stream AND release AND the released line  {"connectMinusRelease":1748,"connectMinusLine":1747,"kindAtConnect":"ended"}
+      actor exit 9; [actor] 09:57:57.741 +40.497s actor stopped {"error":"reconnect"}
+PASS  dPendingForever: Disconnect actions = 0  {"got":0}
+PASS  dPendingForever: Connect actions = 0  {"got":0}
+PASS  dPendingForever: actor exit 4  {"got":4}
+PASS  dPendingForever: no request/cancel/stop/switch click, no nav click  {"other":[],"nav":[]}
+      actor exit 4; [actor] 09:58:58.544 +60.050s actor stopped {"error":"never live"}
+PASS  capDNormal: driver outcome ended-by-stimulus (reason disconnected-here), no fallback stop  {"outcome":"ended-by-stimulus","reason":"disconnected-here"}
+PASS  capDNormal: one request by the driver; one Disconnect and one Connect by the actor; no Stop click  {"dis":1,"con":1,"stops":0}
+      actor exit 0
+PASS  capDFrozen: actor frozen after LIVE
+PASS  capDFrozen: the driver deadline stopped capture by itself, inside 20 s  {"outcome":"no-reading:deadline","anchorToStop":19504}
+PASS  capDFrozen: resumed actor took no tray action on the ended stream  {"tail":"[actor] 10:00:38.826 +25.804s actor stopped {\"error\":\"gate\"}"}
+      actor exit 5
+PASS  fake adb: reads only  {"calls":508,"writes":[]}
+
+71 / 71 checks passed
+exit 0

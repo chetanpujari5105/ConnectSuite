@@ -1,0 +1,27 @@
+10:29:48.813 +0.889s gates (read-only) {"resolved":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","paneVisible":true,"phone":{"top":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","keyguard":false,"awake":true,"callActive":false},"camera":{"clients":"[]","oursActive":false,"read":true},"pane":{"kind":"ended","request":["Ask again"],"stop":0,"cancel":0},"phoneLog":{"inode":848963,"size":513326}}
+10:29:48.815 +0.891s instrument {"instrument":"installed once (removed 0 earlier wrapper(s))"}
+10:29:48.987 +1.063s phone log marked {"inode":848963,"size":513326}
+10:29:49.029 +1.105s REQUEST pressed once {"landed":true}
+10:29:49.036 +1.112s pane {"kind":"requesting","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","reason":null,"stop":0,"text":"Waiting for you to allow it on your phone The camera request is on your phone's screen. The camera stays off until you a","canvasCss":[0,0]}
+10:29:49.036 +1.112s this attempt’s stream id, from the Mac’s own state after the ack {"streamId":"b836d49848e67c4fd7a22e8e2a201ff4","phoneMatchesOn":"first 8 characters only"}
+10:29:55.317 +7.393s pane {"kind":"connecting","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","reason":null,"stop":1,"text":"Starting your phone's camera… Allowed on the phone. Waiting for the first picture. Stop camera The picture shows only he","canvasCss":[0,0]}
+10:29:55.317 +7.393s capture deadline armed {"source":"Mac state connecting for this stream id","deadlineInMs":19000,"limitMs":20000}
+10:29:55.748 +7.824s pane {"kind":"live","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","reason":null,"stop":1,"text":"Waiting for frames from your phone The picture is hidden until new frames arrive, so an old frame is never shown as live","canvasCss":[0,0]}
+10:29:55.954 +8.030s pane {"kind":"live","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","reason":null,"stop":1,"text":"Live · back camera · 960 × 720 · up to 15 fps Switch to front camera Stop camera The picture shows only here, only after","canvasCss":[1097,1097]}
+10:29:55.955 +8.031s this stream is live on the Mac
+10:29:56.254 +8.330s phone (fresh) {"kind":"tapped","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T15:59:55.132+05:30"}
+10:29:56.254 +8.330s phone (fresh) {"kind":"bound","match":"no id in line","prefix":null,"at":"2026-10-03T15:59:55.159+05:30"}
+10:29:56.254 +8.330s phone (fresh) {"kind":"attached","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T15:59:55.172+05:30"}
+10:29:56.254 +8.330s phone (fresh) {"kind":"running","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T15:59:55.598+05:30"}
+10:30:14.319 +26.395s FALLBACK STOP requested (deadline)
+10:30:15.025 +27.101s stop attempt {"trigger":"deadline","attempt":1,"result":{"landed":false,"atMs":1791023414320,"clicked":{"clicked":"Stop camera","at":1791023414320},"trigger":"deadline"}}
+10:30:15.229 +27.305s phone (fresh) {"kind":"closed","match":"no id in line","prefix":null,"at":"2026-10-03T16:00:14.196+05:30"}
+10:30:15.229 +27.305s phone (fresh) {"kind":"reattributed","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T16:00:14.196+05:30"}
+10:30:15.229 +27.305s phone (fresh) {"kind":"stopped","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T16:00:14.197+05:30"}
+10:30:15.229 +27.305s phone (fresh) {"kind":"released","match":"prefix-8","prefix":"b836d498","at":"2026-10-03T16:00:14.199+05:30"}
+10:30:15.513 +27.589s stop attempt {"trigger":"deadline","attempt":2,"result":{"landed":true,"atMs":1791023415513,"clicked":{"clicked":null},"trigger":"deadline"}}
+10:30:15.674 +27.750s observing {"forMs":60000,"from":"end"}
+10:31:16.414 +88.490s finished {"outcome":"no-reading:deadline","capture":{"anchorToEndMs":20696,"withinLimit":false},"observation":{"from":"end","atMs":1791023415513}}
+10:31:16.416 +88.492s instrument disposed {"result":"disposed (2 wrapper(s), counters removed)"}
+driver exit 0
+both finished

@@ -1,0 +1,276 @@
+{
+ "mode": "smoke",
+ "t0": 1791020359365,
+ "events": [
+  {
+   "atMs": 1791020359397,
+   "iso": "2026-10-03T09:39:19.397Z",
+   "t": 0.032,
+   "what": "state at start",
+   "data": {
+    "kind": "idle",
+    "streamId": null,
+    "facing": null,
+    "reason": null,
+    "framesReceived": null,
+    "stalled": null,
+    "paneVisible": true,
+    "canvasParentHidden": true,
+    "canvasPx": [
+     300,
+     150
+    ],
+    "switchButtons": [],
+    "stopButtons": 0,
+    "statusText": null,
+    "instr": null
+   }
+  },
+  {
+   "atMs": 1791020359398,
+   "iso": "2026-10-03T09:39:19.398Z",
+   "t": 0.033,
+   "what": "state",
+   "data": {
+    "kind": "idle",
+    "streamId": null,
+    "facing": null,
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791020360525,
+   "iso": "2026-10-03T09:39:20.525Z",
+   "t": 1.16,
+   "what": "state",
+   "data": {
+    "kind": "requesting",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791020371927,
+   "iso": "2026-10-03T09:39:31.927Z",
+   "t": 12.562,
+   "what": "state",
+   "data": {
+    "kind": "connecting",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791020372768,
+   "iso": "2026-10-03T09:39:32.768Z",
+   "t": 13.403,
+   "what": "state",
+   "data": {
+    "kind": "live",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791020372768,
+   "iso": "2026-10-03T09:39:32.768Z",
+   "t": 13.403,
+   "what": "LIVE seen",
+   "data": {
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee"
+   }
+  },
+  {
+   "atMs": 1791020377775,
+   "iso": "2026-10-03T09:39:37.775Z",
+   "t": 18.41,
+   "what": "gate before switch",
+   "data": {
+    "kind": "live",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": "back",
+    "reason": null,
+    "framesReceived": 2,
+    "stalled": false,
+    "paneVisible": true,
+    "canvasParentHidden": false,
+    "canvasPx": [
+     2194,
+     2194
+    ],
+    "switchButtons": [
+     "Switch to front camera"
+    ],
+    "stopButtons": 1,
+    "statusText": "Live · back camera · 960 × 720 · up to 15 fps",
+    "instr": {
+     "paints": 74,
+     "draws": 74,
+     "lastDraw": 1791020377735
+    }
+   }
+  },
+  {
+   "atMs": 1791020378609,
+   "iso": "2026-10-03T09:39:38.609Z",
+   "t": 19.244,
+   "what": "SWITCH",
+   "data": {
+    "landed": true,
+    "waitedMs": 833,
+    "sentAtApprox": 1791020377776
+   }
+  },
+  {
+   "atMs": 1791020387814,
+   "iso": "2026-10-03T09:39:47.814Z",
+   "t": 28.449,
+   "what": "gate before stop (picture control)",
+   "data": {
+    "kind": "live",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": "front",
+    "reason": null,
+    "framesReceived": 75,
+    "stalled": false,
+    "paneVisible": true,
+    "canvasParentHidden": false,
+    "canvasPx": [
+     2194,
+     2194
+    ],
+    "switchButtons": [
+     "Switch to back camera"
+    ],
+    "stopButtons": 1,
+    "statusText": "Live · front camera · 960 × 720 · up to 15 fps",
+    "instr": {
+     "paints": 206,
+     "draws": 206,
+     "lastDraw": 1791020387703
+    },
+    "lit": {
+     "litSampled": 37230,
+     "sampled": 49626
+    }
+   }
+  },
+  {
+   "atMs": 1791020387829,
+   "iso": "2026-10-03T09:39:47.829Z",
+   "t": 28.464,
+   "what": "STOP pressed",
+   "data": {
+    "clicked": true,
+    "at": 1791020387826
+   }
+  },
+  {
+   "atMs": 1791020388143,
+   "iso": "2026-10-03T09:39:48.143Z",
+   "t": 28.778,
+   "what": "+0.3 s after Stop",
+   "data": {
+    "kind": "ended",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": null,
+    "reason": "stopped-by-mac",
+    "framesReceived": 207,
+    "stalled": null,
+    "paneVisible": true,
+    "canvasParentHidden": true,
+    "canvasPx": [
+     2194,
+     2194
+    ],
+    "switchButtons": [],
+    "stopButtons": 0,
+    "statusText": null,
+    "instr": {
+     "paints": 207,
+     "draws": 207,
+     "lastDraw": 1791020387818
+    },
+    "lit": {
+     "litSampled": 0,
+     "sampled": 49626
+    },
+    "drawsAfter": {
+     "draws": 207,
+     "paints": 207,
+     "drawsAfter": 0,
+     "paintsAfter": 0,
+     "lastDraw": 1791020387818
+    }
+   }
+  },
+  {
+   "atMs": 1791020389175,
+   "iso": "2026-10-03T09:39:49.175Z",
+   "t": 29.81,
+   "what": "+1 s after Stop",
+   "data": {
+    "drawsAfter": {
+     "draws": 207,
+     "paints": 207,
+     "drawsAfter": 0,
+     "paintsAfter": 0,
+     "lastDraw": 1791020387818
+    },
+    "camera": {
+     "read": true,
+     "clients": "[]",
+     "ours": false
+    },
+    "kind": "ended"
+   }
+  },
+  {
+   "atMs": 1791020391220,
+   "iso": "2026-10-03T09:39:51.220Z",
+   "t": 31.855,
+   "what": "+3 s after Stop",
+   "data": {
+    "drawsAfter": {
+     "draws": 207,
+     "paints": 207,
+     "drawsAfter": 0,
+     "paintsAfter": 0,
+     "lastDraw": 1791020387818
+    },
+    "camera": {
+     "read": true,
+     "clients": "[]",
+     "ours": false
+    },
+    "kind": "ended"
+   }
+  },
+  {
+   "atMs": 1791020398250,
+   "iso": "2026-10-03T09:39:58.250Z",
+   "t": 38.885,
+   "what": "+10 s after Stop",
+   "data": {
+    "drawsAfter": {
+     "draws": 207,
+     "paints": 207,
+     "drawsAfter": 0,
+     "paintsAfter": 0,
+     "lastDraw": 1791020387818
+    },
+    "camera": {
+     "read": true,
+     "clients": "[]",
+     "ours": false
+    },
+    "kind": "ended"
+   }
+  }
+ ],
+ "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+ "liveAt": 1791020372768
+}

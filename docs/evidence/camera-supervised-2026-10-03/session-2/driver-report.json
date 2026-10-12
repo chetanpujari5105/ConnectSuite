@@ -1,0 +1,710 @@
+{
+ "case": "plain",
+ "macLog": [
+  "2026-10-03T15:59:48.988+05:30 I [camera] camera.request sent: back camera — 2 requested since launch",
+  "2026-10-03T15:59:48.999+05:30 I [camera] camera.request acknowledged: stream b836d498… awaiting approval on the phone",
+  "2026-10-03T15:59:55.266+05:30 I [camera] camera stream b836d498… allowed on the phone (back camera); opening the stream socket",
+  "2026-10-03T15:59:55.749+05:30 I [camera] camera stream b836d498… live: first frame 960 × 720 from the back camera — 2 live of 2 requested since launch",
+  "2026-10-03T16:00:14.323+05:30 I [camera] camera stream b836d498… ended: stopped-by-mac — 267 received here, 265 drawn, 2 not drawn here (replaced-here 2); no phone counts yet — 2 ended of 2 requested since launch",
+  "2026-10-03T16:00:14.333+05:30 I [camera] camera stream b836d498… phone's account: stream-closed, 267 sent / 0 dropped there (this Mac's stopped-by-mac stands)"
+ ],
+ "outcome": "no-reading:deadline",
+ "limits": {
+  "LIMIT_MS": 20000,
+  "DEADLINE_MARGIN_MS": 500,
+  "ANCHOR_MARGIN_MS": 500,
+  "APPROVAL_MS": 40000,
+  "ACK_MS": 5000,
+  "UNCERTAIN_MS": 2000,
+  "PHONE_FAILS_MAX": 3,
+  "OBSERVE_MS": 60000,
+  "AFTER_END_MS": 240000,
+  "REQUEST_GRACE_MS": 1000,
+  "PANE_POLL_MS": 100,
+  "PHONE_POLL_MS": 1000,
+  "SAMPLE_MS": 2000,
+  "CALL_TIMEOUT_MS": 3000,
+  "STOP_ATTEMPT_MS": 3000,
+  "STOP_ATTEMPTS": 3,
+  "REPORT_MS": 10000,
+  "PEER": "Chetans-MacBook-Pro",
+  "ACTION_MS": null
+ },
+ "requestAt": 1791023388987,
+ "requestsPressed": 1,
+ "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+ "prefix": "b836d498",
+ "anchor": 1791023394817,
+ "anchorSource": "Mac state connecting for this stream id",
+ "liveAt": 1791023395955,
+ "actions": {
+  "test": null,
+  "fallbackStops": [
+   {
+    "trigger": "deadline",
+    "atMs": 1791023414319
+   }
+  ],
+  "fallbackStopLanded": {
+   "trigger": "deadline",
+   "attempt": 2,
+   "atMs": 1791023415513,
+   "result": {
+    "landed": true,
+    "atMs": 1791023415513,
+    "clicked": {
+     "clicked": null
+    },
+    "trigger": "deadline"
+   }
+  },
+  "emergency": false
+ },
+ "productEnding": null,
+ "shutdown": null,
+ "afterEnd": null,
+ "anomalies": [],
+ "capture": {
+  "anchorToEndMs": 20696,
+  "withinLimit": false
+ },
+ "phoneLogStart": {
+  "inode": 848963,
+  "size": 513326
+ },
+ "phoneLogEnd": {
+  "inode": 848963,
+  "offset": 514998
+ },
+ "phoneMatching": "prefix-8 (the phone prints 8 of 32 hex characters)",
+ "freshPhoneLines": [
+  {
+   "kind": "request",
+   "prefix": null,
+   "at": "2026-10-03T15:59:48.865+05:30",
+   "line": "2026-10-03T15:59:48.865+05:30 I [camera] camera.request from Chetans-MacBook-Pro: Ack, ShowRequest(screen), ArmTimer",
+   "seenAtMs": 1791023389293
+  },
+  {
+   "kind": "other",
+   "prefix": null,
+   "at": "2026-10-03T15:59:48.871+05:30",
+   "line": "2026-10-03T15:59:48.871+05:30 I [camera] Camera request b836d498… awaiting consent: request screen opened over Sidekick",
+   "seenAtMs": 1791023389293
+  },
+  {
+   "kind": "tapped",
+   "prefix": "b836d498",
+   "at": "2026-10-03T15:59:55.132+05:30",
+   "line": "2026-10-03T15:59:55.132+05:30 I [camera] Start camera tapped for b836d498…: CancelTimers, ClearRequest, state starting, OpenCamera(back, epoch 0), ArmTimer",
+   "seenAtMs": 1791023396254
+  },
+  {
+   "kind": "bound",
+   "prefix": null,
+   "facing": "back",
+   "epoch": 0,
+   "at": "2026-10-03T15:59:55.159+05:30",
+   "line": "2026-10-03T15:59:55.159+05:30 I [camera] Camera bound: back, epoch 0",
+   "seenAtMs": 1791023396254
+  },
+  {
+   "kind": "attached",
+   "prefix": "b836d498",
+   "peer": "Chetans-MacBook-Pro",
+   "at": "2026-10-03T15:59:55.172+05:30",
+   "line": "2026-10-03T15:59:55.172+05:30 I [camera] Camera stream b836d498… attached for Chetans-MacBook-Pro",
+   "seenAtMs": 1791023396254
+  },
+  {
+   "kind": "running",
+   "prefix": "b836d498",
+   "width": 960,
+   "height": 720,
+   "facing": "back",
+   "at": "2026-10-03T15:59:55.598+05:30",
+   "line": "2026-10-03T15:59:55.598+05:30 I [camera] Camera stream b836d498… running: first frame 960 × 720 from the back camera, epoch 0",
+   "seenAtMs": 1791023396254
+  },
+  {
+   "kind": "other",
+   "prefix": null,
+   "at": "2026-10-03T16:00:14.196+05:30",
+   "line": "2026-10-03T16:00:14.196+05:30 I [camera] Camera stream b836d498… closed by the Mac",
+   "seenAtMs": 1791023415229
+  },
+  {
+   "kind": "closed",
+   "prefix": null,
+   "sent": 267,
+   "dropped": 0,
+   "at": "2026-10-03T16:00:14.196+05:30",
+   "line": "2026-10-03T16:00:14.196+05:30 I [camera] Camera stream closed: 267 sent / 0 dropped (0 evicted, 0 oversize, 0 unencoded)",
+   "seenAtMs": 1791023415229
+  },
+  {
+   "kind": "other",
+   "prefix": null,
+   "at": "2026-10-03T16:00:14.196+05:30",
+   "line": "2026-10-03T16:00:14.196+05:30 I [camera] camera.stop from Chetans-MacBook-Pro: re-attributed STREAM_CLOSED → STOPPED_BY_MAC, Ack",
+   "seenAtMs": 1791023415229
+  },
+  {
+   "kind": "reattributed",
+   "prefix": "b836d498",
+   "from": "STREAM_CLOSED",
+   "to": "STOPPED_BY_MAC",
+   "at": "2026-10-03T16:00:14.196+05:30",
+   "line": "2026-10-03T16:00:14.196+05:30 I [camera] Camera stream b836d498… had already ended as STREAM_CLOSED when the Mac's stop arrived; recorded as STOPPED_BY_MAC",
+   "seenAtMs": 1791023415229
+  },
+  {
+   "kind": "stopped",
+   "prefix": "b836d498",
+   "reason": "STREAM_CLOSED",
+   "sent": 267,
+   "dropped": 0,
+   "at": "2026-10-03T16:00:14.197+05:30",
+   "line": "2026-10-03T16:00:14.197+05:30 I [camera] Camera stream b836d498… stopped: STREAM_CLOSED — 267 sent / 0 dropped",
+   "seenAtMs": 1791023415229
+  },
+  {
+   "kind": "released",
+   "prefix": "b836d498",
+   "why": "closed",
+   "facing": "back",
+   "epoch": 0,
+   "at": "2026-10-03T16:00:14.199+05:30",
+   "line": "2026-10-03T16:00:14.199+05:30 I [camera] Camera released (closed): b836d498… back epoch 0 — 1 released of 1 bound",
+   "seenAtMs": 1791023415229
+  }
+ ],
+ "recorderFailures": 0,
+ "events": [
+  {
+   "atMs": 1791023388813,
+   "iso": "2026-10-03T10:29:48.813Z",
+   "t": 0.889,
+   "what": "gates (read-only)",
+   "data": {
+    "resolved": "com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity",
+    "paneVisible": true,
+    "phone": {
+     "top": "com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity",
+     "keyguard": false,
+     "awake": true,
+     "callActive": false
+    },
+    "camera": {
+     "clients": "[]",
+     "oursActive": false,
+     "read": true
+    },
+    "pane": {
+     "kind": "ended",
+     "request": [
+      "Ask again"
+     ],
+     "stop": 0,
+     "cancel": 0
+    },
+    "phoneLog": {
+     "inode": 848963,
+     "size": 513326
+    }
+   }
+  },
+  {
+   "atMs": 1791023388815,
+   "iso": "2026-10-03T10:29:48.815Z",
+   "t": 0.891,
+   "what": "instrument",
+   "data": {
+    "instrument": "installed once (removed 0 earlier wrapper(s))"
+   }
+  },
+  {
+   "atMs": 1791023388987,
+   "iso": "2026-10-03T10:29:48.987Z",
+   "t": 1.063,
+   "what": "phone log marked",
+   "data": {
+    "inode": 848963,
+    "size": 513326
+   }
+  },
+  {
+   "atMs": 1791023389029,
+   "iso": "2026-10-03T10:29:49.029Z",
+   "t": 1.105,
+   "what": "REQUEST pressed once",
+   "data": {
+    "landed": true
+   }
+  },
+  {
+   "atMs": 1791023389036,
+   "iso": "2026-10-03T10:29:49.036Z",
+   "t": 1.112,
+   "what": "pane",
+   "data": {
+    "kind": "requesting",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "reason": null,
+    "stop": 0,
+    "text": "Waiting for you to allow it on your phone The camera request is on your phone's screen. The camera stays off until you a",
+    "canvasCss": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "atMs": 1791023389036,
+   "iso": "2026-10-03T10:29:49.036Z",
+   "t": 1.112,
+   "what": "this attempt’s stream id, from the Mac’s own state after the ack",
+   "data": {
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "phoneMatchesOn": "first 8 characters only"
+   }
+  },
+  {
+   "atMs": 1791023395317,
+   "iso": "2026-10-03T10:29:55.317Z",
+   "t": 7.393,
+   "what": "pane",
+   "data": {
+    "kind": "connecting",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "reason": null,
+    "stop": 1,
+    "text": "Starting your phone's camera… Allowed on the phone. Waiting for the first picture. Stop camera The picture shows only he",
+    "canvasCss": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "atMs": 1791023395317,
+   "iso": "2026-10-03T10:29:55.317Z",
+   "t": 7.393,
+   "what": "capture deadline armed",
+   "data": {
+    "source": "Mac state connecting for this stream id",
+    "deadlineInMs": 19000,
+    "limitMs": 20000
+   }
+  },
+  {
+   "atMs": 1791023395748,
+   "iso": "2026-10-03T10:29:55.748Z",
+   "t": 7.824,
+   "what": "pane",
+   "data": {
+    "kind": "live",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "reason": null,
+    "stop": 1,
+    "text": "Waiting for frames from your phone The picture is hidden until new frames arrive, so an old frame is never shown as live",
+    "canvasCss": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "atMs": 1791023395954,
+   "iso": "2026-10-03T10:29:55.954Z",
+   "t": 8.03,
+   "what": "pane",
+   "data": {
+    "kind": "live",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "reason": null,
+    "stop": 1,
+    "text": "Live · back camera · 960 × 720 · up to 15 fps Switch to front camera Stop camera The picture shows only here, only after",
+    "canvasCss": [
+     1097,
+     1097
+    ]
+   }
+  },
+  {
+   "atMs": 1791023395955,
+   "iso": "2026-10-03T10:29:55.955Z",
+   "t": 8.031,
+   "what": "this stream is live on the Mac",
+   "data": null
+  },
+  {
+   "atMs": 1791023396254,
+   "iso": "2026-10-03T10:29:56.254Z",
+   "t": 8.33,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "tapped",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T15:59:55.132+05:30"
+   }
+  },
+  {
+   "atMs": 1791023396254,
+   "iso": "2026-10-03T10:29:56.254Z",
+   "t": 8.33,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "bound",
+    "match": "no id in line",
+    "prefix": null,
+    "at": "2026-10-03T15:59:55.159+05:30"
+   }
+  },
+  {
+   "atMs": 1791023396254,
+   "iso": "2026-10-03T10:29:56.254Z",
+   "t": 8.33,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "attached",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T15:59:55.172+05:30"
+   }
+  },
+  {
+   "atMs": 1791023396254,
+   "iso": "2026-10-03T10:29:56.254Z",
+   "t": 8.33,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "running",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T15:59:55.598+05:30"
+   }
+  },
+  {
+   "atMs": 1791023414319,
+   "iso": "2026-10-03T10:30:14.319Z",
+   "t": 26.395,
+   "what": "FALLBACK STOP requested (deadline)",
+   "data": null
+  },
+  {
+   "atMs": 1791023415025,
+   "iso": "2026-10-03T10:30:15.025Z",
+   "t": 27.101,
+   "what": "stop attempt",
+   "data": {
+    "trigger": "deadline",
+    "attempt": 1,
+    "result": {
+     "landed": false,
+     "atMs": 1791023414320,
+     "clicked": {
+      "clicked": "Stop camera",
+      "at": 1791023414320
+     },
+     "trigger": "deadline"
+    }
+   }
+  },
+  {
+   "atMs": 1791023415229,
+   "iso": "2026-10-03T10:30:15.229Z",
+   "t": 27.305,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "closed",
+    "match": "no id in line",
+    "prefix": null,
+    "at": "2026-10-03T16:00:14.196+05:30"
+   }
+  },
+  {
+   "atMs": 1791023415229,
+   "iso": "2026-10-03T10:30:15.229Z",
+   "t": 27.305,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "reattributed",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T16:00:14.196+05:30"
+   }
+  },
+  {
+   "atMs": 1791023415229,
+   "iso": "2026-10-03T10:30:15.229Z",
+   "t": 27.305,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "stopped",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T16:00:14.197+05:30"
+   }
+  },
+  {
+   "atMs": 1791023415229,
+   "iso": "2026-10-03T10:30:15.229Z",
+   "t": 27.305,
+   "what": "phone (fresh)",
+   "data": {
+    "kind": "released",
+    "match": "prefix-8",
+    "prefix": "b836d498",
+    "at": "2026-10-03T16:00:14.199+05:30"
+   }
+  },
+  {
+   "atMs": 1791023415513,
+   "iso": "2026-10-03T10:30:15.513Z",
+   "t": 27.589,
+   "what": "stop attempt",
+   "data": {
+    "trigger": "deadline",
+    "attempt": 2,
+    "result": {
+     "landed": true,
+     "atMs": 1791023415513,
+     "clicked": {
+      "clicked": null
+     },
+     "trigger": "deadline"
+    }
+   }
+  },
+  {
+   "atMs": 1791023415674,
+   "iso": "2026-10-03T10:30:15.674Z",
+   "t": 27.75,
+   "what": "observing",
+   "data": {
+    "forMs": 60000,
+    "from": "end"
+   }
+  }
+ ],
+ "samples": [
+  {
+   "t": 28.517,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 31.135,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 33.749,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 36.405,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 39.094,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 41.745,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 44.455,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 47.166,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 49.858,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 52.497,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 55.128,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 57.77,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 60.445,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 63.051,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 65.696,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 68.339,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 71.013,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 73.656,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 76.253,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 78.818,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 81.347,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 83.913,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  },
+  {
+   "t": 86.485,
+   "phoneFreshLines": 12,
+   "clients": "[]",
+   "kind": "ended",
+   "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+   "live": false,
+   "macCameraRequests": 1
+  }
+ ],
+ "instr": {
+  "stopAt": 1791023414320,
+  "paints": 265,
+  "draws": 265
+ },
+ "observation": {
+  "from": "end",
+  "atMs": 1791023415513
+ }
+}

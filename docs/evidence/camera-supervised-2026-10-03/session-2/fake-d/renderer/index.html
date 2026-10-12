@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>FAKE camera pane + INJECTED tray (case D local tests)</title></head>
+<body>
+<nav><a data-nav="overview">Overview</a><a data-nav="camera">Camera</a></nav>
+<section data-screen="overview" hidden></section>
+<section data-screen="camera">
+  <div class="camera-stage" hidden><canvas width="320" height="240"></canvas></div>
+  <div class="camera-controls"></div>
+</section>
+<script>
+// Stand-in for the Camera pane plus an INJECTED tray (window.__fakeTray) — not the macOS menu. Same
+// classes, labels and `camera.state` shape the driver and actor read. Every action is logged.
+var scenario = new URLSearchParams(location.search).get('s') || 'dNormal';
+window.__log = [];
+var trayTitle = scenario === 'dTrayTitleWrong' ? '○ CS' : '● CS';
+function log(what, extra) { __log.push(Object.assign({ at: Date.now(), what: what, kind: camera.state.kind, streamId: camera.state.streamId || null, route: visible() }, extra || {})); }
+function visible() { return Array.prototype.filter.call(document.querySelectorAll('section[data-screen]'), function (x) { return !x.hidden; }).map(function (x) { return x.getAttribute('data-screen'); }); }
+var section = document.querySelector('section[data-screen="camera"]');
+var stage = section.querySelector('.camera-stage');
+var canvas = section.querySelector('canvas');
+var controls = section.querySelector('.camera-controls');
+var drawTimer = null;
+var Y = 'aaaaaaaa111111112222222233333333', OLD = 'bbbbbbbb000000000000000000000000', Z = 'cccccccc444444445555555566666666';
+var camera = { state: { kind: 'idle' }, painter: { paint: function(){}, draw: function(){} } };
+document.querySelectorAll('[data-nav]').forEach(function (a) { a.addEventListener('click', function () { log('CLICK nav ' + a.getAttribute('data-nav')); }); });
+function set(state) { camera.state = state; log('state:' + state.kind, { reason: state.reason || null }); render(); }
+function btn(label, cls, onClick) { var b = document.createElement('button'); b.className = cls; b.textContent = label; b.addEventListener('click', onClick); controls.appendChild(b); }
+function render() {
+  controls.replaceChildren();
+  var s = camera.state, live = s.kind === 'live';
+  stage.hidden = !live;
+  if (drawTimer) { clearInterval(drawTimer); drawTimer = null; }
+  var ctx = canvas.getContext('2d');
+  if (live) drawTimer = setInterval(function(){ ctx.fillStyle = '#a84'; ctx.fillRect(0, 0, 320, 240); }, 66); else ctx.clearRect(0, 0, 320, 240);
+  if (s.kind === 'idle' || s.kind === 'ended') btn(s.kind === 'idle' ? 'Ask phone for camera' : 'Ask again', 'button primary-action camera-request', function(){ log('CLICK request'); request(); });
+  if (s.kind === 'requesting' || s.kind === 'connecting') btn('Cancel request', 'button camera-cancel', function(){ log('CLICK cancel'); set({ kind: 'ended', streamId: s.streamId, reason: 'stopped-by-mac' }); });
+  if (live) {
+    btn('Switch to front camera', 'button camera-switch', function(){ log('CLICK switch'); });
+    btn('Stop camera', 'button danger camera-stop', function(){ log('CLICK stop'); set({ kind: 'ended', streamId: s.streamId, reason: 'stopped-by-mac' }); });
+  }
+}
+// The injected tray: the same refusals the osascript path makes (wrong title, no single item, disabled).
+window.__fakeTrayTitle = function () { return trayTitle; };
+window.__fakeTray = function (label, want) {
+  if (trayTitle !== want) { log('TRAY REFUSED', { label: label, title: trayTitle }); return 'REFUSED title=' + trayTitle; }
+  var connected = trayTitle === '● CS';
+  var item = connected ? 'Disconnect' : 'Connect';
+  if (label !== item) { log('TRAY REFUSED', { label: label, title: trayTitle }); return 'REFUSED no single item ' + label; }
+  log('TRAY ' + label);
+  if (label === 'Disconnect') {
+    trayTitle = '○ CS';
+    var k = camera.state.kind;
+    if (k === 'requesting' || k === 'connecting' || k === 'live') set({ kind: 'ended', streamId: camera.state.streamId, reason: 'disconnected-here' });
+  } else {
+    trayTitle = '● CS';
+  }
+  return 'clicked ' + label;
+};
+var T = [];
+function at(ms, fn) { T.push(setTimeout(fn, ms)); }
+function goLive(id, t0) { at(t0, function(){ set({ kind: 'requesting', streamId: id, facing: 'back' }); }); at(t0 + 1000, function(){ set({ kind: 'connecting', streamId: id, facing: 'back' }); }); at(t0 + 1500, function(){ set({ kind: 'live', streamId: id, facing: 'back', framesReceived: 1, stalled: false }); }); }
+function request() { if (scenario.indexOf('capD') === 0) { set({ kind: 'requesting', streamId: null, facing: 'back' }); goLive(Y, 300); } }
+if (scenario === 'dStale') camera.state = { kind: 'ended', streamId: OLD, reason: 'disconnected-here' };
+if (scenario === 'dStartLive') camera.state = { kind: 'live', streamId: OLD, facing: 'back', framesReceived: 9, stalled: false };
+render();
+window.__go = function () {
+  log('go');
+  var plain = ['dNormal', 'dStale', 'dStartLive', 'dReleaseNeverConfirmed', 'dReleasedLineMissing', 'dTrayTitleWrong', 'dReconnectNeverConfirmed'];
+  if (plain.indexOf(scenario) >= 0) goLive(Y, 300);
+  if (scenario === 'dEndedEarly') { goLive(Y, 300); at(3000, function(){ set({ kind: 'ended', streamId: Y, reason: 'stopped-on-phone' }); }); }
+  if (scenario === 'dReplaced') { goLive(Y, 300); at(4000, function(){ set({ kind: 'live', streamId: Z, facing: 'back', framesReceived: 1, stalled: false }); }); }
+  if (scenario === 'dExpired') { at(300, function(){ set({ kind: 'requesting', streamId: Y, facing: 'back' }); }); at(3000, function(){ set({ kind: 'ended', streamId: Y, reason: 'expired' }); }); }
+  if (scenario === 'dPendingForever') { at(300, function(){ set({ kind: 'requesting', streamId: Y, facing: 'back' }); }); }
+  if (scenario === 'dRouteChanged') { goLive(Y, 300); at(4000, function(){ document.querySelector('section[data-screen="overview"]').hidden = false; section.hidden = true; log('route changed (scripted, not by the actor)'); }); }
+  return 'go ' + scenario;
+};
+</script>
+</body></html>

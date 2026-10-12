@@ -1,0 +1,16 @@
+f3940a0212f9533d0cd24b9477d03d39744bb78b12b500b375fec61f85529b44  session-2/acceptance-case-d-2026-10-03-rev2.md
+1131a41a487e4538d23d40d8ef4919c2be73e0211875ac331cf23b1a42999237  session-2/acceptance-case-d-2026-10-03.md
+1cc5a51c8909fea7fa849959f5910735159319930862293b4fd3959e5411b1f6  session-2/actor-1cc5a51c.mjs
+d29dc04acb97bfada5643eb05468fcb8d18347a4f60cf4da4167f884fe9d35c1  session-2/actor-report.json
+36ed984eb48c714b138537d67993a87e31558bbeac637b86a6879e0be48d95ca  session-2/actor.out
+237f67c382c9dd098395c422699755f2fff248bc697372e9e49b0f92ea4dcd4e  session-2/confirm-request-s2.sh
+c0005c22dadb8547dd36d3e5481b1b0f27b061e627076d0fe2f52f6bae3215b7  session-2/driver-report.json
+c996bd824ec7535afabc9e8e6285bcc1911a205aa4be62bfaa1825928c021e8c  session-2/driver.out
+c5bb8f2a43ac0ab5846dc4d6a2c82b155c5169dff37e1aea5dd7a1d6a24f326e  session-2/fake-d/fake-adb-d.sh
+7b554b5d027b56ef842f005e19a3f22c6010fb186bd3a4a0c1b6dbfb498bf7c2  session-2/fake-d/main.js
+13ce29e889787b34efddf5db8140ac35286bd961a6fe245a0d361cade5c22c44  session-2/fake-d/renderer/index.html
+064a678d558621ff4a20ba592bbdda54dd61a24c6184c6dead3592efcec3db4b  session-2/fake-d/run-all.out
+b509836f79febed94c991448d65a115abe29e2b85afbde737b01760378ca096d  session-2/fake-d/run-d-tests.mjs
+375a79d895409757dcbf87e2d07a8f5022c1098e33dbe573b75ad7e212b23517  session-2/run-s2.sh
+ad1801e869396b99c5c19aa5f340133b94f0912942bb48dbcd2a5b2220bbb529  session-2/tray-script-as-run.applescript
+ea60493d6d20e12c92a04f229606b0ad207d2e7d8c35633bf22c91e585394636  session-2/tray-script-renamed.applescript

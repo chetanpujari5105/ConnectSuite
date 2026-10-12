@@ -1,0 +1,4 @@
+[actor] 08:47:45.483 +0.032s state at start {"kind":"idle","streamId":null,"facing":null,"reason":null,"framesReceived":null,"stalled":null,"paneVisible":true,"canvasParentHidden":true,"canvasPx":[300,150],"switchButtons":[],"stopButtons":0,"statusText":null,"instr":null}
+[actor] 08:47:45.485 +0.034s state {"kind":"idle","streamId":null,"facing":null,"reason":null}
+[actor] 08:48:45.581 +60.130s NO ACTION: this stream never went live within 60 s
+[actor] 08:48:45.581 +60.130s actor stopped {"error":"never live"}

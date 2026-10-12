@@ -1,0 +1,31 @@
+09:39:20.290 +0.924s gates (read-only) {"resolved":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","paneVisible":true,"phone":{"top":"com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity","keyguard":false,"awake":true,"callActive":false},"camera":{"clients":"[]","oursActive":false,"read":true},"pane":{"kind":"idle","request":["Ask phone for camera"],"stop":0,"cancel":0},"phoneLog":{"inode":848963,"size":503557}}
+09:39:20.294 +0.928s instrument {"instrument":"installed once (removed 0 earlier wrapper(s))"}
+09:39:20.483 +1.117s phone log marked {"inode":848963,"size":503557}
+09:39:20.493 +1.127s REQUEST pressed once {"landed":true}
+09:39:20.504 +1.138s pane {"kind":"requesting","streamId":null,"reason":null,"stop":0,"text":"Asking your phone… The camera stays off until you allow it on the phone. Cancel request The picture shows only here, onl","canvasCss":[0,0]}
+09:39:20.606 +1.240s pane {"kind":"requesting","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":null,"stop":0,"text":"Waiting for you to allow it on your phone The camera request is on your phone's screen. The camera stays off until you a","canvasCss":[0,0]}
+09:39:20.606 +1.240s this attempt’s stream id, from the Mac’s own state after the ack {"streamId":"35bca7ce82c5d56fe49f001a7cb370ee","phoneMatchesOn":"first 8 characters only"}
+09:39:31.927 +12.561s pane {"kind":"connecting","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":null,"stop":1,"text":"Starting your phone's camera… Allowed on the phone. Waiting for the first picture. Stop camera The picture shows only he","canvasCss":[0,0]}
+09:39:31.927 +12.561s capture deadline armed {"source":"Mac state connecting for this stream id","deadlineInMs":19000,"limitMs":20000}
+09:39:32.291 +12.925s phone (fresh) {"kind":"tapped","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:31.788+05:30"}
+09:39:32.291 +12.925s phone (fresh) {"kind":"attached","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:31.852+05:30"}
+09:39:32.291 +12.925s phone (fresh) {"kind":"bound","match":"no id in line","prefix":null,"at":"2026-10-03T15:09:31.883+05:30"}
+09:39:32.770 +13.404s pane {"kind":"live","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":null,"stop":1,"text":"Waiting for frames from your phone The picture is hidden until new frames arrive, so an old frame is never shown as live","canvasCss":[0,0]}
+09:39:32.874 +13.508s pane {"kind":"live","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":null,"stop":1,"text":"Live · back camera · 960 × 720 · up to 15 fps Switch to front camera Stop camera The picture shows only here, only after","canvasCss":[1097,1097]}
+09:39:32.874 +13.508s this stream is live on the Mac
+09:39:33.561 +14.195s phone (fresh) {"kind":"running","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:32.566+05:30"}
+09:39:38.511 +19.145s phone (fresh) {"kind":"released","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:37.675+05:30"}
+09:39:38.511 +19.145s phone (fresh) {"kind":"bound","match":"no id in line","prefix":null,"at":"2026-10-03T15:09:37.690+05:30"}
+09:39:38.658 +19.292s pane {"kind":"live","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":null,"stop":1,"text":"Live · front camera · 960 × 720 · up to 15 fps Switch to back camera Stop camera The picture shows only here, only after","canvasCss":[1097,1097]}
+09:39:39.866 +20.500s phone (fresh) {"kind":"switch-confirmed","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:38.463+05:30"}
+09:39:47.921 +28.555s pane {"kind":"ended","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","reason":"stopped-by-mac","stop":0,"text":"Camera off You stopped the camera from this Mac. 208 frames sent by the phone, 0 dropped there; 207 received here, 207 d","canvasCss":[0,0]}
+09:39:47.921 +28.555s ENDED {"atMs":1791020387921,"reason":"stopped-by-mac","text":"Camera off You stopped the camera from this Mac. 208 frames sent by the phone, 0 dropped there; 207 received here, 207 drawn. Back camera Front camera Ask again The picture shows only here, only after you allow it on the phone, and only whi","captured":true}
+09:39:48.393 +29.027s phone (fresh) {"kind":"closed","match":"no id in line","prefix":null,"at":"2026-10-03T15:09:47.722+05:30"}
+09:39:48.393 +29.027s phone (fresh) {"kind":"stopped","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:47.723+05:30"}
+09:39:48.393 +29.027s phone (fresh) {"kind":"reattributed","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:47.724+05:30"}
+09:39:48.394 +29.028s phone (fresh) {"kind":"released","match":"prefix-8","prefix":"35bca7ce","at":"2026-10-03T15:09:47.751+05:30"}
+09:39:48.394 +29.028s observing {"forMs":60000,"from":"end"}
+09:40:49.669 +90.303s finished {"outcome":"ended-by-stimulus","capture":{"anchorToEndMs":16494,"withinLimit":true},"observation":{"from":"end","atMs":1791020387921}}
+09:40:49.672 +90.306s instrument disposed {"result":"disposed (2 wrapper(s), counters removed)"}
+driver exit 0
+both finished

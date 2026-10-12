@@ -1,0 +1,59 @@
+{
+ "mode": "smoke",
+ "t0": 1791017265451,
+ "events": [
+  {
+   "atMs": 1791017265483,
+   "iso": "2026-10-03T08:47:45.483Z",
+   "t": 0.032,
+   "what": "state at start",
+   "data": {
+    "kind": "idle",
+    "streamId": null,
+    "facing": null,
+    "reason": null,
+    "framesReceived": null,
+    "stalled": null,
+    "paneVisible": true,
+    "canvasParentHidden": true,
+    "canvasPx": [
+     300,
+     150
+    ],
+    "switchButtons": [],
+    "stopButtons": 0,
+    "statusText": null,
+    "instr": null
+   }
+  },
+  {
+   "atMs": 1791017265485,
+   "iso": "2026-10-03T08:47:45.485Z",
+   "t": 0.034,
+   "what": "state",
+   "data": {
+    "kind": "idle",
+    "streamId": null,
+    "facing": null,
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791017325581,
+   "iso": "2026-10-03T08:48:45.581Z",
+   "t": 60.13,
+   "what": "NO ACTION: this stream never went live within 60 s",
+   "data": null
+  },
+  {
+   "atMs": 1791017325581,
+   "iso": "2026-10-03T08:48:45.581Z",
+   "t": 60.13,
+   "what": "actor stopped",
+   "data": {
+    "error": "never live"
+   }
+  }
+ ],
+ "error": "never live"
+}

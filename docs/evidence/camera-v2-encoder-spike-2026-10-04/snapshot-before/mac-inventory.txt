@@ -1,0 +1,65 @@
+d65165279105ca6773180500688df4bdc69a2c7b771752f0a46ef120b7fd8ec3 6148 1790709516 75205928 /Users/chetan/Downloads/Sidekick/.DS_Store
+6e17621a296fbd5e2ea5757114fce68b256427a9882bf5afab9071bc6f3a5fb1 100663296 1790878207 88373242 /Users/chetan/Downloads/Sidekick/.sidekick-t5-source-change-200mb (2).bin.sidekick-pull.part
+7589cb5c8a10e193374033838159c4d8ab4f07a1f0e18e459c2b27d5c792e31a 536110 1790678739 86632394 /Users/chetan/Downloads/Sidekick/1q7aovWY-ZDwyTUc.mp4
+412c97215a1f4b5c9261ea553d56771ccf8eaba3028ae5a7e42eb24589b85457 2016974 1790395083 76708451 /Users/chetan/Downloads/Sidekick/20260926_092519.jpg
+50eacc10fed32a9cbb05f0823713c5cc12d669c50471c908e7ae0c5a121a90c2 2253517 1790542729 85357191 /Users/chetan/Downloads/Sidekick/20260927_152609.jpg
+43ab0ad272cb1d5a52662b013df5fae888552e414d1c620b3ea6d04a8ce8eb5e 2092208 1790956883 88693943 /Users/chetan/Downloads/Sidekick/20261002_100359.jpg
+e51fadbe34e9ac120d625f97cbf352cad471fb47ba7cd1b3127358b448ac648b 3576371 1790956882 88693919 /Users/chetan/Downloads/Sidekick/20261002_101406.jpg
+3e042f7645af5fc02a171a4532c1e17338844aec5bc3341ea6f49c8e8adaaf38 57917707 1790956881 88693896 /Users/chetan/Downloads/Sidekick/20261002_111422.mp4
+3d6dc43650f7d5258f18aff16a19a0a67b326095a54903752635b4657eb68b99 3632006 1790426293 77133157 /Users/chetan/Downloads/Sidekick/2026503_2000490.jpeg
+2aa4d5f0518e1828ad50c95c8955b0cd462ab113d327bdf6124ff4cdff55e35e 374062 1790663946 86467236 /Users/chetan/Downloads/Sidekick/Screenshot_20260929_120808_Sidekick.jpg
+ed27b78c460b3d24ac1ccab7c5a67e30f5a64e74c84e9e41902c584474e0f190 10402 1790323929 76238622 /Users/chetan/Downloads/Sidekick/download.jpg
+0c9c13446e67d3b7fa511a3d0df8d669b6f1143c27dc3f43b4ef14cbe4f99d17 3000000 1790105605 74330693 /Users/chetan/Downloads/Sidekick/inbox-probe.bin
+9bf3fc16fcca7ecfbe5644cc3412e06bb490014546abe6be295795c66893d9e3 571941 1790323955 76238722 /Users/chetan/Downloads/Sidekick/l1I0k-Axckq5Kes_ypu2ERit.jpg
+2c657a62a75c439ef0a55e44b09438b508a734fe784bdd47e765c4584ae97b1b 1500000 1790105608 74330695 /Users/chetan/Downloads/Sidekick/nogrant-probe.bin
+a8d1c0d93abbe566fd32a9b16e12c5647b5a664b15c89a41ceb95566640453fa 1500000 1790137717 74480156 /Users/chetan/Downloads/Sidekick/sidekick-b-final-multi-1 (2).bin
+a8d1c0d93abbe566fd32a9b16e12c5647b5a664b15c89a41ceb95566640453fa 1500000 1790137677 74479318 /Users/chetan/Downloads/Sidekick/sidekick-b-final-multi-1.bin
+9e708c797869a84e19be2868f0ff65c835ce281e78fe81c1ca0204fe27a434dd 3000000 1790135491 74432366 /Users/chetan/Downloads/Sidekick/sidekick-b-final-multi-2.bin
+68ab0a5fc02cb129921ed82837425500cbe76b3df4e03b6dfc5105d6a1ce69b1 2820 1790135359 74426340 /Users/chetan/Downloads/Sidekick/sidekick-b-final-one (2).txt
+68ab0a5fc02cb129921ed82837425500cbe76b3df4e03b6dfc5105d6a1ce69b1 2820 1790135341 74426309 /Users/chetan/Downloads/Sidekick/sidekick-b-final-one.txt
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790137721 74480179 /Users/chetan/Downloads/Sidekick/sidekick-b-final-stop (2).bin
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790137681 74479336 /Users/chetan/Downloads/Sidekick/sidekick-b-final-stop.bin
+783695af90d3cb759fe1059408ba478df64e5150129dd4136de91d79fe2b5e8c 62914560 1790661291 86424393 /Users/chetan/Downloads/Sidekick/sidekick-pass-60mb.bin
+ce83f836b83621cf7a2f5f2c9ebd2822aafbfe440f826e7a851b3d737429bb8a 696573 1790106823 74350063 /Users/chetan/Downloads/Sidekick/sidekick-pass-portrait-3000x4000 (2).jpg
+ce83f836b83621cf7a2f5f2c9ebd2822aafbfe440f826e7a851b3d737429bb8a 696573 1790136771 74461310 /Users/chetan/Downloads/Sidekick/sidekick-pass-portrait-3000x4000 (3).jpg
+ce83f836b83621cf7a2f5f2c9ebd2822aafbfe440f826e7a851b3d737429bb8a 696573 1790136858 74462262 /Users/chetan/Downloads/Sidekick/sidekick-pass-portrait-3000x4000 (4).jpg
+ce83f836b83621cf7a2f5f2c9ebd2822aafbfe440f826e7a851b3d737429bb8a 696573 1790106088 74337003 /Users/chetan/Downloads/Sidekick/sidekick-pass-portrait-3000x4000.jpg
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790134749 74405303 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (2).bin
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790756760 86936039 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (3).bin
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790761924 86957531 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (4).bin
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790762774 86965122 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (5).bin
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790772699 88153143 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (6).bin
+a63f1fb5895ef04228499eeac11251df90879b3b60036660e0dbdfd05e02ff21 430 1790853677 88280480 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb (7).bin.failed
+bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9 209715200 1790105642 74330714 /Users/chetan/Downloads/Sidekick/sidekick-pass-stop-200mb.bin
+0a42ebf6d89f8efcd7384efa3588c3c0cf23add740b915ea4685e85bd2fef585 4808307 1790134741 74405290 /Users/chetan/Downloads/Sidekick/sidekick-pass-video-720p.mp4
+567befd2c82465bac100becd3289dbeedb4e725586bf3e443044b8fe79dac80d 100663296 1790750504 86920500 /Users/chetan/Downloads/Sidekick/sidekick-rc-96m-checksum.bin
+d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff 100718 1790412302 76977794 /Users/chetan/Downloads/Sidekick/sidekick-share-test-001 (2).png
+d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff 100718 1790543211 85375311 /Users/chetan/Downloads/Sidekick/sidekick-share-test-001 (3).png
+d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff 100718 1790543213 85375330 /Users/chetan/Downloads/Sidekick/sidekick-share-test-001 (4).png
+d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff 100718 1790358382 76517046 /Users/chetan/Downloads/Sidekick/sidekick-share-test-001.png
+2b78667f765de3606eabd89f8c659114a749e0fa53a3833c4718e9d77877dbab 89457 1790663754 86464052 /Users/chetan/Downloads/Sidekick/sidekick-share-test-002.jpg
+9bcbc6a2d420015d34ab11623b19ba1314c8e05b8c46bf9d444c31dc16c3264c 8961 1790674974 86556596 /Users/chetan/Downloads/Sidekick/sidekick-share-test-003.png
+d10c4a2f4a2e51ee6389c9dd937440c71a45a7c73af2416460d055ab874c414c 66897 1790663703 86462145 /Users/chetan/Downloads/Sidekick/sidekick-share-test-clip (2).mp4
+d10c4a2f4a2e51ee6389c9dd937440c71a45a7c73af2416460d055ab874c414c 66897 1790662220 86445157 /Users/chetan/Downloads/Sidekick/sidekick-share-test-clip.mp4
+8374c31af8df9c16913f1892fd8c155f94f101ae33bcd7edb658e1fabd405ed8 602 1790664452 86472563 /Users/chetan/Downloads/Sidekick/sidekick-share-test-doc.pdf
+85670e10adf9c972cd231f3abcc3af96980bfa1f958dfb38bbcf2b81ca24154d 5947 1790677992 86621284 /Users/chetan/Downloads/Sidekick/sidekick-share-test-notes (2).txt
+85670e10adf9c972cd231f3abcc3af96980bfa1f958dfb38bbcf2b81ca24154d 5947 1790664458 86472586 /Users/chetan/Downloads/Sidekick/sidekick-share-test-notes.txt
+903e623d67d260b7ea7ed06e5407d3d126ed50fa4f418dfb71b0238baa443b5d 9939 1790678009 86622177 /Users/chetan/Downloads/Sidekick/sidekick-share-test-table (2).csv
+903e623d67d260b7ea7ed06e5407d3d126ed50fa4f418dfb71b0238baa443b5d 9939 1790664461 86472605 /Users/chetan/Downloads/Sidekick/sidekick-share-test-table.csv
+4e62aa5f0f7a8da07d0bf93fb436723ddf2a9e8e42e9031df8e9ee05966c60de 1048576 1790661002 86408863 /Users/chetan/Downloads/Sidekick/sidekick-speed-a-1m-1 (2).bin
+4e62aa5f0f7a8da07d0bf93fb436723ddf2a9e8e42e9031df8e9ee05966c60de 1048576 1790627267 86190145 /Users/chetan/Downloads/Sidekick/sidekick-speed-a-1m-1.bin
+838f21213b5ee447326e44aa0be6ad02febef45717d3c89f99225b1e5f492cd9 1048576 1790627267 86190146 /Users/chetan/Downloads/Sidekick/sidekick-speed-a-1m-2.bin
+834f7542aa6cfe5b893312f844db27ad27502390bde0cab757d21d1d9f584ca7 67108864 1790627266 86190143 /Users/chetan/Downloads/Sidekick/sidekick-speed-a-64m.bin
+465ff6c977ac4680ea63a427770e02cd91c4e9cee3efa4d0c1f37970b76b180a 8388608 1790627266 86190144 /Users/chetan/Downloads/Sidekick/sidekick-speed-a-8m.bin
+46c1a3e20a8a50ac9f96c31f72f80424ae4479b6b632359b77df5e1b41ac037a 67108864 1790629068 86227652 /Users/chetan/Downloads/Sidekick/sidekick-speed-b-64m.bin
+340f26e96fa05f9386c4765cebc48f22a13d874dacfd724645a6684dff7f6de6 1048576 1790629067 86227651 /Users/chetan/Downloads/Sidekick/sidekick-speed-i-1m-1 (2).bin
+8e7f88927a1bb45e14fb74330d8ebe007e97f5038181ae282d85a4a1bfce3e42 1048576 1790629066 86227650 /Users/chetan/Downloads/Sidekick/sidekick-speed-i-1m-2.bin
+b49846cb675c06b0441959a88d4e0856d37a8133369b03b7853435bcd912b93a 209715200 1790865000 88326151 /Users/chetan/Downloads/Sidekick/sidekick-t5-source-change-200mb.bin
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 1790314282 75846108 /Users/chetan/Library/Application Support/sidekick-desktop/dev-share-receive/sidekick-offer-probe-0.bin
+150668349dc0526d188ecee19c207e5d58be767f6ba198c8533f91d44a4080d6 4096 1790315037 75851887 /Users/chetan/Library/Application Support/sidekick-desktop/dev-share-receive/sidekick-offer-probe-4096.bin
+ddb428e4fca0fd6f6a32c96ba53810dc937cb18422b53619e525fd34326aec50 1080 1789905392 72228333 /Users/chetan/Library/Application Support/sidekick-desktop/identity/cert.pem
+a9b8bde8900de13295e2444499bd70e5471dfeb80e58caac151f2cdb77d1eac4 1715 1789905392 72228332 /Users/chetan/Library/Application Support/sidekick-desktop/identity/key.enc
+47588fbae6ca7a4f8e3c84428d085b9754a145ac984316f76ffa5178bdb34bc5 242 1789755418 72524618 /Users/chetan/Library/Application Support/sidekick-desktop/legacy-migration.json
+4fccefb894c94bb114b54ddd42bf7a1f5cd6010a8c6223a42eb49dfa81cfc6d3 51973 1790878208 88379863 /Users/chetan/Library/Application Support/sidekick-desktop/pull-resume/e78d39b6281830c8319d6b3956317e06d985375c0c87fd5b7c4b410fff027df4.json
+4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945 2 1790956883 88693947 /Users/chetan/Library/Application Support/sidekick-desktop/share-temporary-files.json
+c1546753fcf68d70a9f52ff21af2e3e77bed1197b6537c597790d3835bf5be98 493 1791105464 89191984 /Users/chetan/Library/Application Support/sidekick-desktop/sidekick.json

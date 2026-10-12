@@ -1,0 +1,152 @@
+{
+ "mode": "disconnect",
+ "t0": 1791023387926,
+ "events": [
+  {
+   "atMs": 1791023387964,
+   "iso": "2026-10-03T10:29:47.964Z",
+   "t": 0.038,
+   "what": "state at start",
+   "data": {
+    "kind": "ended",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": null,
+    "reason": "stopped-by-mac",
+    "framesReceived": 207,
+    "stalled": null,
+    "paneVisible": true,
+    "canvasParentHidden": true,
+    "canvasPx": [
+     2194,
+     2194
+    ],
+    "switchButtons": [],
+    "stopButtons": 0,
+    "statusText": null,
+    "instr": null
+   }
+  },
+  {
+   "atMs": 1791023387965,
+   "iso": "2026-10-03T10:29:47.965Z",
+   "t": 0.039,
+   "what": "state",
+   "data": {
+    "kind": "ended",
+    "streamId": "35bca7ce82c5d56fe49f001a7cb370ee",
+    "facing": null,
+    "reason": "stopped-by-mac"
+   }
+  },
+  {
+   "atMs": 1791023389086,
+   "iso": "2026-10-03T10:29:49.086Z",
+   "t": 1.16,
+   "what": "state",
+   "data": {
+    "kind": "requesting",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791023395345,
+   "iso": "2026-10-03T10:29:55.345Z",
+   "t": 7.419,
+   "what": "state",
+   "data": {
+    "kind": "connecting",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791023395771,
+   "iso": "2026-10-03T10:29:55.771Z",
+   "t": 7.845,
+   "what": "state",
+   "data": {
+    "kind": "live",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "facing": "back",
+    "reason": null
+   }
+  },
+  {
+   "atMs": 1791023395771,
+   "iso": "2026-10-03T10:29:55.771Z",
+   "t": 7.845,
+   "what": "LIVE seen",
+   "data": {
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4"
+   }
+  },
+  {
+   "atMs": 1791023400815,
+   "iso": "2026-10-03T10:30:00.815Z",
+   "t": 12.889,
+   "what": "gate before Disconnect",
+   "data": {
+    "kind": "live",
+    "streamId": "b836d49848e67c4fd7a22e8e2a201ff4",
+    "facing": "back",
+    "reason": null,
+    "framesReceived": 4,
+    "stalled": false,
+    "paneVisible": true,
+    "canvasParentHidden": false,
+    "canvasPx": [
+     2194,
+     2194
+    ],
+    "switchButtons": [
+     "Switch to front camera"
+    ],
+    "stopButtons": 1,
+    "statusText": "Live · back camera · 960 × 720 · up to 15 fps",
+    "instr": {
+     "paints": 70,
+     "draws": 70,
+     "lastDraw": 1791023400768
+    },
+    "visibleSections": [
+     "camera"
+    ],
+    "lit": {
+     "litSampled": 37231,
+     "sampled": 49626
+    }
+   }
+  },
+  {
+   "atMs": 1791023400901,
+   "iso": "2026-10-03T10:30:00.901Z",
+   "t": 12.975,
+   "what": "TRAY Disconnect",
+   "data": {
+    "at": 1791023400816,
+    "result": "234:240: syntax error: A “to” can’t go after this “its”. (-2740)",
+    "err": "Command failed: /usr/bin/osascript -e tell application \"System Events\" to tell (first process whose unix id is 28482)\n  set mi to menu bar item 1 of menu bar 2\n  set ttl to title of mi\n  if ttl is not"
+   }
+  },
+  {
+   "atMs": 1791023400901,
+   "iso": "2026-10-03T10:30:00.901Z",
+   "t": 12.975,
+   "what": "Disconnect did not land — stopping; the driver’s cap stays armed",
+   "data": null
+  },
+  {
+   "atMs": 1791023400901,
+   "iso": "2026-10-03T10:30:00.901Z",
+   "t": 12.975,
+   "what": "actor stopped",
+   "data": {
+    "error": "tray"
+   }
+  }
+ ],
+ "error": "tray"
+}

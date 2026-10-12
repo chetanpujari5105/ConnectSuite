@@ -1,0 +1,10 @@
+[actor] 10:29:47.964 +0.038s state at start {"kind":"ended","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","facing":null,"reason":"stopped-by-mac","framesReceived":207,"stalled":null,"paneVisible":true,"canvasParentHidden":true,"canvasPx":[2194,2194],"switchButtons":[],"stopButtons":0,"statusText":null,"instr":null}
+[actor] 10:29:47.965 +0.039s state {"kind":"ended","streamId":"35bca7ce82c5d56fe49f001a7cb370ee","facing":null,"reason":"stopped-by-mac"}
+[actor] 10:29:49.086 +1.160s state {"kind":"requesting","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","facing":"back","reason":null}
+[actor] 10:29:55.345 +7.419s state {"kind":"connecting","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","facing":"back","reason":null}
+[actor] 10:29:55.771 +7.845s state {"kind":"live","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","facing":"back","reason":null}
+[actor] 10:29:55.771 +7.845s LIVE seen {"streamId":"b836d49848e67c4fd7a22e8e2a201ff4"}
+[actor] 10:30:00.815 +12.889s gate before Disconnect {"kind":"live","streamId":"b836d49848e67c4fd7a22e8e2a201ff4","facing":"back","reason":null,"framesReceived":4,"stalled":false,"paneVisible":true,"canvasParentHidden":false,"canvasPx":[2194,2194],"switchButtons":["Switch to front camera"],"stopButtons":1,"statusText":"Live · back camera · 960 × 720 · up to 15 fps","instr":{"paints":70,"draws":70,"lastDraw":1791023400768},"visibleSections":["camera"],"lit":{"litSampled":37231,"sampled":49626}}
+[actor] 10:30:00.901 +12.975s TRAY Disconnect {"at":1791023400816,"result":"234:240: syntax error: A “to” can’t go after this “its”. (-2740)","err":"Command failed: /usr/bin/osascript -e tell application \"System Events\" to tell (first process whose unix id is 28482)\n  set mi to menu bar item 1 of menu bar 2\n  set ttl to title of mi\n  if ttl is not"}
+[actor] 10:30:00.901 +12.975s Disconnect did not land — stopping; the driver’s cap stays armed
+[actor] 10:30:00.901 +12.975s actor stopped {"error":"tray"}

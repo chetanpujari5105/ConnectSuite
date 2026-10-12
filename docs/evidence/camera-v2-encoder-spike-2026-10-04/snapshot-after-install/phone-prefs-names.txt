@@ -1,0 +1,9 @@
+files/datastore:
+connectsuite_settings.preferences_pb
+
+shared_prefs:
+android.app.ActivityThread.IDS.xml
+com.google.mlkit.internal.xml
+connectsuite_identity.xml
+connectsuite_onboarding.xml
+sidekick_setup.xml
