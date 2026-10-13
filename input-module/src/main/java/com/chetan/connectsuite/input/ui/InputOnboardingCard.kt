@@ -30,6 +30,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.testTag
+import com.chetan.connectsuite.core.ui.components.PrimaryButton
 import com.chetan.connectsuite.core.ui.SidekickColors
 import com.chetan.connectsuite.core.ui.SidekickType
 import com.chetan.connectsuite.core.ui.Space
@@ -56,6 +61,7 @@ import com.chetan.connectsuite.input.ConnectSuiteInputService
 fun InputOnboardingCard() {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(isInputServiceEnabled(context)) }
+    val openSettings = rememberInputSettingsOpener()
 
     DisposableEffect(context) {
         val resolver = context.contentResolver
@@ -131,14 +137,81 @@ fun InputOnboardingCard() {
 
         SecondaryButton(
             text = if (enabled) "Accessibility settings" else "Open Accessibility settings",
-            onClick = { context.startActivity(accessibilitySettings()) },
+            onClick = openSettings,
             icon = Icons.Outlined.TouchApp,
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
-fun accessibilitySettings(): Intent =
+/**
+ * The only way into Android's Accessibility settings from this app, and it goes through
+ * [InputDisclosure] whenever the service is off.
+ *
+ * Returns the action to bind to a button. While the service is off, the action shows the
+ * disclosure, and Settings opens only on **Agree**: *Not now*, back, or a tap outside the dialog
+ * all leave the person where they were. While the service is on, it opens Settings directly,
+ * because turning a grant off needs no consent.
+ *
+ * [accessibilitySettings] is private to this file, so no other screen can skip the dialog. The
+ * Mirror tab's card and the Setup screen's *Control from your Mac* row both call this.
+ */
+@Composable
+fun rememberInputSettingsOpener(): () -> Unit {
+    val context = LocalContext.current
+    var asking by remember { mutableStateOf(false) }
+
+    if (asking) {
+        InputDisclosureDialog(
+            onAgree = {
+                asking = false
+                runCatching { context.startActivity(accessibilitySettings()) }
+            },
+            onNotNow = { asking = false },
+        )
+    }
+
+    return {
+        if (isInputServiceEnabled(context)) {
+            runCatching { context.startActivity(accessibilitySettings()) }
+        } else {
+            asking = true
+        }
+    }
+}
+
+@Composable
+private fun InputDisclosureDialog(onAgree: () -> Unit, onNotNow: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onNotNow,
+        containerColor = SidekickColors.card,
+        titleContentColor = SidekickColors.textPrimary,
+        textContentColor = SidekickColors.textBody,
+        title = { Text(InputDisclosure.TITLE, style = SidekickType.title) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                InputDisclosure.body.forEach { Text(it, style = SidekickType.body) }
+            }
+        },
+        confirmButton = {
+            PrimaryButton(
+                text = InputDisclosure.AGREE,
+                onClick = onAgree,
+                modifier = Modifier.testTag("input-disclosure-agree"),
+            )
+        },
+        dismissButton = {
+            TextButton(onClick = onNotNow, modifier = Modifier.testTag("input-disclosure-not-now")) {
+                Text(InputDisclosure.NOT_NOW, style = SidekickType.control, color = SidekickColors.textBody)
+            }
+        },
+    )
+}
+
+private fun accessibilitySettings(): Intent =
     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
 /**

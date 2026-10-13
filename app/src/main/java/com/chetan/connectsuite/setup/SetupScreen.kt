@@ -56,8 +56,8 @@ import com.chetan.connectsuite.core.ui.components.PrimaryButton
 import com.chetan.connectsuite.core.ui.components.RowDivider
 import com.chetan.connectsuite.core.ui.components.SecondaryButton
 import com.chetan.connectsuite.core.ui.components.SidekickCard
-import com.chetan.connectsuite.input.ui.accessibilitySettings
 import com.chetan.connectsuite.input.ui.isInputServiceEnabled
+import com.chetan.connectsuite.input.ui.rememberInputSettingsOpener
 import com.chetan.connectsuite.setup.SetupPlan.Mechanism
 import com.chetan.connectsuite.setup.SetupPlan.Status
 import com.chetan.connectsuite.sync.v2.FsRoots
@@ -98,6 +98,8 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
         SetupPlan.items.associate { it.id to statusOf(context, it, prefs) }
     }
     val folderCount = remember(refresh) { FsRoots.grantedTrees(context).size }
+    // Control's Settings page is reached only through the accessibility disclosure.
+    val openInputSettings = rememberInputSettingsOpener()
 
     fun act(item: SetupPlan.Item) {
         val status = statuses[item.id] ?: Status.Off
@@ -107,12 +109,12 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
             status == Status.NeedsSettings -> runCatching {
                 context.startActivity(SpecialAccess.appDetailsIntent(context))
             }
+            item.id == SetupPlan.CONTROL -> openInputSettings()
             item.mechanism == Mechanism.SpecialAccess -> runCatching {
                 context.startActivity(
                     when (item.id) {
                         SetupPlan.MIRROR_NOTIFICATIONS -> SpecialAccess.notificationListenerSettingsIntent()
-                        SetupPlan.CONTROL -> accessibilitySettings()
-                        else -> SpecialAccess.batteryOptimizationIntent(context)
+                        else -> SpecialAccess.batteryOptimizationSettingsIntent()
                     },
                 )
             }

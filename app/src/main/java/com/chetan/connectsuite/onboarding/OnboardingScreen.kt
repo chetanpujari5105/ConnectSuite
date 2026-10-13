@@ -258,10 +258,10 @@ private fun ReliabilityPage(onNext: () -> Unit) {
                 title = copy.body[0],
                 rationale = copy.body[1],
                 granted = exempt,
-                actionLabel = OnboardingCopy.ALLOW,
+                actionLabel = copy.body[5],
                 onAction = {
                     runCatching {
-                        context.startActivity(SpecialAccess.batteryOptimizationIntent(context))
+                        context.startActivity(SpecialAccess.batteryOptimizationSettingsIntent())
                     }
                 },
             )

@@ -87,12 +87,14 @@ class SetupPlanTest {
     }
 
     @Test
-    fun `the battery row's button says Allow, because Android answers it with a dialog here`() {
+    fun `the battery row opens Settings and says what to do there`() {
+        // Play build: the one-tap exemption dialog is gone, so the button cannot say "Allow". It
+        // opens Android's battery-optimisation list, and the row names the taps left to the person.
         val battery = SetupPlan.items.single { it.id == SetupPlan.BATTERY }
-        assertEquals("Allow", SetupPlan.actionLabel(battery, Status.Off))
-        // Once refused for good, Settings is the only route left, and the label says so.
-        assertEquals("Open Settings", SetupPlan.actionLabel(battery, Status.NeedsSettings))
-        // The other special-access rows really do open Settings.
+        assertEquals("Open Settings", SetupPlan.actionLabel(battery, Status.Off))
+        assertTrue(battery.why.contains(SetupPlan.BATTERY_STEPS))
+        assertTrue(SetupPlan.BATTERY_STEPS.contains("Sidekick"))
+        // The other special-access rows open Settings too.
         val control = SetupPlan.items.single { it.id == SetupPlan.CONTROL }
         assertEquals("Open Settings", SetupPlan.actionLabel(control, Status.Off))
     }

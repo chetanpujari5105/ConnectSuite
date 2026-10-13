@@ -189,13 +189,16 @@ object OnboardingCopy {
         body = listOf(
             "Ignore battery optimisation",
             "Without this, the connection is dropped within minutes of leaving the app and " +
-                "notifications stop arriving.",
+                "notifications stop arriving. " + com.chetan.connectsuite.setup.SetupPlan.BATTERY_STEPS,
             "Some manufacturers need more",
             "Xiaomi, Samsung, OnePlus, Oppo and Vivo run their own app killers on top of " +
                 "Android's. The Android setting above does not disable those. If notifications " +
                 "stop arriving after a while, look for \"Autostart\", \"Battery saver\" or " +
                 "\"Protected apps\" in your system settings and allow Sidekick there too.",
             "Open app settings",
+            // body[5]: the battery card's button. It opens a Settings list, not a dialog that
+            // grants anything, so it is not labelled "Allow".
+            "Open battery settings",
         ),
     )
 

@@ -165,10 +165,19 @@ object SpecialAccess {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    @Suppress("BatteryLife") // Justified: the notification listener must survive Doze.
-    fun batteryOptimizationIntent(context: Context): Intent =
-        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            .setData("package:${context.packageName}".toUri())
+    /**
+     * Android's battery-optimisation list, where the person exempts Sidekick themselves.
+     *
+     * Not `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, the one-tap system dialog. That needs the
+     * `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission, and Google Play allows it only for listed
+     * use cases. The nearest one is a peripheral companion that keeps a persistent connection *to
+     * give the peripheral internet access*, which Sidekick does not do. This page needs no
+     * permission, so the manifest no longer declares one. The cost is two or three taps the person
+     * makes in Settings, which the copy names. [isIgnoringBatteryOptimizations] still reads the
+     * result, and needs no permission either.
+     */
+    fun batteryOptimizationSettingsIntent(): Intent =
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun areNotificationsEnabled(context: Context): Boolean {

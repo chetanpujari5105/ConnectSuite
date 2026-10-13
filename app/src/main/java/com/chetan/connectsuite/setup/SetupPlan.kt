@@ -118,7 +118,7 @@ object SetupPlan {
         Item(
             BATTERY, Section.Reliability, "Keep running in the background",
             "Without this, Android stops Sidekick soon after you leave it and your Mac loses the " +
-                "phone until you open the app again.",
+                "phone until you open the app again. " + BATTERY_STEPS,
             Mechanism.SpecialAccess,
         ),
     )
@@ -156,9 +156,8 @@ object SetupPlan {
         status == Status.Limited -> "Change selection"
         item.mechanism == Mechanism.ReportOnly -> null
         status == Status.NeedsSettings -> "Open Settings"
-        // The battery exemption is asked by a system dialog on this screen, not a Settings page —
-        // measured on the emulator: "Let app always run in background? Deny / Allow".
-        item.id == BATTERY -> "Allow"
+        // Battery included: it opens Android's battery-optimisation list, not the one-tap
+        // "Let app always run in background?" dialog, which Play does not allow this app to use.
         item.mechanism == Mechanism.SpecialAccess -> "Open Settings"
         item.mechanism == Mechanism.InApp -> "Choose"
         else -> "Allow"
@@ -209,5 +208,12 @@ object SetupPlan {
     const val NOT_NOW = "Not now"
     const val OPEN_APP_SETTINGS = "Open app settings"
     const val PHOTOS_SETTINGS_GUIDANCE = "Tap Permissions, then Photos and videos."
+
+    /**
+     * The taps the Settings page leaves to the person. Wording differs by manufacturer, so it
+     * names the outcome rather than a label. Shared with onboarding's reliability page.
+     */
+    const val BATTERY_STEPS = "In the list Android opens, show all apps, find Sidekick, and set " +
+        "it to not optimised."
     const val DONE = "Done"
 }

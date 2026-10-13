@@ -32,7 +32,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- No REQUEST_IGNORE_BATTERY_OPTIMIZATIONS (Play build): Sidekick opens the battery-optimisation
+         list instead (SpecialAccess.batteryOptimizationSettingsIntent), which needs no permission.
+         Play allows the one-tap request only for listed use cases, and none of them fits. -->
 
     <!-- ==== QR pairing ==== -->
     <uses-permission android:name="android.permission.CAMERA" />
