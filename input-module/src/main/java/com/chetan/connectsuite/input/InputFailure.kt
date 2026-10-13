@@ -119,12 +119,15 @@ sealed class InputFailure(
      * screen they now land on, which is exactly what makes it dangerous: nothing else in the chain
      * would notice, and the tap would be delivered into whatever is in front.
      *
-     * Only the package name is compared, never the window contents.
+     * Only the package name is compared, never the window contents — and it is **only compared**.
+     * Defect 223: the sentence used to name both packages, which put something the Accessibility
+     * service read into a message the Mac receives. It names neither now, so nothing the service
+     * reads leaves the phone (`InputDisclosure.WHERE` says so).
      */
-    class ForegroundChanged(from: String, to: String) : InputFailure(
+    class ForegroundChanged : InputFailure(
         code = ErrorCode.GEOMETRY_STALE,
-        reason = "That click was aimed at $from, but $to is in front of the phone now, so it was " +
-            "refused rather than delivered to the wrong app.",
+        reason = "That click was refused because a different app came to the front of the phone, " +
+            "so it was not delivered to the wrong app.",
         fixHint = "Click again — the Mac is showing what is on the phone now.",
     )
 

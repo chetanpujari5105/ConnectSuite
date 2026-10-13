@@ -22,6 +22,14 @@ import org.junit.Test
  *
  * **What it does not reach:** any call assembled at runtime, and any file outside the list below.
  * It is a scan, and a scan's bound is the files it reads.
+ *
+ * ### Widened for defect 223
+ *
+ * The first version read one file, `NotificationFeature.kt`, so `InputFailure.ForegroundChanged`
+ * in input-module named two packages to the Mac for weeks with this guard green — and the widening
+ * found a third, `RemoteFailure.Unsupported` (defect 224). The two tests at the bottom read **every**
+ * failure class in every module, found by declaration rather than by a list, from both ends: what a
+ * refusal sentence interpolates, and what a call site hands it.
  */
 class PackageIdInProseTest {
 
@@ -64,6 +72,96 @@ class PackageIdInProseTest {
             emptyList<String>(),
             offences,
         )
+    }
+
+    // ---- every failure class, every module (defects 223 and 224) -------------------------------
+
+    /** The repository root, resolved rather than assumed. Gradle runs this from `sync-module/`. */
+    private val root: File = listOf(File(".."), File("."))
+        .map { it.canonicalFile }
+        .firstOrNull { File(it, "settings.gradle.kts").isFile }
+        ?: error("Cannot find the repository root from ${File(".").canonicalPath}")
+
+    private fun mainKotlin(): List<File> = root.walkTopDown()
+        .onEnter { it.name != "build" && it.name != "node_modules" && !it.name.startsWith(".") }
+        .filter { it.isFile && it.extension == "kt" && it.path.contains("/src/main/") }
+        .toList()
+
+    /** Every file declaring a failure class — found by declaration, so a new module is not missed. */
+    private fun failureFiles(): List<File> = mainKotlin().filter {
+        Regex("""sealed (class|interface) \w*Failure\b""").containsMatchIn(it.readText())
+    }
+
+    /**
+     * Every name a refusal sentence interpolates, each reviewed: none of them is a package id.
+     * A new interpolation fails until someone adds it here, which is the point — the review is the
+     * guard. An entry nothing uses fails too, so the list cannot rot into a blanket pass.
+     */
+    private val reviewed = setOf(
+        "detail", "verb", "verdict", "label", "why", "what", "key", "target", "title",
+        "actualMtimeMs", "actualSize", "expectedMtimeMs", "expectedSize", "free", "needed",
+        "mtimeMs", "name", "size", "now", "seen",
+        // A resolved label from AppLabels.of — never the package itself.
+        "appName",
+    )
+
+    private fun reasonInterpolations(file: File): List<String> {
+        val src = file.readText()
+            .replace(Regex("""/\*[\s\S]*?\*/"""), "")
+            .replace(Regex("""(?m)^\s*//.*$"""), "")
+        return Regex("""\breason\s*=\s*((?:"(?:[^"\\]|\\.)*"\s*\+?\s*)+)""").findAll(src).flatMap { m ->
+            Regex("""\$\{?([A-Za-z_][A-Za-z0-9_]*)""").findAll(m.groupValues[1]).map { it.groupValues[1] }
+        }.toList()
+    }
+
+    @Test
+    fun `the widened scan reads every module's failure classes`() {
+        // Control: an empty offence list below must mean "none", never "read nothing".
+        val names = failureFiles().map { it.name }
+        listOf("InputFailure.kt", "RemoteFeature.kt", "NotificationFeature.kt", "MirrorFailure.kt").forEach {
+            assertTrue("the scan must find $it among $names", it in names)
+        }
+        assertTrue("too few failure files: $names", names.size >= 9)
+        assertTrue("found no interpolations at all", failureFiles().sumOf { reasonInterpolations(it).size } > 20)
+    }
+
+    @Test
+    fun `no refusal sentence interpolates a value nobody reviewed`() {
+        val used = mutableSetOf<String>()
+        val offences = failureFiles().flatMap { file ->
+            reasonInterpolations(file).also { used += it }
+                .filter { it !in reviewed || Regex("(?i)package|pkg").containsMatchIn(it) }
+                .map { "${file.name}: \$$it" }
+        }
+        assertEquals(
+            "a refusal the Mac shows interpolates an unreviewed value — a package id is the usual one",
+            emptyList<String>(),
+            offences,
+        )
+        assertEquals("reviewed names nothing interpolates any more", emptySet<String>(), reviewed - used)
+    }
+
+    @Test
+    fun `no failure is constructed from a package id`() {
+        // The call-site half: a package handed to a failure through a reviewed parameter
+        // (`detail`, say) would pass the test above.
+        val handle = Regex("""packageName|foregroundPackage|aimedAt|nowInFront|\bpkg\b""")
+        val offences = mainKotlin().flatMap { file ->
+            val src = file.readText()
+                .replace(Regex("""/\*[\s\S]*?\*/"""), "")
+                .replace(Regex("""(?m)^\s*//.*$"""), "")
+            Regex("""\b\w+Failure\.\w+\(""").findAll(src).mapNotNull { m ->
+                var depth = 1
+                var i = m.range.last + 1
+                while (i < src.length && depth > 0) {
+                    if (src[i] == '(') depth++ else if (src[i] == ')') depth--
+                    i++
+                }
+                val args = src.substring(m.range.last + 1, (i - 1).coerceAtLeast(m.range.last + 1))
+                if (handle.containsMatchIn(args) && !args.contains("AppLabels")) "${file.name}: ${m.value}$args)" else null
+            }.toList()
+        }
+        assertEquals("a failure was built from a package id", emptyList<String>(), offences)
     }
 
     /**

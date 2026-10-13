@@ -207,7 +207,7 @@ object NotificationFeature {
             } else {
                 cause?.message ?: "no reason given"
             }
-            return refuse(session, request, NotificationFailure.IntentRefused(sbn.packageName, detail))
+            return refuse(session, request, NotificationFailure.IntentRefused(AppLabels.of(context, sbn.packageName), detail))
         }
         deliver(session, request, "reply to ${sbn.packageName}")
     }
@@ -236,7 +236,7 @@ object NotificationFeature {
         val sent = runCatching { action.actionIntent.send(context, 0, null) }
         if (sent.isFailure) {
             val detail = sent.exceptionOrNull()?.message ?: "no reason given"
-            return refuse(session, request, NotificationFailure.IntentRefused(sbn.packageName, detail))
+            return refuse(session, request, NotificationFailure.IntentRefused(AppLabels.of(context, sbn.packageName), detail))
         }
         deliver(session, request, "action $index on ${sbn.packageName}")
     }

@@ -36,13 +36,17 @@ class InputDisclosureTest {
     }
 
     @Test
-    fun `it says where what it reads goes, including the case that reaches the Mac`() {
+    fun `it says nothing it reads is sent, not even to the paired Mac — and the refusal keeps that true`() {
         val where = lower(InputDisclosure.WHERE)
-        assertTrue(where.contains("paired mac"))
-        // InputFailure.ForegroundChanged names both packages to the Mac, so "never leaves the
-        // phone" would be false. The sentence must admit the one route that exists.
-        assertTrue(where.contains("app's name"))
-        assertFalse(where.contains("never leaves"))
+        assertTrue(where.contains("not even to your paired mac"))
+        assertTrue("it must say what the Mac is told instead", where.contains("a different app came to the front"))
+        assertFalse("the old route is gone; the sentence must not describe it", where.contains("app's name"))
+        // The sentence is a claim about InputFailure.ForegroundChanged, the one refusal built from
+        // what the service reads (defect 223). Check the claim against the thing it describes.
+        val refusal = com.chetan.connectsuite.input.InputFailure.ForegroundChanged()
+        listOfNotNull(refusal.reason, refusal.fixHint).forEach { sent ->
+            assertFalse("'$sent' carries a package id", Regex("""\b[a-z][a-z0-9_]*(\.[a-z0-9_]+){2,}\b""").containsMatchIn(sent))
+        }
     }
 
     @Test
@@ -121,6 +125,19 @@ class InputDisclosureTest {
             "the intent builder must stay private, so no other file can skip the disclosure",
             source.contains("private fun accessibilitySettings()"),
         )
+    }
+
+    @Test
+    fun `the phone's own log names no app either — the disclosure says nothing is stored`() {
+        // Defect 223's second half: link.log is a file on the phone that the owner may be asked to
+        // send, so a log line interpolating the compared packages would make WHERE untrue.
+        val read = Regex("""\$\{?(aimedAt|nowInFront|foregroundPackage)""")
+        val logs = mainKotlin().filter { it.path.contains("/input-module/") }.flatMap { file ->
+            Regex("""LinkLog\.[iwe]\(([\s\S]*?)\)\s*\n""").findAll(code(file))
+                .filter { read.containsMatchIn(it.groupValues[1]) }
+                .map { "${file.name}: ${it.value.trim().take(120)}" }.toList()
+        }
+        assertEquals("a log line records what the service read", emptyList<String>(), logs)
     }
 
     @Test

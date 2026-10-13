@@ -16,9 +16,10 @@ package com.chetan.connectsuite.input.ui
  *  - it reads the **focused editable field** — `setText(append)` and `backspace()` read its text
  *    to write it back, and nothing else consumes it;
  *  - it reads the **package of the app in front** when a gesture is dispatched
- *    (`foregroundPackage`), and when that changes mid-gesture `InputFailure.ForegroundChanged`
- *    names both packages in the refusal the Mac receives. So "shown to your paired Mac" is said
- *    out loud rather than folded into "never leaves the phone", which would be untrue.
+ *    (`foregroundPackage`) and only compares it: since defect 223 `InputFailure.ForegroundChanged`
+ *    names no app in the refusal the Mac receives, and the phone's log line names none either. So
+ *    "not sent anywhere, not even to your paired Mac" is now true, and `InputDisclosureTest` holds
+ *    the refusal to it.
  */
 object InputDisclosure {
 
@@ -32,8 +33,9 @@ object InputDisclosure {
         "from the Mac can change it, and the name of the app in front, so a tap meant for one app " +
         "never lands in another. It does not read the rest of your screen or watch what you do."
 
-    const val WHERE = "Nothing it reads is stored or sent anywhere except your paired Mac, which " +
-        "is told the app's name only when a tap is refused because the app changed."
+    const val WHERE = "Nothing it reads is stored or sent anywhere, not even to your paired Mac. " +
+        "If the app in front changes before a tap lands, the tap is refused and your Mac is told " +
+        "only that a different app came to the front."
 
     const val OFF = "You can turn it off at any time in Settings › Accessibility."
 

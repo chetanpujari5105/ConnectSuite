@@ -3,6 +3,7 @@ package com.chetan.connectsuite.input
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -120,15 +121,27 @@ class GestureDispatchTest {
     }
 
     @Test
-    fun `a gesture aimed at an app that is no longer in front is refused, by name`() {
+    fun `a gesture aimed at an app that is no longer in front is refused`() {
         val failure = foregroundGuard("com.android.settings", "com.sec.android.app.launcher")
 
         assertTrue(failure is InputFailure.ForegroundChanged)
-        // Both names in the sentence: the user needs to know what they aimed at as well as what
-        // caught it, or the refusal reads as the phone being arbitrary.
-        assertTrue(failure!!.reason.contains("com.android.settings"))
-        assertTrue(failure.reason.contains("com.sec.android.app.launcher"))
-        assertEquals("foreground-changed", failure.label)
+        assertEquals("foreground-changed", failure!!.label)
+    }
+
+    @Test
+    fun `the refusal tells the Mac nothing the Accessibility service read — defect 223`() {
+        // The packages come from rootInActiveWindow, i.e. the Accessibility API. Every field that
+        // InputFeature.refuse() sends (message = reason, fixHint) must be free of them, so nothing
+        // the service reads leaves the phone. Asserted on the values sent, not on a likeness.
+        val aimed = "com.android.settings"
+        val front = "com.sec.android.app.launcher"
+        val failure = foregroundGuard(aimed, front)!!
+        listOfNotNull(failure.reason, failure.fixHint, failure.label).forEach { sent ->
+            assertFalse("'$sent' carries the app that was aimed at", sent.contains(aimed))
+            assertFalse("'$sent' carries the app now in front", sent.contains(front))
+            assertFalse("'$sent' carries a package id", Regex("""\b[a-z][a-z0-9_]*(\.[a-z0-9_]+){2,}\b""").containsMatchIn(sent))
+        }
+        assertTrue("it still says why: ${failure.reason}", failure.reason.contains("different app"))
     }
 
     @Test
