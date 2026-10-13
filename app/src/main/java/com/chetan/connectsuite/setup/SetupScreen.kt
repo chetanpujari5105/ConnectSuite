@@ -103,16 +103,20 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
     // Control's Settings page is reached only through the accessibility disclosure.
     val openInputSettings = rememberInputSettingsOpener()
 
-    fun act(item: SetupPlan.Item) {
-        val status = statuses[item.id] ?: Status.Off
+    // The texts/calls/contacts disclosure while it is on screen: the row it was opened for.
+    var disclosing by remember { mutableStateOf<SetupPlan.Item?>(null) }
+
+    // The only place this screen acts on a row — and so the only place Android's prompt is launched.
+    // Two callers: act() for a row with no disclosure, and the disclosure's Agree.
+    fun perform(item: SetupPlan.Item, route: SetupPlan.Route) {
         prefs.edit().putStringSet(KEY_NOT_NOW, notNow(prefs) - item.id).apply()
-        when {
-            item.id == SetupPlan.FOLDERS -> onOpenFolders()
-            status == Status.NeedsSettings -> runCatching {
+        when (route) {
+            SetupPlan.Route.Folders -> onOpenFolders()
+            SetupPlan.Route.AppSettings -> runCatching {
                 context.startActivity(SpecialAccess.appDetailsIntent(context))
             }
-            item.id == SetupPlan.CONTROL -> openInputSettings()
-            item.mechanism == Mechanism.SpecialAccess -> runCatching {
+            SetupPlan.Route.Control -> openInputSettings()
+            SetupPlan.Route.SpecialAccessSettings -> runCatching {
                 context.startActivity(
                     when (item.id) {
                         SetupPlan.MIRROR_NOTIFICATIONS -> SpecialAccess.notificationListenerSettingsIntent()
@@ -120,17 +124,32 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
                     },
                 )
             }
-            item.mechanism == Mechanism.Runtime -> {
+            SetupPlan.Route.Request -> {
                 val wanted = runtimePermissions(item.id)
-                if (wanted.isEmpty()) {
-                    refresh++
-                } else {
+                if (wanted.isNotEmpty()) {
                     pending = item.id
                     launcher.launch(wanted.toTypedArray())
                 }
             }
+            SetupPlan.Route.Disclose, SetupPlan.Route.Nothing -> Unit
         }
         refresh++
+    }
+
+    // A disclosed row stops here, before anything is written or asked; the dialog decides.
+    fun act(item: SetupPlan.Item) {
+        val route = SetupPlan.route(item, statuses[item.id] ?: Status.Off)
+        if (route == SetupPlan.Route.Disclose) disclosing = item else perform(item, route)
+    }
+
+    disclosing?.let { item ->
+        TextsCallsDisclosureDialog(
+            onAgree = {
+                disclosing = null
+                perform(item, SetupPlan.route(item, statuses[item.id] ?: Status.Off, agreed = true))
+            },
+            onNotNow = { disclosing = null },
+        )
     }
 
     Column(
@@ -310,6 +329,42 @@ private fun SetupRow(
     if (!last) RowDivider(inset = false)
 }
 
+
+/**
+ * [TextsCallsDisclosure], drawn. Agree and Not now are two different buttons; back or a tap outside
+ * is Not now. Not now only closes it: no permission is asked, nothing is stored, and the row keeps
+ * its button.
+ */
+@Composable
+private fun TextsCallsDisclosureDialog(onAgree: () -> Unit, onNotNow: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onNotNow,
+        containerColor = SidekickColors.card,
+        titleContentColor = SidekickColors.textPrimary,
+        textContentColor = SidekickColors.textBody,
+        title = { Text(TextsCallsDisclosure.TITLE, style = SidekickType.title) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                TextsCallsDisclosure.body.forEach { Text(it, style = SidekickType.body) }
+            }
+        },
+        confirmButton = {
+            PrimaryButton(
+                text = TextsCallsDisclosure.AGREE,
+                onClick = onAgree,
+                modifier = Modifier.testTag("texts-calls-disclosure-agree"),
+            )
+        },
+        dismissButton = {
+            TextButton(onClick = onNotNow, modifier = Modifier.testTag("texts-calls-disclosure-not-now")) {
+                Text(TextsCallsDisclosure.NOT_NOW, style = SidekickType.control, color = SidekickColors.textBody)
+            }
+        },
+    )
+}
 
 private const val PREFS = "sidekick_setup"
 private const val KEY_NOT_NOW = "not_now"

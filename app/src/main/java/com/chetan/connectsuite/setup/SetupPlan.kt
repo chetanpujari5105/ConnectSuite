@@ -84,18 +84,19 @@ object SetupPlan {
         ),
         Item(
             TEXTS, Section.Features, "Texts",
-            "Read your conversations and send replies from your Mac.",
+            "Your texts are sent to your paired Mac, so you can read them and reply from there.",
             Mechanism.Runtime,
         ),
         Item(
             CALLS, Section.Features, "Calls",
-            "See recent and missed calls, and dial, answer or decline from your Mac. Call audio " +
-                "stays on the phone.",
+            "Your call log and incoming calls are sent to your paired Mac, so you can see them and " +
+                "dial, answer or decline from there. Call audio stays on the phone.",
             Mechanism.Runtime,
         ),
         Item(
             CONTACTS, Section.Features, "Contacts",
-            "Names and photos on your texts and calls instead of bare numbers.",
+            "Names and photos on your texts and calls instead of bare numbers. Your contacts are " +
+                "sent to your paired Mac for this.",
             Mechanism.Runtime,
         ),
         Item(
@@ -146,6 +147,32 @@ object SetupPlan {
         // The platform stops showing its dialog after two refusals; only Settings can grant it now.
         Status.NeedsSettings -> "Turned off in Settings"
         Status.NotAskedYet -> "Asked when you scan"
+    }
+
+    /**
+     * The rows whose Android prompt is reached only through [TextsCallsDisclosure] — Google Play's
+     * prominent-disclosure rule for the SMS and Call Log groups, with Contacts beside them because
+     * contacts reach the Mac the same way. `TextsCallsGateTest` holds the screen to this.
+     */
+    val DISCLOSED: Set<String> = setOf(TEXTS, CALLS, CONTACTS)
+
+    /** What pressing a row's button does first. Decided here so a JVM test can reach it. */
+    enum class Route { Disclose, Request, AppSettings, SpecialAccessSettings, Folders, Control, Nothing }
+
+    /**
+     * The first step for [item] in [status]. A [DISCLOSED] row goes to the disclosure until the
+     * person has agreed to it **for this press** ([agreed] is passed only by the dialog's Agree) —
+     * including the *Open Settings* route of a grant Android stopped offering, because that is a
+     * door to the same permissions.
+     */
+    fun route(item: Item, status: Status, agreed: Boolean = false): Route = when {
+        item.id == FOLDERS -> Route.Folders
+        item.id in DISCLOSED && !agreed -> Route.Disclose
+        status == Status.NeedsSettings -> Route.AppSettings
+        item.id == CONTROL -> Route.Control
+        item.mechanism == Mechanism.SpecialAccess -> Route.SpecialAccessSettings
+        item.mechanism == Mechanism.Runtime -> Route.Request
+        else -> Route.Nothing
     }
 
     /** The action a row offers, or null when there is nothing to do. */
