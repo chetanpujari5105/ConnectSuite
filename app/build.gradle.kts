@@ -92,7 +92,8 @@ android {
          * breaks the first time a minor or patch reaches 100, and Play refuses a versionCode that
          * has ever gone down. It is bumped by hand, once per release, and nothing else may read it.
          */
-        versionCode = 1
+        // 2: Play registered 1 on the first internal-testing upload (2026-10-13); a code is never reused.
+        versionCode = 2
         versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

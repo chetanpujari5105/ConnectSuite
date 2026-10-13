@@ -6,7 +6,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -187,6 +189,19 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
             onClick = onDone,
             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("setup-done"),
         )
+        TextButton(
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(SetupPlan.PRIVACY_POLICY_URL))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally).testTag("setup-privacy-policy"),
+        ) {
+            Text(SetupPlan.PRIVACY_POLICY_LABEL, style = SidekickType.control, color = SidekickColors.textBody)
+        }
         Spacer(Modifier.height(Space.xl))
     }
 }

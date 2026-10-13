@@ -195,7 +195,7 @@ object SetupPlan {
     /** Every sentence on the screen, for the copy guard shared with onboarding. */
     val allText: List<String>
         get() = items.flatMap { listOf(it.title, it.why) } + Section.entries.map { it.title } +
-            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE, OPEN_APP_SETTINGS, PHOTOS_SETTINGS_GUIDANCE)
+            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE, OPEN_APP_SETTINGS, PHOTOS_SETTINGS_GUIDANCE, PRIVACY_POLICY_LABEL)
 
     const val TITLE = "Set up Sidekick"
 
@@ -215,5 +215,16 @@ object SetupPlan {
      */
     const val BATTERY_STEPS = "In the list Android opens, show all apps, find Sidekick, and set " +
         "it to not optimised."
+
+    /**
+     * Google Play's User Data policy wants the privacy policy linked inside the app as well as on the
+     * store listing. This screen is reachable at any time from the Devices gear, so the link lives
+     * here rather than only in onboarding, which a person sees once.
+     *
+     * The page is a static file in the developer's website repo (`sidekick/privacy/index.html`) and
+     * was checked live on 2026-10-13.
+     */
+    const val PRIVACY_POLICY_LABEL = "Privacy policy"
+    const val PRIVACY_POLICY_URL = "https://chetan-website-delta.vercel.app/sidekick/privacy"
     const val DONE = "Done"
 }
