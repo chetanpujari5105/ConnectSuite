@@ -19,6 +19,15 @@
     <uses-permission
         android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="32" />
+    <!-- The two permissions above imply location *hardware* to Google Play, which then hides the app
+         from devices without it. Nothing here reads a location: they exist only because Wi-Fi Direct
+         discovery needs the permission on API <= 32. So the hardware is declared optional.
+         The camera is deliberately NOT declared optional: QrScanScreen uses the back camera and pairing
+         has no other path, so a device without one could install Sidekick and never pair.
+         ManifestFeaturesTest holds both decisions. -->
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
     <!-- API 33+ replaces the location requirement for P2P/scan use cases. -->
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
