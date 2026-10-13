@@ -30969,3 +30969,22 @@ dropped the link once (15:06:39 `ECONNRESET`), reconnected at 15:06:40 via last-
 identity; Mac `10.51.59.160`, phone `10.51.59.236` unchanged. Phone free space 5,308,232 KiB of 478,509,056 KiB
 — the Overview Storage card's "5.4 GB free of 490 GB" is this volume (`StatFs` on shared storage) in decimal GB,
 and is correct; the Mac's own volume (15.9 GB free of 494.4 GB) is not what it shows.
+
+### Defect 223 — package ids in the input refusal sent to the Mac (phone)
+
+Read 2026-10-13 from `ef94ebe` (versionCode 2): `GestureDispatch.kt:117` built `ForegroundChanged(from = aimedAt,
+to = nowInFront)` from `foregroundPackage()`; `InputFailure.kt:124-129` interpolated both into `reason`;
+`InputFeature.kt:393` sent `message = failure.reason`; `ConnectSuiteInputService.kt:181` logged both. Fixed in `6e0acb4`.
+Red first: *the refusal tells the Mac nothing the Accessibility service read* failed on the old sentence (both packages
+present). After: input-module 64/64. Mutations: the sentence restored → 2 red (GestureDispatchTest, InputDisclosureTest);
+the log line restored → 1 red (*the phone's own log names no app either*); 223 verbatim (signature + sentence + call
+site) → 2 red in `PackageIdInProseTest`. Not installed; no device run.
+
+### Defect 224 — package ids in media-remote and notification refusals (phone)
+
+Found 2026-10-13 by the widened `PackageIdInProseTest` on the real tree: *no refusal sentence interpolates a value
+nobody reviewed* → `RemoteFeature.kt: $packageName`; *no failure is constructed from a package id* →
+`NotificationFailure.IntentRefused(sbn.packageName, detail)` ×2 and `RemoteFailure.Unsupported(…, controller.packageName)`
+×3. Fixed in `6e0acb4` through `AppLabels.of`. After: sync-module 688/688. Mutations: one call site of each restored →
+red; the parameter renamed back to `packageName` → red. A name hidden in a lambda inside the sentence stays green
+(source-scan limit). Control: the scan finds ≥ 9 failure files including `InputFailure.kt` and `MirrorFailure.kt`.
