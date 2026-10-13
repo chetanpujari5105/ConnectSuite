@@ -93,7 +93,7 @@ android {
          * has ever gone down. It is bumped by hand, once per release, and nothing else may read it.
          */
         // 2: Play registered 1 on the first internal-testing upload (2026-10-13); a code is never reused.
-        versionCode = 2
+        versionCode = 3
         versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
