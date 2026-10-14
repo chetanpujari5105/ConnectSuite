@@ -1,9 +1,10 @@
 # Sidekick beta — install and pair (one page)
 
-*Updated 2026-10-14 for the token screen's **Paste token** button and the Keychain note before the first
+*Updated 2026-10-14 for **version 2.0.1**: the token screen's **Paste token** button and the Keychain note before the first
 password prompt (the release candidate built from the commit named in `docs/RESUME.md`). The first-run order
 below is read from the code and was walked on an isolated development profile — **not yet on a fresh macOS
-user**, where whether macOS asks for the password on the very first launch is still to be seen. Release
+user**, where whether macOS asks for the password on the very first launch is still to be seen (so the note
+says *may ask*). Release
 candidate `83c4096` was the first build whose token step works. Statements the owner has not yet confirmed on a
 fresh Mac account or a tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this
 page.*
@@ -18,7 +19,7 @@ and about ten minutes.
 
 ## Mac
 
-1. Open the `.dmg` you were sent (`Sidekick-2.0.0-arm64.dmg` for Apple-silicon Macs, `Sidekick-2.0.0.dmg` for
+1. Open the `.dmg` you were sent (`Sidekick-2.0.1-arm64.dmg` for Apple-silicon Macs, `Sidekick-2.0.1.dmg` for
    Intel) and drag **Sidekick** into **Applications**. *(The Intel build has never been run on an Intel Mac — if
    you have one, say so in your report.)*
 2. Open Sidekick from Applications. macOS says it **could not verify** the app and offers only *Done* and
@@ -26,7 +27,7 @@ and about ten minutes.
 3. Open **System Settings → Privacy & Security**, scroll to the message about Sidekick being blocked, click
    **Open Anyway**, enter your Mac password, then confirm **Open Anyway** in the dialog that follows. You do
    this once.
-4. Sidekick first shows a short note: *macOS will ask for your Mac password once so Sidekick can keep its
+4. Sidekick first shows a short note: *macOS may ask for your Mac password once so Sidekick can keep its
    pairing key safe. Choose Always Allow so it doesn't ask again.* Click **Continue**.
 5. macOS may then say that **Sidekick wants to use your confidential information stored in "Sidekick Safe
    Storage" in your keychain**. Enter your Mac password and click **Always Allow**. (*Allow* works too, but then

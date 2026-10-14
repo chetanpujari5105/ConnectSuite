@@ -170,7 +170,7 @@ test('Keychain notice: "fresh" means neither half of the identity is on disk', (
 
 test('Keychain notice: the owner’s sentence, one Continue button, and nothing that can cancel the run', () => {
   const n = keychainNotice();
-  assert.equal(n.detail, 'macOS will ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
+  assert.equal(n.detail, 'macOS may ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
     'Choose Always Allow so it doesn’t ask again.');
   assert.deepEqual(n.buttons, ['Continue']);
   assert.equal(n.defaultId, 0);

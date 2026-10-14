@@ -133,7 +133,7 @@ export function keychainNoticeDue(i: { enabled: boolean; folderEmpty: boolean; p
 export function keychainNotice(): { message: string; detail: string; buttons: [string]; defaultId: 0; cancelId: 0 } {
   return {
     message: 'Sidekick keeps its pairing key in your Keychain',
-    detail: 'macOS will ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
+    detail: 'macOS may ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
       'Choose Always Allow so it doesn’t ask again.',
     buttons: ['Continue'],
     defaultId: 0,
