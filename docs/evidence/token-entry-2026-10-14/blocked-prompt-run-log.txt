@@ -1,0 +1,11 @@
+2026-10-14T15:54:25.840+05:30 I [migration] Rename re-pair: not pending (decided now; ConnectSuite identity absent, Sidekick pairing absent)
+2026-10-14T15:54:25.841+05:30 I [identity] Keychain notice not shown (an identity is stored; development)
+2026-10-14T15:54:25.842+05:30 I [window] opened 1440x920 — the design's full size fits this 1920x1050 work area
+2026-10-14T15:54:26.027+05:30 W [identity] Stored identity NOT usable by this build, and left untouched (nothing written): this copy of Sidekick cannot open the stored private key — it was sealed by a different build — key: Error: Error while decrypting the ciphertext provided to safeStorage.decryptString.
+2026-10-14T15:55:31.631+05:30 I [identity] Quit chosen on the blocked-identity prompt; nothing was written
+--- electron stdout, IPC refusals:
+No handler registered for 'webcam-current'
+No handler registered for 'share-offers'
+--- identity files before = after:
+740334a9450e0901450f32fb51305a376069c452864dad18a388b4f4f2009364  <scratch>/profile-blocked/identity/cert.pem
+9d8bb217a97ed1e959820345a81b66cd8bf8028c80161dc5f30e976cc32035e5  <scratch>/profile-blocked/identity/key.enc

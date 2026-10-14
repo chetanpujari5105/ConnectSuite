@@ -94,12 +94,26 @@ The order from that run's log (`docs/evidence/token-entry-2026-10-14/isolated-ru
 No macOS password prompt appeared in that run, which is expected: the development Electron is already
 trusted for the item. **Not established:** whether a packaged build on a truly fresh macOS user is prompted on
 its first launch at all. The item does not exist yet, and an app usually creates its own item without being
-asked. If it is not prompted, the note's *"macOS will ask"* is wrong for that first launch and should read
-*"may ask"*. The fresh-user test decides this.
+asked. For that reason the note says *"macOS may ask"* since `4b4632e` (it said *will* in `4f9384c`). The fresh-user
+test decides which is true.
 
-**Seen, not changed:** the existing blocked-key prompt (`blockedPrompt`, defect 207) uses the first placement:
-a sheet on the window just created. Its 2026-10-08 run recorded it on screen for ~5 s, so it has worked at
-least once, but the same shape was invisible here. Worth one isolated run before it is relied on.
+**The blocked-key prompt (`blockedPrompt`, defect 207) uses the first placement — a sheet on the window — and
+was checked in its own isolated run the same afternoon. It works.** A scratch profile held a synthetic cert and a
+`v10`-prefixed key of random bytes (what a key sealed by another build looks like to this one). Result: `Stored
+identity NOT usable by this build, and left untouched`; the window **and** the 685×264 sheet both on screen
+(window list and System Events agree), all three buttons legible (`blocked-prompt-on-screen.png`); **Quit
+Sidekick** pressed by name exited with `Quit chosen …; nothing was written`; both identity files byte-identical
+before and after (`blocked-prompt-run-log.txt`). Not fixed, because it is not broken.
+
+Why the notice's sheet failed and this one did not is **not established**. The difference in the logs is time:
+this sheet opened ~185 ms after the window, after `loadIdentity` had touched `safeStorage`; the notice's opened in
+the same tick. That is a hypothesis about a race, not a measurement of one.
+
+**Seen in the same run, not fixed:** the sheet's modal loop answers the page, so `share-offers` and
+`webcam-current` were again refused *No handler registered*. After **Quit** nothing reads them. After **Start
+Over**, startup continues and the page has missed those two first answers; what that costs (an empty receive
+card until the next push? the camera pane's first state?) is unmeasured. The fix is to register those handlers
+before the window exists, which moves code that depends on objects built later in `whenReady` — not small.
 
 ## 4. First-run order of a packaged build on a fresh profile, from the code
 
