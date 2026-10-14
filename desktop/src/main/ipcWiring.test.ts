@@ -39,7 +39,7 @@ const noop: any = new Proxy(function () {}, {
 const stub = <T extends object>(t: T) => new Proxy(t, { get: (o, k) => (k in o ? (o as Record<string | symbol, unknown>)[k] : noop) });
 const electron = stub({
   app: stub({
-    getPath: () => userData, isPackaged: false, getName: () => 'Sidekick', getVersion: () => '2.0.0',
+    getPath: () => userData, isPackaged: false, getName: () => 'Sidekick', getVersion: () => '2.0.1',
     whenReady: () => new Promise(() => undefined), getAppPath: () => process.cwd(),
     getFileIcon: () => Promise.resolve({ isEmpty: () => true }),
     setLoginItemSettings: () => effects.push('login-item'),

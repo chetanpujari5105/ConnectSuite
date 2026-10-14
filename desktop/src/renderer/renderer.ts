@@ -1884,7 +1884,7 @@ void overview.refresh();
  * second one that goes stale. `scripts/check-versions.mjs` already guards `package.json` against the
  * Android build; this keeps the two on-screen copies from being a third and a fourth number.
  */
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 el('settings-version').textContent = `Version ${APP_VERSION}`;
 
 /**

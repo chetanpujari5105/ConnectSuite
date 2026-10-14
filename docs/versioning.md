@@ -18,7 +18,7 @@ never go down, so the first release freezes both numbers into everybody's instal
 
 ## 1. The product version — `MAJOR.MINOR.PATCH`
 
-**Currently `2.0.0`**, because v2 is what this codebase is. One string, in two files, and they must
+**Currently `2.0.1`** (from 2026-10-14; `2.0.0` before), because v2 is what this codebase is. One string, in two files, and they must
 be identical:
 
 - `app/build.gradle.kts` → `versionName`
@@ -61,12 +61,12 @@ the reverse.
 
 | Surface | Reads |
 |---|---|
-| The Mac's packaged app | `CFBundleShortVersionString`, from `package.json` — the built `.dmg` is named `ConnectSuite-2.0.0-arm64.dmg` |
+| The Mac's packaged app | `CFBundleShortVersionString`, from `package.json` — the built `.dmg` is named `Sidekick-2.0.1-arm64.dmg` |
 | The phone's `link.hello` | `LinkService.versionName()`, from `packageManager` |
-| The Mac's Settings → About | `app.getVersion()` |
+| The Mac's Settings → About | `APP_VERSION` in `renderer.ts` — typed a second time, held to `package.json` by `src/main/appVersion.test.ts` (2026-10-14), as is `link.ts`'s hello fallback, which is what a packaged build sends |
 | The activity log | `ConnectSuite started · version 2.0.0` (R1) |
 
-All four come from the two strings in §1. None is typed a second time.
+All four come from the two strings in §1. Two Mac copies are typed by hand and checked against them (above).
 
 ## 5. Releasing — the order, once there is something to release
 

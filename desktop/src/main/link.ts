@@ -503,7 +503,7 @@ export class LinkClient extends EventEmitter {
 
     const hello: Record<string, unknown> = {
       protocolVersion: PROTOCOL_MAJOR,
-      appVersion: process.env.npm_package_version ?? '2.0.0',
+      appVersion: process.env.npm_package_version ?? '2.0.1',
       deviceName: this.identity.deviceName,
       fingerprint: this.identity.fingerprint,
     };
