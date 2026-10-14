@@ -14,14 +14,14 @@ There is no account and no server. This is a **test build from one developer**: 
 or listed on Google Play, so both systems will warn you before they open it. Each warning below is expected.
 **Never turn off Gatekeeper or System Integrity Protection** — nothing here needs it.
 
-**You need:** a Mac on macOS 11 or later, an Android phone on Android 10 or later, both on the same network,
+**You need:** a Mac with **Apple silicon** (M1 or later) on macOS 11 or later, an Android phone on Android 10 or later, both on the same network,
 and about ten minutes.
 
 ## Mac
 
-1. Open the `.dmg` you were sent (`Sidekick-2.0.1-arm64.dmg` for Apple-silicon Macs, `Sidekick-2.0.1.dmg` for
-   Intel) and drag **Sidekick** into **Applications**. *(The Intel build has never been run on an Intel Mac — if
-   you have one, say so in your report.)*
+1. Open the `.dmg` you were sent (`Sidekick-2.0.1-arm64.dmg`) and drag **Sidekick** into **Applications**.
+   **This beta is for Apple-silicon Macs only** (M1 and later; Apple menu › About This Mac shows *Chip*). There
+   is no Intel version in this beta — the Intel build has never been run on an Intel Mac, so it is not offered.
 2. Open Sidekick from Applications. macOS says it **could not verify** the app and offers only *Done* and
    *Move to Bin*. Choose **Done**.
 3. Open **System Settings → Privacy & Security**, scroll to the message about Sidekick being blocked, click
