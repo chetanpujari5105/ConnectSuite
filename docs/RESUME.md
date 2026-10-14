@@ -1,3 +1,23 @@
+# APP BATCH 1 — TOKEN PASTE, TOKEN SCREEN, KEYCHAIN NOTE, RC `3bc1aa5` — 2026-10-14: 4 local commits; nothing pushed, signed or published
+
+1. **Diagnosis:** the packaged log held 3 × `beta token refused: malformed`, then the file accepted at 14:32. The
+   old line carried no detail, so it cannot say *what* was pasted; a checksum is consistent with it, not proven.
+   Refusals now log reason, source and character classes, never the text. `docs/token-entry-2026-10-14.md`.
+2. **Built, red first:** a forgiving paste with the same Ed25519 check (`cf12145`); found and fixed on the way,
+   15 of 63 last-character substitutions of a signature used to verify. Token screen: Paste token, *Where do I
+   get a token?*, no doors; a Keychain note before the window on a fresh profile only (`4f9384c`). Two wrong
+   placements of the note were measured first (invisible sheet; handlers answered before registration).
+3. **RC `3bc1aa5`** in `~/.connectsuite-evidence-private/rc-3bc1aa5/`; all static checks pass, including the
+   shipped verifier run on synthetic tokens; 0 private-key hits. `docs/release-candidate-2026-10-14.md`. The
+   share folder now carries the new DMGs, README and HTML guide; `SHA256SUMS.txt` 6 of 6 OK.
+4. **Tests:** Mac 2,129 / 0 (one pre-existing wall-clock flake, `webcamSpike` *the hard cap is independent*,
+   failed 2 of 5 full runs and 0 of 5 alone; untouched); scripts 325 / 0; typecheck 0; every hook allowed every
+   commit. 9 mutations, each red.
+5. **Owner's to-do:** the fresh-macOS-user test (does macOS prompt on the very first launch? if not, the note
+   should say *may ask*); the owner token file sits **inside** the share folder while its README says tokens are
+   not there — move it out before sharing; the version string is still `2.0.0`, the same as `83c4096`.
+   Not changed, worth one isolated run: the blocked-key prompt uses the sheet placement that was invisible here.
+
 # BETA KEY CREATED, OWNER TOKEN WORKING, RC `83c4096` — 2026-10-12 small hours: 3 local commits; nothing pushed, signed or published
 
 1. **Key:** created once on the owner's Mac with the documented command; public key
