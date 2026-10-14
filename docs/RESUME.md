@@ -1,3 +1,19 @@
+# OWNER'S AUDIT DECISIONS APPLIED — 2026-10-15: 5 local commits; nothing pushed, signed, installed or published; no gate flipped
+
+1. **H-1 corrected** (`ffd8f89`): Photos has no drag to Finder. **Guide: Apple silicon only** (`82dbc9e`).
+2. **G2** (`98c504b`): a release phone now tells the Mac *"Not available in this beta yet."* for the camera (a
+   *withheld* capability; protocol text updated first). Gate unchanged; nothing installed. Phone 1,493 / 0;
+   mutations red on all three named tests. Not reached by a test: `CapabilityDetector.diagnostics()` passing the flag.
+3. **Tier 2 plan** (`1814e41`): `docs/tier2-release-pair-plan-2026-10-15.md`. **Finding: `fs.blocks` covers Files
+   pulls only**, so large Photos saves stay unchecked even with G6's gate flipped; §4 gives the build options.
+4. **Held for the owner:** the tester-guide Photos sentence (*"there is no preview or video player inside Sidekick
+   yet"*) contradicts the code and the 2026-09-23 hardware record (both exist). Not written.
+5. **Defects 223/224** exist only on `play/release-vc3` (worktree `../ConnectSuite-play`). The uncommitted register
+   edits in this tree are byte-identical to that branch's `d945504`. Routes are in the session report: merge the
+   branch (one `versionCode` conflict, plus 5 Play-build commits), or cherry-pick `cdba537` + `6e0acb4` (clean, but
+   brings the battery-exemption removal), or port `6e0acb4` without `InputDisclosure` (7 files, applies cleanly).
+   **Not merged.**
+
 # AWAY MODE — PARITY AUDIT, TRIAL/PAYMENT DESIGN, DEVELOPER ID STEPS, ONE HONESTY FIX, CAMERASTREAMTEST — 2026-10-15 small hours: 5 local commits; nothing pushed, signed or published
 
 **Nothing pushed, signed, notarized, bought, enrolled, published, uploaded or deleted; no gate flipped; no phone,
