@@ -151,7 +151,7 @@ Effort and risk are **estimates [A]**, in focused working sessions, assuming the
 | Gap | What is wrong | Build | Hide | Label | Recommendation |
 |---|---|---|---|---|---|
 | **G1** Several-files share (D1) | gated; a release user sees no Sidekick for a multi-select | **flip both gates** after a fresh supervised run on the release pair — 1 session + hardware; risk **medium** (provisional values in `docs/feature-a-v3-production-enablement.md`) | already hidden | not possible — Android's share sheet has no room for a sentence | owner decision; Tier 2 |
-| **G2** Camera v1 in a packaged Mac with a release phone (D4) | the pane explains, but with a developer sentence that also says *"not built yet"*, which is false of the feature | make Camera v1 releasable on the phone — a code change to `CameraReleaseGate` + a supervised run; 1–2 sessions; risk **medium** (camera claim on 42502, coexistence with mirror) | hide the Camera row in a packaged build — changes a pane the owner may use with a debug phone; risk **low**, but it is a behaviour change | **phone side**: when the release gate refuses, report *"Not available in this beta yet"* instead of the `missing` list — 1 session, Kotlin + test; risk **low** | label now (needs a phone build + install, so not tonight — stage 5 is Mac-only); decide build-or-hide for v1 |
+| **G2** Camera v1 in a packaged Mac with a release phone (D4) | the pane explains, but with a developer sentence that also says *"not built yet"*, which is false of the feature | make Camera v1 releasable on the phone — a code change to `CameraReleaseGate` + a supervised run; 1–2 sessions; risk **medium** (camera claim on 42502, coexistence with mirror) | hide the Camera row in a packaged build — changes a pane the owner may use with a debug phone; risk **low**, but it is a behaviour change | **phone side**: when the release gate refuses, report *"Not available in this beta yet"* instead of the `missing` list — 1 session, Kotlin + test; risk **low** | **done 2026-10-15, `98c504b`** — owner chose the label: a release phone now says *"Not available in this beta yet."*; gate unchanged, not installed |
 | **G3** Webcam (D5) | needs Developer ID, a signed Camera Extension and both gates | 5+ sessions after signing; risk **high** | already explained | done | Tier 3 |
 | **G4** Photos subtitle *"organise"* | promises a verb that does not exist | build delete/move (`media.*` change, protocol first) — 3+ sessions; risk **high** (deleting a person's photos) | — | change the subtitle to *"View and save photos and videos from your phone."* — minutes; risk **none** | **done 2026-10-15, `7039c8d`** (stage 5): *"View and import photos and videos from your phone."*; red-first test; design-departures P7. Revert it if you prefer other words |
 | **G5** Photos drag to Finder | the LinkMyMac target names it; not built | reuse Files' `fs-drag` after a Save — 1 session; risk **low** | — | nothing promises it today | Tier 2 if wanted |
@@ -189,6 +189,10 @@ signing first); microphone; very large share (Path L); a second phone (17); USB;
 - The Intel app.
 
 ## 8 · Decisions owed by the owner (from this audit)
+
+> **Decided 2026-10-15:** v1 = everything built and honestly labelled, no gate flipped; Tier 2 = G1, G6, G5
+> (plan: `docs/tier2-release-pair-plan-2026-10-15.md`); G2 labelled (`98c504b`); subtitle kept; Apple silicon only
+> (`82dbc9e`); webcam and microphone stay Tier 3; H-1 corrected (`ffd8f89`). The list below is kept as asked.
 
 1. For each of **D1–D6**: build into the final DMG (flip/ungate after a run), keep development-only, or drop.
 2. **G2**: Camera v1 in v1 — make it releasable, hide the row in a packaged build, or keep it and fix the phone's
