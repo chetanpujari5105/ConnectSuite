@@ -1,3 +1,19 @@
+# VERSION 2.0.1, "MAY ASK", SHARE-FOLDER CHECK, RC `bcb92ec` — 2026-10-14 afternoon: 5 local commits; nothing pushed, signed or published
+
+1. **2.0.1 on both apps** (`88fc7a1`; `check-versions.mjs` requires the phone's `versionName` to match — `versionCode`
+   left at 1). Two hand-typed Mac copies (About's `APP_VERSION`, the hello fallback a packaged build sends) are now
+   held to `package.json` by `appVersion.test.ts`, red on the bump alone.
+2. **The Keychain note says *macOS may ask*** (`4b4632e`) in the app, guide, README and HTML guide.
+3. **The blocked-key prompt works** in an isolated profile: window and sheet on screen, Quit by name, identity files
+   byte-identical. Not changed. Same side issue as the notice had: under its modal, `share-offers` and
+   `webcam-current` are answered *No handler registered* — reachable only after Start Over; effect unmeasured.
+4. **Owner token removed from the share folder** after its original (same name, 283 bytes) was confirmed in
+   `~/.sidekick-trial-key/tokens/`; `scripts/check-share-folder.mjs` (`d69b9a4`) refuses token files, complete
+   tokens and private keys. The folder also holds 16,906 files — `.venv` and `node_modules` under `promo-video*`.
+5. **RC `bcb92ec`** in `~/.connectsuite-evidence-private/rc-bcb92ec/`, every check passing, 0 private-key hits;
+   share folder updated and re-verified. `docs/release-candidate-2026-10-14b.md`. Tests: Mac 2,131 / 0; scripts
+   332 / 0; phone 1,488 / 0 (app 217, camera 187, core 282, input 52, mirror 65, sync 685); typecheck 0.
+
 # APP BATCH 1 — TOKEN PASTE, TOKEN SCREEN, KEYCHAIN NOTE, RC `3bc1aa5` — 2026-10-14: 4 local commits; nothing pushed, signed or published
 
 1. **Diagnosis:** the packaged log held 3 × `beta token refused: malformed`, then the file accepted at 14:32. The
