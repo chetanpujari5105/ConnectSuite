@@ -192,7 +192,7 @@ node scripts/check-share-apks.mjs  ~/Desktop/Sidekick-Beta-Share-2026-10-12 --ex
   everywhere in 2027, per `docs/release-audit-2026-10-06.md` P12) is a separate registration. Not covered here.
 - **versionCode is still `1`.** The next release must raise it, or a phone refuses it as a downgrade or same
   version. Signing does not touch it.
-- **The share folder holds more than testers need:** `graphics/`, `play-console-prep/`, `promo-video/`,
-  `promo-video-v2/` (with Python environments and `node_modules`) and `Sidekick phone screenshots `. None of
+- **The share folder holds more than testers need:** `play-console-prep/` (which holds `graphics/`),
+  `promo-video/`, `promo-video-v2/` (with Python environments and `node_modules`) and `Sidekick phone screenshots `. None of
   them is in `README.txt` or `SHA256SUMS.txt`. Decide whether they belong in what you send. A screenshot of your
   phone can show personal data.
