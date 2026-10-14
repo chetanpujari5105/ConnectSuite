@@ -41,6 +41,19 @@ class CameraReleaseGateTest {
         assertTrue(body.substring(gate, sink).contains("return false"))
     }
 
+    /**
+     * G2 (audit 2026-10-14): the refusal branch marks `camera` withheld, so a release phone tells the Mac
+     * "Not available in this beta yet." instead of the handler list. A source scan for the reason above —
+     * the branch needs a `LinkServer` and a `Context`; `WithheldReasonTest` covers the sentence itself.
+     */
+    @Test
+    fun `the release refusal withholds camera before returning`() {
+        val feature = source("src/main/java/com/chetan/connectsuite/camera/CameraFeature.kt")
+        val refusal = feature.substringAfter("fun install(").substringAfter("if (!CameraReleaseGate.allows(server.debuggable)) {")
+            .substringBefore("return false")
+        assertTrue("the refusal does not withhold camera", refusal.contains("server.capabilities.withhold(Capability.CAMERA)"))
+    }
+
     @Test
     fun `the app installs the camera only through the gated install`() {
         val app = source("../app/src/main/java/com/chetan/connectsuite/ConnectSuiteApp.kt")

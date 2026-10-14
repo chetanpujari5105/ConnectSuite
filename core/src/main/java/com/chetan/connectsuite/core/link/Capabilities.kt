@@ -63,13 +63,24 @@ data class CapabilityStatus(
      * [CapabilityContract.blockedByBackgroundRestriction].
      */
     val backgroundRestricted: Boolean = false,
+    /**
+     * This build **withholds** the capability by release policy: a feature module's release gate refused
+     * to install it (Camera v1 in a non-debuggable build). Nothing the user does can turn it on, so its
+     * reason is [WITHHELD_REASON] and never the `missing` list — `not built yet — waiting on
+     * camera.request…` reached the Mac's Camera pane verbatim and was both developer words and untrue
+     * of a feature that is built (audit 2026-10-14, G2).
+     */
+    val withheld: Boolean = false,
 ) {
-    val advertised: Boolean get() = permitted && running && implemented && !backgroundRestricted
+    val advertised: Boolean get() = permitted && running && implemented && !backgroundRestricted && !withheld
 
     /** One line explaining why this is not on offer, or null when it is. */
     val reason: String?
         get() = when {
             advertised -> null
+            // First: a withheld feature has no handlers by design, so every branch below would describe
+            // a build fault or a switch the user cannot reach.
+            withheld -> WITHHELD_REASON
             // First, and ahead of the permission branches, because it is the only one the user
             // cannot discover by trying: a missing permission produces a prompt, and this
             // produces a feature that starts, runs for a tenth of a second and stops. It is also
@@ -91,6 +102,12 @@ data class CapabilityStatus(
             else -> "not built yet — waiting on ${missing.joinToString(", ")}"
         }
 }
+
+/**
+ * The sentence for a capability this build withholds by release policy ([CapabilityStatus.withheld]).
+ * Plain words for a person: the Mac draws it as the body of its *not offering* state.
+ */
+const val WITHHELD_REASON = "Not available in this beta yet."
 
 /**
  * Why one capability is being held back, as **one** bucket per capability.
@@ -262,6 +279,17 @@ class CapabilityDetector(
      */
     private val runningChecks =
         java.util.concurrent.ConcurrentHashMap<CapabilityContract.SpecialAccess, () -> Boolean>()
+
+    /** Capabilities this build withholds by release policy — see [CapabilityStatus.withheld]. */
+    private val withheld: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /**
+     * Called by a feature module whose release gate refused to install it, so the reason the Mac reads
+     * is [WITHHELD_REASON] rather than the list of handlers that were deliberately never registered.
+     */
+    fun withhold(capability: String) {
+        withheld += capability
+    }
 
     /**
      * Declares how to tell whether the component behind [access] is running.
@@ -445,6 +473,7 @@ class CapabilityDetector(
                     CapabilityContract.missingPermissionsFor(name, granted, grantedSpecial),
                 backgroundRestricted =
                     CapabilityContract.blockedByBackgroundRestriction(name, restricted),
+                withheld = name in withheld,
             )
         }
     }

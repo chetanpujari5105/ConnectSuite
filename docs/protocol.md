@@ -483,8 +483,10 @@ for the same reason `mirror` is not gated on MediaProjection consent — the per
 session, in the flow, after the owner's tap.
 
 **Release builds do not install it.** Camera v1 is development-only: a release build leaves `camera`
-in `unavailable`, with the phone's ordinary "not built" reason, until a later phase lifts that gate
-deliberately.
+in `unavailable` with the reason **`Not available in this beta yet.`** (`WITHHELD_REASON`, the capability
+marked *withheld* by the release gate's refusal) until a later phase lifts that gate deliberately. Before
+2026-10-15 it sent the ordinary "not built yet — waiting on camera.request, …" handler list, which the Mac
+drew verbatim (parity audit G2). The wire shape is unchanged: one string in `unavailable`.
 
 | Peers | What happens |
 |---|---|

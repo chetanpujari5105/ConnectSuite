@@ -8,6 +8,7 @@ import com.chetan.connectsuite.core.app.AppForeground
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
 import com.chetan.connectsuite.core.link.MessageHandler
+import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.MessageType
 
 /**
@@ -49,7 +50,10 @@ object CameraFeature {
      */
     fun install(context: Context, server: LinkServer, mirrorBusy: () -> Boolean): Boolean {
         if (!CameraReleaseGate.allows(server.debuggable)) {
-            LinkLog.i("camera", "Camera v1 is development-only and this build is not debuggable — not installed")
+            // The Mac reads "Not available in this beta yet." for `camera`, not the handler list (G2).
+            server.capabilities.withhold(Capability.CAMERA)
+            server.refreshCapabilities()
+            LinkLog.i("camera", "Camera v1 is development-only and this build is not debuggable — not installed; withheld")
             return false
         }
         if (installed) return true
