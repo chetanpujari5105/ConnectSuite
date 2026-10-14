@@ -483,3 +483,13 @@ test('Overview\'s subtitle claims sync only while the link is live', () => {
   }
   assert.notEqual(overviewSubtitle('working'), overviewSubtitle('down'));
 });
+
+// Audit 2026-10-14, G4. The handoff's Photos subtitle promised "organise", and `media.*` has four verbs —
+// buckets, list, thumb, original — none of which moves, renames or deletes anything. A subtitle is a claim
+// like any other (PRODUCT.md: "never a claim the product cannot support"), so this one is held to the wire.
+test('the Photos subtitle promises nothing the photos namespace cannot do', () => {
+  const photos = screenById('photos');
+  assert.ok(photos, 'the photos screen exists');
+  assert.doesNotMatch(photos.subtitle, /organi[sz]e/i);
+  assert.match(photos.subtitle, /photos/i, 'control: the subtitle read is the Photos one');
+});

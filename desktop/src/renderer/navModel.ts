@@ -141,7 +141,10 @@ const SCREENS: NavScreen[] = [
     id: 'photos',
     label: 'Photos',
     title: 'Photos',
-    subtitle: 'View, organise and import photos from your phone.',
+    // The handoff's line was *"View, organise and import photos from your phone."* — and nothing organises:
+    // `media.*` is buckets, list, thumb and original. "organise" was dropped by the 2026-10-14 parity audit
+    // (G4, design-departures P7) rather than left as a promise; view and import (Save to Mac) are real.
+    subtitle: 'View and import photos and videos from your phone.',
     tileCaption: 'View & import',
     icon: 'photos',
     group: 'MENU',
