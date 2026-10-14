@@ -1,10 +1,12 @@
 # Sidekick beta — install and pair (one page)
 
-*Updated 2026-10-12 for the beta token. Release candidate `83c4096` is the first build whose token step works
-(it carries the public key; builds from `711a1e0` up to `3f5155d` showed the token screen and could check no
-token; `8f8ecbb` has no token step). The token step below was walked on the owner's Mac on the development
-build, not yet on a fresh account. Statements the owner has not yet confirmed on a fresh Mac account or a
-tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this page.*
+*Updated 2026-10-14 for the token screen's **Paste token** button and the Keychain note before the first
+password prompt (the release candidate built from the commit named in `docs/RESUME.md`). The first-run order
+below is read from the code and was walked on an isolated development profile — **not yet on a fresh macOS
+user**, where whether macOS asks for the password on the very first launch is still to be seen. Release
+candidate `83c4096` was the first build whose token step works. Statements the owner has not yet confirmed on a
+fresh Mac account or a tester's phone are listed in `docs/release-candidate-2026-10-11.md` §5 — not in this
+page.*
 
 Sidekick connects your Android phone and your Mac directly over your own Wi-Fi (or your phone's hotspot).
 There is no account and no server. This is a **test build from one developer**: neither app is signed by Apple
@@ -24,12 +26,25 @@ and about ten minutes.
 3. Open **System Settings → Privacy & Security**, scroll to the message about Sidekick being blocked, click
    **Open Anyway**, enter your Mac password, then confirm **Open Anyway** in the dialog that follows. You do
    this once.
-4. Sidekick asks for your **beta token** — the text, or the one file ending in `.sidekick-token`, you were sent
-   with the app.
-   Paste it into the box and press **Use this token**, or press **Open token file…** and choose the file. The
-   token is checked on your Mac; nothing is sent anywhere.
-5. If macOS asks whether Sidekick may **find devices on your local network**, click **Allow** — this is how it
+4. Sidekick first shows a short note: *macOS will ask for your Mac password once so Sidekick can keep its
+   pairing key safe. Choose Always Allow so it doesn't ask again.* Click **Continue**.
+5. macOS may then say that **Sidekick wants to use your confidential information stored in "Sidekick Safe
+   Storage" in your keychain**. Enter your Mac password and click **Always Allow**. (*Allow* works too, but then
+   macOS asks again every time Sidekick opens.) This is where Sidekick keeps the key your phone recognises this
+   Mac by; it is never stored in plain text.
+6. Sidekick asks for your **beta token** — the text, or the one file ending in `.sidekick-token`, you were sent
+   with the app. Copy the token, then press **Paste token**; or press **Open token file…** and choose the file.
+   You can also paste it into the box yourself and press **Use this token**. The token is checked on your Mac;
+   nothing is sent anywhere. The token is the long text starting `SIDEKICK-TRIAL-1.` — **not** the SHA-256
+   line next to the download, which only checks the download. If you copy a whole message, Sidekick finds the
+   token inside it.
+7. If macOS asks whether Sidekick may **find devices on your local network**, click **Allow** — this is how it
    reaches your phone. Sidekick shows **Scan this with your phone** and a pairing code.
+
+**About the password prompt.** Each new test build is signed only for testing (*ad hoc*), and macOS remembers
+your *Always Allow* for that exact build. So **after you install a newer build, macOS asks once more** — no
+note from Sidekick comes first that time; choose **Always Allow** again. Signing with an Apple Developer ID is
+expected to stop this, but that has **not been tested**.
 
 ## Phone
 
@@ -71,8 +86,12 @@ Camera and webcam are **not** in this build.
   Ask the developer for a new token and enter it there, or in Settings › About.
 - If Sidekick says your Mac's date looks earlier than before, check **System Settings › General › Date &
   Time**. Fixing the date fixes it.
-- If a token is refused, the message says why — not copied completely, not issued for this build, ended, or
-  not started yet.
+- If a token is refused, the message says why and what to do next: it is **cut off** (copy all of it again),
+  it **changed** on the way or was made for a different copy of Sidekick, it **has not started** or **has
+  ended**, it is **not a token at all** — or it is the **download checksum**, a web address or an email address
+  copied by mistake. **Open token file…** avoids all of the copying problems.
+- **Where do I get a token?** Ask the person who sent you Sidekick. They send it as text or as a file ending in
+  `.sidekick-token`.
 
 ## After pairing
 

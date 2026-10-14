@@ -1,0 +1,8 @@
+2026-10-14T15:15:26.720+05:30 I [migration] Rename re-pair: not pending (decided now; ConnectSuite identity absent, Sidekick pairing absent)
+2026-10-14T15:15:26.721+05:30 I [identity] Fresh profile: showing the Keychain notice before the first read of the identity
+2026-10-14T15:15:38.653+05:30 I [identity] Keychain notice: Continue — reading the identity next
+2026-10-14T15:15:38.654+05:30 I [window] opened 1440x920 — the design's full size fits this 1920x1050 work area
+2026-10-14T15:15:38.807+05:30 I [identity] New identity 6E:9E:66:48:92:81:ED:8B… stored (the folder was empty)
+2026-10-14T15:15:38.818+05:30 I [trial] beta access: none — No beta token entered. (checked: true; public key in this build: true; nothing is sent anywhere)
+2026-10-14T15:15:39.087+05:30 I [window] asked 1440x920 at (1752,95); got 1440x920 at (1752,95) on display 2 (work area 1920x1050) — granted as requested; fits work area: true
+2026-10-14T15:16:45.236+05:30 I [trial] beta token refused: malformed (checksum), typed — 64 characters, upper 0, lower 24, digits 40, dots 0, dashes 0, underscores 0, spaces 0, line breaks 0, other ASCII 0, non-ASCII 0, invisible 0, hex-only yes
