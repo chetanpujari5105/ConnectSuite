@@ -1,3 +1,36 @@
+# AWAY MODE — PARITY AUDIT, TRIAL/PAYMENT DESIGN, DEVELOPER ID STEPS, ONE HONESTY FIX, CAMERASTREAMTEST — 2026-10-15 small hours: 5 local commits; nothing pushed, signed or published
+
+**Nothing pushed, signed, notarized, bought, enrolled, published, uploaded or deleted; no gate flipped; no phone,
+ADB, install, pairing or packaged app touched; the running development app not rebuilt.** The owner's uncommitted
+edits were never staged. The private copy of this report (with the full decision list) is in the private notes
+folder as `morning-report-2026-10-15.md`.
+
+1. **Stage 1, parity audit** (`3ac0d6d`): `docs/feature-parity-audit-2026-10-14.md`. Every release gate on both sides;
+   40 features × phone / Mac / DMG; **§3 is the development-vs-DMG list (D1–D11)**; Photos; gaps G1–G12; three-tier v1
+   proposal. Findings: **Photos has no drag to Finder** (`release-inventory.md` H-1 is wrong); the Camera pane with a
+   release phone shows the phone's developer sentence (G2, a phone-side fix); no packaged app has ever run, so every
+   DMG column is read from code.
+2. **Stage 2, trial and payment design**: private notes folder only, design only, no code.
+3. **Stage 3** (`71b9d4f`): `docs/developer-id-notarization-steps-2026-10-14.md`: enrol / buy, build changes C1–C7 (not
+   made), verification commands, Gatekeeper and Keychain verified vs unverified.
+4. **Stage 4 skipped**: `my-names.txt` absent (existence checked only). Nothing cloned.
+5. **Stage 5** (`7039c8d`): the audit found no Mac control hidden or disabled without a sentence. One copy claim
+   qualified: the Photos subtitle promised *organise*, and `media.*` has no such verb → *"View and import photos and
+   videos from your phone."* Red-first test; design-departures P7.
+6. **Stage 6** (`96d0e53`, test-only): `CameraStreamTest` still polled every 5 ms against a 3 s clock; a writer slowed
+   to 1.2 s per frame turned it red. Now it waits on flush signals, a producer thread and thread ends, behind one 30 s
+   hang guard. Green clean, under two widenings, and 10/10 under CPU load. Mutations M1–M4 red; M5 survives because
+   its race is unreachable by any test.
+7. **Stage 7, fresh:** Mac 2,132 / 0; typecheck 0 (gated 14 = baseline); scripts 348 / 0; phone 1,488 / 0 (app 217,
+   camera 187, core 282, input 52, mirror 65, sync 685); Swift 140 / 0; 15 guard checkers 0; fixtures 32 / 32. No
+   flake seen.
+8. **Owner next, in order:** publish the release (or hold); the fresh-macOS-user packaged test; sign the APK;
+   `my-names.txt` → App-2b → push the cleaned repo to a new private repo; the Developer ID decision. **Decisions owed:**
+   v1 tiers and D1–D6 (audit §6, §8), G2, the subtitle words, Intel, trial/payment P1–P11, individual or organisation
+   enrolment. **Still blocking a public ship:** no Developer ID build, no signed APK, no packaged run, no notices
+   screen, privacy publisher details and defect 188, defects 187/137, the uncleaned public history, no public
+   trial/payment, the Intel app never run, and 223/224 fixed only on `play/release-vc3`.
+
 # VERSION 2.0.1, "MAY ASK", SHARE-FOLDER CHECK, RC `bcb92ec` — 2026-10-14 afternoon: 5 local commits; nothing pushed, signed or published
 
 1. **2.0.1 on both apps** (`88fc7a1`; `check-versions.mjs` requires the phone's `versionName` to match — `versionCode`
