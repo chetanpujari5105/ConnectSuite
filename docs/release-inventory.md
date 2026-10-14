@@ -90,7 +90,7 @@ says so**.
 | B-1 | Clipboard both directions + history + Restore | **RDV** | `main/clipboard.ts`, `clipboardWatcher.ts`, `renderer/clipboard.ts`; phone Clip | Slices 11–13 (09-01/02); live today (`clip.push` 10:54:23) | phone → Mac needs the app in front — a measured wall |
 | V-1 | Screen mirroring (MediaProjection, H.264) + floating window | **RDV** | `renderer/mirror.ts`, `float.ts`; `mirror-module/v2` | Slices 43–53a (09-12 → 09-15) | consent tap every session (wall); FLAG_SECURE black (wall) |
 | V-2 | Input on the mirror (tap, swipe, text, global actions) | **RDV** | `pointerGestures.ts`, `input-module` | Phase 3; Slice 50/53 | arbitrary keys impossible (wall) |
-| H-1 | Photos browser, preview, video, drag to Finder | **RDV** | `renderer/photos.ts`, `main/photos.ts` | Phase 5; Feature C review 09-23 on the real library | defect 89 (trash shown as an album), 136 (`maxEdge` exceeded) open |
+| H-1 | Photos browser, preview, video, Save to Mac — **no drag to Finder** *(corrected 2026-10-15: this row said "drag to Finder"; the Photos pane has no drag source — `renderer/photos.ts` has no `draggable`/`dragstart`, and the only drag-out is the Files pane's `fs-drag`. Found by `docs/feature-parity-audit-2026-10-14.md`; planned as Tier 2, G5)* | **RDV** for browse, preview, Save to Mac and H.264 video play; drag **NB** | `renderer/photos.ts`, `main/photos.ts`, `main/mediaPreview.ts` | Phase 5; Feature C review 09-23 on the real library | defects 89 and 136 since fixed (2026-09-29); the packaged `sidekick-media://` path has never run |
 | H-2 | Files browser (SAF roots, grid, sort, filter) | **RDV** | `renderer/files.ts` | Feature D review 09-23 | — |
 | A-1 | Apps list + open-on-phone (ask-and-tap) | **RDV** | `renderer/apps.ts`; phone `apps.*` | Slice 8 2026-09-03 (123/123) | `apps.launch` is refused by measurement, deliberately absent |
 | O-1 | Overview (hero, media card, activity, metrics) | **RDV** (re-skin) | `renderer/overview.ts` | Slices 58–62; Batch 2 09-19 | — |
@@ -122,6 +122,7 @@ the code today:
 
 | When | What moved |
 |---|---|
+| 2026-10-15 | H-1 corrected: Photos has no drag to Finder (the row claimed one) |
 | 2026-09-29 11:10 | opened |
 | 2026-09-29 15:53 | gate on `42ac5e5`: all suites fresh and green; 136, 89 (labels 11/11) RDV; trash clause unobservable on today's data; release APK signed unintentionally, left for the owner |
 | 2026-09-29 14:55 | F-11, F-12, F-13 RDV (owner sessions); F-17 share.wait proposed + dev-built; F-18 photos digest + L3 |
