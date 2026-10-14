@@ -82,8 +82,35 @@ test('a wrong or tampered token is refused with its own message, and changes not
   const r = a.trial.enter(foreign);
   assert.equal(r.ok, false);
   assert.match(r.message, /signature doesn’t match/);
-  assert.match(a.trial.enter('hello').message, /doesn’t look like a Sidekick beta token/);
+  assert.match(a.trial.enter('hello').message, /isn’t a Sidekick beta token/);
   assert.equal(a.trial.check().label, 'Tester One', 'the good token is still the one in use');
+});
+
+test('a wrapped, quoted paste is stored as the exact token that was issued (2026-10-14)', () => {
+  const a = mac();
+  const t = token();
+  const r = a.trial.enter(`Here is your token:\n\u201c${t.replace(/(.{40})/g, '$1\n')}\u201d.\nThanks`, 'clipboard');
+  assert.equal(r.ok, true, r.message);
+  assert.equal(JSON.parse(readFileSync(join(a.dir, 'trial.json'), 'utf8')).token, t, 'what is stored is the token, not the message around it');
+  assert.equal(mac(a.dir, a.clock).trial.check().state, 'valid', 'and it still verifies after a relaunch');
+});
+
+test('a refused paste is logged by reason, source and character classes — never by its text — and stores nothing', () => {
+  const a = mac();
+  const checksum = '9f2c'.repeat(16);
+  const r = a.trial.enter(checksum, 'clipboard');
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^That looks like a download checksum, not a beta token\./);
+  const line = a.lines.find((l) => l.startsWith('beta token refused'));
+  assert.ok(line, `no refusal line in ${JSON.stringify(a.lines)}`);
+  assert.match(line!, /^beta token refused: malformed \(checksum\), from the clipboard — 64 characters, /);
+  assert.ok(!line!.includes('9f2c9f2c'), 'the pasted text reached the log');
+  const cut = token().slice(0, -12);
+  a.trial.enter(cut, 'typed');
+  const cutLine = a.lines.filter((l) => l.startsWith('beta token refused')).at(-1)!;
+  assert.match(cutLine, /malformed \(cut-off\), typed — /);
+  for (let i = 0; i + 10 <= cut.length; i += 10) assert.ok(!cutLine.includes(cut.slice(i, i + 10)), 'a piece of the token reached the log');
+  assert.equal(existsSync(join(a.dir, 'trial.json')), false, 'a refusal wrote a file');
 });
 
 test('a stored token edited on disk no longer counts', () => {

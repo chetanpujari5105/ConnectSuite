@@ -2,6 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SealingBox } from './identityStore';
 import {
+  describeRefusedText,
   enteredTokenDecision,
   enteredTokenMessage,
   evaluateTrial,
@@ -52,6 +53,10 @@ interface StoredTrial {
   markPlain: number | null;
   notices: { id: string; shown: number[] } | null;
 }
+
+/** Where an entered token came from: typed into the box, the Paste button, or Open token file. */
+export type TokenSource = 'typed' | 'clipboard' | 'file';
+const SOURCE_WORDS: Record<TokenSource, string> = { typed: 'typed', clipboard: 'from the clipboard', file: 'from a file' };
 
 export interface TrialCheck extends TrialVerdict {
   /** A gentle notice due now, with its sentence, or null. */
@@ -165,23 +170,32 @@ export class Trial {
     return { ...verdict, notice: due && token ? { days: due, text: noticeText(due, token.notAfter) } : null };
   }
 
-  /** A pasted or opened token. Refusals change nothing and say why, kindly. */
-  enter(text: string): { ok: boolean; message: string } {
+  /**
+   * A pasted or opened token. Refusals change nothing and say why, kindly. What is stored is the token
+   * the check found and verified (`cleanPastedToken`), never the message it arrived inside.
+   *
+   * A refusal is logged by its reason, where the text came from and what it was made of — character
+   * classes and counts (`describeRefusedText`), **never** the text: a paste is whatever was on the
+   * clipboard. That line is what diagnosed the owner's first install, where the log said only
+   * `malformed` three times (2026-10-14).
+   */
+  enter(text: string, source: TokenSource = 'typed'): { ok: boolean; message: string } {
     const check = verifyTrialToken(text, this.o.publicKey);
     if (check.kind !== 'ok') {
-      this.log('info', `beta token refused: ${check.kind}`);
-      return { ok: false, message: enteredTokenMessage(check.kind) };
+      const reason = check.kind === 'malformed' ? `malformed (${check.why})` : check.kind;
+      this.log('info', `beta token refused: ${reason}, ${SOURCE_WORDS[source]} — ${describeRefusedText(text)}`);
+      return { ok: false, message: enteredTokenMessage(check) };
     }
     const decision = enteredTokenDecision({ current: this.currentPayload(), entered: check.payload, now: this.now() });
     if (!decision.accept) {
-      this.log('info', `beta token ${check.payload.id} refused: outside its dates`);
+      this.log('info', `beta token ${check.payload.id} refused: outside its dates, ${SOURCE_WORDS[source]}`);
       return { ok: false, message: decision.message };
     }
-    this.stored = { ...this.stored, token: text.replace(/\s+/g, '') };
+    this.stored = { ...this.stored, token: check.token };
     if (decision.resetMark) this.markValue = null;
     this.markValue = nextMark(this.markValue, this.now());
     this.write();
-    this.log('info', `beta token ${check.payload.id} accepted — until ${check.payload.notAfter}${decision.resetMark ? '; clock check started fresh' : ''}`);
+    this.log('info', `beta token ${check.payload.id} accepted, ${SOURCE_WORDS[source]} — until ${check.payload.notAfter}${decision.resetMark ? '; clock check started fresh' : ''}`);
     return { ok: true, message: decision.message };
   }
 

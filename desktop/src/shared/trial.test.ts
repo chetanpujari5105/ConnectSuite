@@ -6,8 +6,10 @@ import {
   DAY_MS,
   TRIAL_TOKEN_PREFIX,
   assembleToken,
+  describeRefusedText,
   encodePayload,
   enteredTokenDecision,
+  enteredTokenMessage,
   evaluateTrial,
   nextMark,
   noticeDue,
@@ -211,4 +213,152 @@ test('notices: once at 7 days, once at 1 day, never repeated, never for a blocke
   assert.equal(noticeDue({ state: 'valid', daysLeft: 1 }, []), 1, 'a person who skipped the 7-day window gets the 1-day one');
   assert.equal(noticeDue({ state: 'valid', daysLeft: 1 }, [7, 1]), null);
   assert.equal(noticeDue({ state: 'expired', daysLeft: 0 }, []), null);
+});
+
+// ---- a forgiving paste (2026-10-14, the owner's first install) --------------------------------------
+//
+// What a person's copy actually delivers: wrapped, quoted, autocorrected, with invisible characters or
+// inside a whole message. Each corruption must clean back to **the exact token that was issued** — the
+// same Ed25519 check then runs on it — and every refusal below must keep the reason it had before.
+
+const TOKEN = mint(payload());
+const ok = (text: string) => {
+  const r = verifyTrialToken(text, PUBLIC);
+  assert.equal(r.kind, 'ok', JSON.stringify(text));
+  if (r.kind === 'ok') assert.equal(r.token, TOKEN, `cleaned to something other than the issued token: ${JSON.stringify(text)}`);
+};
+const why = (text: string) => {
+  const r = verifyTrialToken(text, PUBLIC);
+  return r.kind === 'malformed' ? r.why : r.kind;
+};
+
+test('control: the issued token verifies and comes back unchanged', () => ok(TOKEN));
+
+test('paste: spaces and line breaks inside the token are removed', () => {
+  ok(TOKEN.replace(/(.{20})/g, '$1 '));
+  ok(TOKEN.replace(/(.{37})/g, '$1\r\n'));
+  ok(`\t${TOKEN.slice(0, 50)} ${TOKEN.slice(50)} `);
+});
+
+test('paste: wrapping quotes and backticks are stripped, straight or curly', () => {
+  for (const [a, b] of [['"', '"'], ["'", "'"], ['“', '”'], ['‘', '’'], ['«', '»'], ['`', '`'], ['```\n', '\n```'], ['"`', '`"']]) {
+    ok(`${a}${TOKEN}${b}`);
+  }
+});
+
+test('paste: look-alike dashes in the prefix (autocorrect) are put back', () => {
+  for (const dash of ['‐', '‑', '‒', '–', '—', '−', '－']) {
+    ok(TOKEN.replace(/^SIDEKICK-TRIAL-1/, `SIDEKICK${dash}TRIAL${dash}1`));
+  }
+});
+
+test('paste: zero-width and invisible characters are removed', () => {
+  for (const ch of ['​', '‌', '‍', '⁠', '﻿', '­']) {
+    ok(`${ch}${TOKEN.slice(0, 40)}${ch}${TOKEN.slice(40)}${ch}`);
+  }
+});
+
+test('paste: trailing punctuation is accepted', () => {
+  for (const end of ['.', ',', ';', ':', '!', '?', ')', '…', '."', ').']) ok(`${TOKEN}${end}`);
+  ok(`(${TOKEN})`);
+  ok(`<${TOKEN}>`);
+});
+
+test('paste: the token is found inside a longer message, even wrapped and quoted', () => {
+  ok(`Hi! Here is your Sidekick beta token:\n\n${TOKEN}\n\nThanks — see you soon.`);
+  ok(`Your token: “${TOKEN.slice(0, 60)}\n${TOKEN.slice(60)}”. Any trouble, reply to tester@example.com or see https://example.com/help`);
+  ok(`Token${TOKEN}Thanks`);
+});
+
+test('paste: every corruption at once still cleans to the issued token', () => {
+  ok(`> “​${TOKEN.replace(/^SIDEKICK-TRIAL-1/, 'SIDEKICK–TRIAL–1').replace(/(.{45})/g, '$1\n> ')}”.`);
+});
+
+// The refusals keep their reasons.
+
+test('refused as before: a cut-off token is malformed, and says it is cut off', () => {
+  for (const cut of [1, 2, 20, 86, 87, TOKEN.length - 20]) {
+    const text = TOKEN.slice(0, TOKEN.length - cut);
+    assert.equal(verifyTrialToken(text, PUBLIC).kind, 'malformed', `less its last ${cut}`);
+    assert.equal(why(text), 'cut-off', `less its last ${cut}`);
+  }
+  assert.equal(why(`“${TOKEN.slice(0, -10)}…”`), 'cut-off', 'quoted and visibly truncated');
+  assert.equal(why(TOKEN.slice(10)), 'cut-off', 'the start is missing');
+});
+
+test('refused as before: one character changed anywhere in the payload or signature is a bad signature', () => {
+  const start = TRIAL_TOKEN_PREFIX.length + 1;
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let checked = 0;
+  for (let i = start; i < TOKEN.length; i++) {
+    if (TOKEN[i] === '.') continue;
+    for (const offset of [1, 17]) {
+      const swapped = alphabet[(alphabet.indexOf(TOKEN[i]!) + offset) % alphabet.length]!;
+      const changed = TOKEN.slice(0, i) + swapped + TOKEN.slice(i + 1);
+      assert.equal(verifyTrialToken(changed, PUBLIC).kind, 'bad-signature', `position ${i}: ${TOKEN[i]} → ${swapped}`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 2 * 200, `control: ${checked} changes checked`);
+});
+
+test('refused as before: a token from another key is a bad signature, however it was pasted', () => {
+  const foreign = mint(payload(), stranger.privateKey);
+  for (const text of [foreign, `“${foreign}”`, `Here:\n${foreign.replace(/(.{30})/g, '$1\n')}\nThanks`]) {
+    assert.equal(verifyTrialToken(text, PUBLIC).kind, 'bad-signature');
+  }
+});
+
+test('cleaning never hides a change: a quoted, wrapped token with one character changed is still refused', () => {
+  const i = TOKEN.length - 30;
+  const changed = TOKEN.slice(0, i) + (TOKEN[i] === 'A' ? 'B' : 'A') + TOKEN.slice(i + 1);
+  assert.equal(verifyTrialToken(`“${changed.replace(/(.{40})/g, '$1\n')}”.`, PUBLIC).kind, 'bad-signature');
+});
+
+// The common wrong pastes, said so.
+
+test('wrong paste: a 64-character hex checksum is recognised as one', () => {
+  const hex = 'a3f1c09e5b7d2468ace013579bdf2468ace013579bdf2468ace013579bdf2468';
+  for (const text of [hex, hex.toUpperCase(), `SHA-256: ${hex}`, `${hex}  Sidekick-2.0.0-arm64.dmg`, `“${hex}”`, `${hex}\n`]) {
+    assert.equal(why(text), 'checksum', JSON.stringify(text));
+  }
+  // Controls: one hex digit too few or too many is not a SHA-256.
+  assert.equal(why(hex.slice(1)), 'wrong-format');
+  assert.equal(why(`${hex}0`), 'wrong-format');
+});
+
+test('wrong paste: a web address and an email address are recognised', () => {
+  for (const text of ['https://example.com/sidekick', 'http://example.com', 'www.example.com/beta']) assert.equal(why(text), 'url', text);
+  for (const text of ['tester@example.com', 'Chetan <tester@example.com>']) assert.equal(why(text), 'email', text);
+  assert.equal(why('hello'), 'wrong-format', 'control: ordinary text is just the wrong format');
+  assert.equal(why('SIDEKICK-TRIAL-2.' + 'A'.repeat(40) + '.' + 'B'.repeat(86)), 'wrong-format', 'control: another version is not "cut off"');
+});
+
+test('a real token beside a checksum, an address and a URL is still found', () => {
+  ok(`SHA-256: ${'ab'.repeat(32)}\nFrom tester@example.com, see https://example.com\n${TOKEN}`);
+});
+
+test('each refusal has its own plain sentence with a next step', () => {
+  const said = (r: ReturnType<typeof verifyTrialToken>) => (r.kind === 'ok' ? '' : enteredTokenMessage(r));
+  const hex = 'ab'.repeat(32);
+  assert.match(said(verifyTrialToken(hex, PUBLIC)), /^That looks like a download checksum, not a beta token\./);
+  assert.match(said(verifyTrialToken('https://example.com', PUBLIC)), /web address, not a beta token/);
+  assert.match(said(verifyTrialToken('a@example.com', PUBLIC)), /email address, not a beta token/);
+  assert.match(said(verifyTrialToken(TOKEN.slice(0, -5), PUBLIC)), /cut off/);
+  assert.match(said(verifyTrialToken('hello', PUBLIC)), /isn’t a Sidekick beta token/);
+  assert.match(said(verifyTrialToken(mint(payload(), stranger.privateKey), PUBLIC)), /changed on the way/);
+  for (const text of [hex, 'https://example.com', 'a@example.com', TOKEN.slice(0, -5), 'hello']) {
+    assert.match(said(verifyTrialToken(text, PUBLIC)), /SIDEKICK-TRIAL-1|token file/, `no next step for ${text}`);
+  }
+});
+
+test('the refusal log carries character classes only — never the text', () => {
+  const line = describeRefusedText(`“${TOKEN}”\n`);
+  for (let i = 0; i + 8 <= TOKEN.length; i += 8) assert.ok(!line.includes(TOKEN.slice(i, i + 8)), 'a piece of the token reached the log line');
+  assert.match(line, new RegExp(`^${TOKEN.length + 3} characters`));
+  assert.match(line, /non-ASCII 2/);
+  assert.match(line, /line breaks 1/);
+  const hex = describeRefusedText('ab'.repeat(32));
+  assert.match(hex, /^64 characters/);
+  assert.match(hex, /hex-only yes/);
 });

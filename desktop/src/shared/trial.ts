@@ -78,10 +78,18 @@ function validPayload(raw: unknown): TrialPayload | null {
   return { v: 1, id: r.id, label: r.label, notBefore: r.notBefore, notAfter: r.notAfter };
 }
 
+/**
+ * What a refused text most likely was, for the sentence that answers it — never for the decision, which
+ * is the signature's alone. `cut-off`: the prefix is there and the rest is incomplete, or the start is
+ * missing. `checksum`: a 64-character hex string (the download's SHA-256 sits beside the download).
+ */
+export type MalformedWhy = 'cut-off' | 'checksum' | 'url' | 'email' | 'wrong-format';
+
 export type TokenCheck =
-  | { kind: 'ok'; payload: TrialPayload }
+  /** `token` is the cleaned text that verified — the exact token as issued, and what is stored. */
+  | { kind: 'ok'; payload: TrialPayload; token: string }
   /** Not a token at all, or a signed payload that breaks its own rules. */
-  | { kind: 'malformed' }
+  | { kind: 'malformed'; why: MalformedWhy }
   /** Well formed, and not signed by the key this build trusts — another key, or any edit. */
   | { kind: 'bad-signature' }
   /** This build carries no usable public key: nothing can verify. A build fault, not the person's. */
@@ -102,20 +110,107 @@ export function trialKeyUsable(publicKeySpkiB64: string | null): boolean {
   return publicKeyFrom(publicKeySpkiB64) !== null;
 }
 
+// ---- a forgiving paste (2026-10-14) ----------------------------------------------------------------
+//
+// A person's copy is not the issuer's output. Mail wraps it, a chat app quotes it in curly quotes or
+// backticks, autocorrect turns `-` into `–`, a web page carries zero-width characters, and a sentence
+// ends with a full stop. So the text is cleaned — and **only** cleaned: every character that survives
+// is one the issuer wrote, the cleaned text must have the exact shape of a token, and the same Ed25519
+// check then runs on it. Nothing here can turn a text that was not signed into one that verifies.
+
+/** Characters with no width, which a web page or a chat app leaves inside copied text. */
+const INVISIBLE = /[\u200b-\u200d\u2060\ufeff\u00ad\u180e]/g;
+/** Look-alike dashes: hyphens, figure, en and em dashes, the minus sign, fullwidth and small hyphens. */
+const DASHES = /[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g;
+const DOUBLE_QUOTES = /[\u201c-\u201f\u00ab\u00bb\u2033\u301d\u301e\uff02]/g;
+const SINGLE_QUOTES = /[\u2018-\u201b\u2039\u203a\u2032\u00b4\uff07]/g;
+/** A signature is 64 bytes: 86 base64url characters, unpadded. */
+const SIGNATURE_CHARS = 86;
+const SHAPE = new RegExp(`${TRIAL_TOKEN_PREFIX}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{${SIGNATURE_CHARS}}`);
+/** What may wrap a token or follow it: quotes, backticks, brackets, sentence punctuation, an ellipsis. */
+const WRAPPING = /^["'`(<[{]+|["'`)>\]}.,;:!?\u2026]+$/g;
+
+/** Look-alike characters put back to the ASCII the issuer wrote, invisible ones and quote markers removed. */
+function normalised(text: string): string {
+  return text
+    .replace(INVISIBLE, '')
+    .replace(DASHES, '-')
+    .replace(DOUBLE_QUOTES, '"')
+    .replace(SINGLE_QUOTES, "'")
+    .replace(/^[ \t]*>+/gm, '');
+}
+
 /**
- * Checks a pasted or opened token against this build's public key. Whitespace anywhere is ignored —
- * a token pasted out of an email arrives wrapped.
+ * The token inside whatever was pasted: the first `SIDEKICK-TRIAL-1.<payload>.<86-char signature>` once
+ * whitespace is gone, or — when there is none — the compacted text with its wrapping stripped, so a
+ * refusal is decided on what the person meant to paste.
+ */
+export function cleanPastedToken(text: string): string {
+  const compact = normalised(text).replace(/\s+/g, '');
+  const found = SHAPE.exec(compact);
+  return found ? found[0] : compact.replace(WRAPPING, '');
+}
+
+/** Which kind of wrong text a refused paste most likely was. Only ever chooses a sentence. */
+function malformedWhy(original: string, cleaned: string): MalformedWhy {
+  const at = cleaned.indexOf(`${TRIAL_TOKEN_PREFIX}`);
+  if (at >= 0) {
+    const rest = cleaned.slice(at).replace(WRAPPING, '');
+    return /^[A-Za-z0-9_.-]+$/.test(rest) ? 'cut-off' : 'wrong-format';
+  }
+  const flat = normalised(original);
+  if (/\b(?:https?:\/\/|www\.)\S/i.test(flat)) return 'url';
+  if (/[^\s@<>"']+@[^\s@<>"']+\.[A-Za-z]{2,}/.test(flat)) return 'email';
+  if (/(?:^|[^0-9A-Fa-f])[0-9A-Fa-f]{64}(?![0-9A-Fa-f])/.test(flat)) return 'checksum';
+  // Another version's token is the wrong format, not a cut-off one of ours.
+  if (/SIDEKICK-TRIAL-/i.test(cleaned)) return 'wrong-format';
+  // The tail of a token with its start missing: base64url pieces joined by dots, long enough to be one.
+  if (cleaned.length >= 40 && /^[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(cleaned)) return 'cut-off';
+  return 'wrong-format';
+}
+
+/**
+ * What a refused text was made of, for the log: character classes and counts only. **Never** any of
+ * the text — a refused paste can be anything that was on the clipboard, a password included.
+ */
+export function describeRefusedText(text: string): string {
+  const count = (re: RegExp) => (text.match(re) ?? []).length;
+  const trimmed = text.trim();
+  return [
+    `${text.length} characters`,
+    `upper ${count(/[A-Z]/g)}`,
+    `lower ${count(/[a-z]/g)}`,
+    `digits ${count(/[0-9]/g)}`,
+    `dots ${count(/\./g)}`,
+    `dashes ${count(/-/g)}`,
+    `underscores ${count(/_/g)}`,
+    `spaces ${count(/[ \t\u00a0]/g)}`,
+    `line breaks ${count(/\r\n|\r|\n|\u2028|\u2029/g)}`,
+    `other ASCII ${count(/[\x21-\x2c\x2f\x3a-\x40\x5b-\x5e\x60\x7b-\x7e]/g)}`,
+    `non-ASCII ${count(/[^\x00-\x7f]/g)}`,
+    `invisible ${count(INVISIBLE)}`,
+    `hex-only ${/^[0-9A-Fa-f]+$/.test(trimmed) ? 'yes' : 'no'}`,
+  ].join(', ');
+}
+
+/**
+ * Checks a pasted or opened token against this build's public key, after `cleanPastedToken`. A token
+ * pasted out of an email arrives wrapped, quoted, or inside a sentence; it is found and checked as issued.
  */
 export function verifyTrialToken(text: string, publicKeySpkiB64: string | null): TokenCheck {
-  const compact = text.replace(/\s+/g, '');
+  const compact = cleanPastedToken(text);
+  const malformed = (): TokenCheck => ({ kind: 'malformed', why: malformedWhy(text, compact) });
   const parts = compact.split('.');
-  if (parts.length !== 3 || parts[0] !== TRIAL_TOKEN_PREFIX) return { kind: 'malformed' };
+  if (parts.length !== 3 || parts[0] !== TRIAL_TOKEN_PREFIX) return malformed();
   const [, body, sig] = parts as [string, string, string];
-  if (!B64URL.test(body) || !B64URL.test(sig)) return { kind: 'malformed' };
+  if (!B64URL.test(body) || !B64URL.test(sig)) return malformed();
   const signature = Buffer.from(sig, 'base64url');
-  if (signature.length !== 64) return { kind: 'malformed' };
+  if (signature.length !== 64) return malformed();
   const key = publicKeyFrom(publicKeySpkiB64);
   if (!key) return { kind: 'no-key' };
+  // The last of 86 characters carries four padding bits, and Node ignores them: without this, 15 of 63
+  // substitutions of the last character verified as the same signature (2026-10-14). One spelling only.
+  if (signature.toString('base64url') !== sig) return { kind: 'bad-signature' };
   let signed = false;
   try {
     signed = verifySignature(null, Buffer.from(signingInput(body), 'ascii'), key, signature);
@@ -127,10 +222,10 @@ export function verifyTrialToken(text: string, publicKeySpkiB64: string | null):
   try {
     raw = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
   } catch {
-    return { kind: 'malformed' };
+    return { kind: 'malformed', why: 'wrong-format' };
   }
   const payload = validPayload(raw);
-  return payload ? { kind: 'ok', payload } : { kind: 'malformed' };
+  return payload ? { kind: 'ok', payload, token: compact } : { kind: 'malformed', why: 'wrong-format' };
 }
 
 // ---- the verdict ------------------------------------------------------------------------------
@@ -219,9 +314,8 @@ export function evaluateTrial(i: {
     return make(
       'none',
       'Enter your beta token',
-      'This test build of Sidekick needs a beta token before it connects to your phone. ' +
-        `${WHO.charAt(0).toUpperCase()}${WHO.slice(1)} sends it — paste it below or open the file. ` +
-        'The token is checked on this Mac; nothing is sent anywhere.',
+      'You need a beta token from the person who invited you. Paste it or open the token file. ' +
+        'It is checked on this Mac, and nothing is sent anywhere.',
       'No beta token entered.',
     );
   }
@@ -263,17 +357,36 @@ export function nextMark(mark: number | null, now: number): number {
 
 // ---- entering a token -------------------------------------------------------------------------
 
-/** What the kind messages say when a token cannot be used, by what was wrong with it. */
-export function enteredTokenMessage(check: Exclude<TokenCheck['kind'], 'ok'>): string {
-  switch (check) {
+const NEXT = 'Your token starts with SIDEKICK-TRIAL-1 — copy that instead, or open the token file.';
+
+/** What the entry says when a token cannot be used, by what was wrong with it — each with the next step. */
+export function enteredTokenMessage(check: Exclude<TokenCheck, { kind: 'ok' }>): string {
+  switch (check.kind) {
     case 'malformed':
-      return `That doesn’t look like a Sidekick beta token. A token starts with ${TRIAL_TOKEN_PREFIX} — ` +
-        'check that all of it was copied.';
+      return malformedMessage(check.why);
     case 'bad-signature':
-      return 'This token wasn’t issued for this copy of Sidekick, or part of it changed on the way — its ' +
-        `signature doesn’t match. Check that all of it was copied, or ask ${WHO} for a new one.`;
+      return 'Part of this token changed on the way, or it was made for a different copy of Sidekick — its ' +
+        'signature doesn’t match. Copy it again or open the token file; if it still doesn’t work, ask ' +
+        `${WHO} for a new one.`;
     case 'no-key':
       return `This copy of Sidekick was built without the key that checks tokens, so none can work in it. Tell ${WHO}.`;
+  }
+}
+
+function malformedMessage(why: MalformedWhy): string {
+  switch (why) {
+    case 'cut-off':
+      return 'This token is cut off — part of it is missing. Copy all of it again, from ' +
+        `${TRIAL_TOKEN_PREFIX} to its last character, or open the token file instead.`;
+    case 'checksum':
+      return `That looks like a download checksum, not a beta token. The checksum only checks the download. ${NEXT}`;
+    case 'url':
+      return `That looks like a web address, not a beta token. ${NEXT}`;
+    case 'email':
+      return `That looks like an email address, not a beta token. ${NEXT}`;
+    case 'wrong-format':
+      return `That isn’t a Sidekick beta token. A token is one long piece of text that starts with ${TRIAL_TOKEN_PREFIX}. ` +
+        'Copy it again from the message you were sent, or open the token file.';
   }
 }
 
