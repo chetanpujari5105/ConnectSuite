@@ -63,6 +63,7 @@ export const IPC_POLICY: Readonly<Record<string, ChannelPolicy>> = {
   'trial-status': p(M, 'read'),
   'trial-enter': p(M, 'action', [str({ min: 1, max: 16_384 })]),
   'trial-open-file': p(M, 'action'),
+  'trial-paste': p(M, 'action'),
   'trial-notice-shown': p(M, 'action', [oneOf(7, 1)]),
   'menu-routes': p(M, 'action', [arr(route, { max: 64 }), opt(arr(route, { max: 64 }))]),
   'route-changed': p(M, 'window', [str({ min: 1, max: 64 })]),

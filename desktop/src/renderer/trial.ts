@@ -35,8 +35,14 @@ interface TrialBridge {
   trialStatus(): Promise<{ ok: boolean; data: TrialCheckView }>;
   trialEnter(text: string): Promise<TrialResult>;
   trialOpenFile(): Promise<TrialResult>;
+  /** The Paste button. The main process reads the clipboard; the text never reaches this page. */
+  trialPaste?(): Promise<TrialResult>;
   trialNoticeShown(days: 7 | 1): Promise<unknown>;
 }
+
+/** Where a token comes from (2026-10-14). Names nobody: the app does not know who invited this person. */
+const TRIAL_HELP_QUESTION = 'Where do I get a token?';
+const TRIAL_HELP_ANSWER = 'Ask the person who sent you Sidekick. They send it as text or as a file ending in .sidekick-token.';
 
 /** The two panes that stay open whatever the trial says: what is the person's is never hidden. */
 const TRIAL_OPEN_ROUTES: readonly string[] = ['activity', 'settings'];
@@ -120,7 +126,10 @@ class TrialView {
       stateBlock({ kind: v.state === 'no-key' ? 'error' : 'permission', headline: v.headline, body: v.body }),
     );
     if (v.state !== 'no-key') this.gate.appendChild(this.entry('gate'));
-    if (this.hooks.paired()) {
+    // Not on the token screen (2026-10-14): its whole job is the entry above, and the sidebar reaches
+    // Activity and Settings anyway. The expired and clock screens keep them — their copy promises that
+    // Activity and the settings are still here, and the door makes that promise one click.
+    if (this.hooks.paired() && v.state !== 'none') {
       const doors = document.createElement('div');
       doors.className = 'trial-doors';
       for (const [route, label] of [['activity', 'Open Activity'], ['settings', 'Open Settings']] as const) {
@@ -154,8 +163,15 @@ class TrialView {
     const use = document.createElement('button');
     use.type = 'button';
     use.id = `trial-use-${where}`;
-    use.className = 'button primary-action';
+    use.className = this.bridge.trialPaste ? 'button secondary' : 'button primary-action';
     use.textContent = 'Use this token';
+    const paste = this.bridge.trialPaste ? document.createElement('button') : null;
+    if (paste) {
+      paste.type = 'button';
+      paste.id = `trial-paste-${where}`;
+      paste.className = 'button primary-action';
+      paste.textContent = 'Paste token';
+    }
     const open = document.createElement('button');
     open.type = 'button';
     open.id = `trial-open-${where}`;
@@ -172,12 +188,11 @@ class TrialView {
     const run = async (call: () => Promise<TrialResult>) => {
       if (this.busy) return;
       this.busy = true;
-      use.disabled = true;
-      open.disabled = true;
+      const buttons = [use, open, ...(paste ? [paste] : [])];
+      for (const b of buttons) b.disabled = true;
       const result = await call().catch(() => null);
       this.busy = false;
-      use.disabled = false;
-      open.disabled = false;
+      for (const b of buttons) b.disabled = false;
       if (result?.cancelled) return;
       // The answer is recorded against the verdict it came with, before that verdict is applied — so
       // applying it keeps the answer, and the redraw it causes (the gate here, Settings via `changed`)
@@ -195,7 +210,7 @@ class TrialView {
     use.addEventListener('click', () => {
       const text = field.value.trim();
       if (!text) {
-        this.message = { ok: false, text: 'Paste the token first — it starts with SIDEKICK-TRIAL-1.', state: this.verdict?.state ?? null };
+        this.message = { ok: false, text: 'Paste the token into the box first, or press Paste token — it starts with SIDEKICK-TRIAL-1.', state: this.verdict?.state ?? null };
         said.textContent = this.message.text;
         said.dataset.ok = 'false';
         return;
@@ -203,8 +218,19 @@ class TrialView {
       void run(() => this.bridge.trialEnter(text));
     });
     open.addEventListener('click', () => void run(() => this.bridge.trialOpenFile()));
-    actions.append(use, open);
+    if (paste) paste.addEventListener('click', () => void run(() => this.bridge.trialPaste!()));
+    actions.append(...(paste ? [paste] : []), open, use);
     box.append(label, field, actions, said);
+    if (where === 'gate') {
+      const help = document.createElement('details');
+      help.className = 'trial-help';
+      const question = document.createElement('summary');
+      question.textContent = TRIAL_HELP_QUESTION;
+      const answer = document.createElement('p');
+      answer.textContent = TRIAL_HELP_ANSWER;
+      help.append(question, answer);
+      box.appendChild(help);
+    }
     return box;
   }
 }

@@ -38,6 +38,9 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // path — it forces the float's start race to lose, which no machine tried here would do.
       'delayFloatListeners',
       'forceRecipientMismatch',
+      // Added 2026-10-14 for the Keychain notice, off by default (asserted below): shows a development
+      // build the notice a packaged build shows on every fresh profile. It weakens no guard.
+      'keychainNotice',
       // Added 2026-10-08 for H7 (pairing v2's impostor-first case on hardware), off by default and forced
       // off in a packaged build by main.ts (`pairDecoy.test.ts`). It weakens no guard; it lets one be read.
       'pairDecoyFirst',

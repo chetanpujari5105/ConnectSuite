@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tray, Menu,
-  dialog, shell, screen,
+  clipboard, dialog, shell, screen,
 } from 'electron';
 import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -21,10 +21,10 @@ import {
   type CallBannerAction,
   type CallBannerView,
 } from '../shared/callBanner';
-import { SAFE_STORAGE, loadIdentity, startOverIdentity, type Identity } from './identity';
-import { Trial, trialEnforced, type TrialCheck } from './trial';
+import { SAFE_STORAGE, identityDir, loadIdentity, startOverIdentity, type Identity } from './identity';
+import { Trial, trialEnforced, type TrialCheck, type TokenSource } from './trial';
 import { TRIAL_PUBLIC_KEY } from './trialKey';
-import { blockedPrompt } from './identityStore';
+import { blockedPrompt, identityFolderEmpty, keychainNotice, keychainNoticeDue } from './identityStore';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipOfferNotifier, offerBannerGuidance } from './clipOfferNotifier';
@@ -1048,15 +1048,30 @@ function resumeLinkAfterTrial(v: TrialCheck): void {
   link.start();
 }
 
-function enterTrialToken(text: string): { ok: boolean; message: string; data: TrialCheck } {
-  const result = trial().enter(text);
+function enterTrialToken(text: string, source: TokenSource): { ok: boolean; message: string; data: TrialCheck } {
+  const result = trial().enter(text, source);
   const v = publishTrial();
   if (result.ok) resumeLinkAfterTrial(v);
   return { ok: result.ok, message: result.message, data: v };
 }
 
 ipc.handle('trial-status', () => ({ ok: true, data: publishTrial() }));
-ipc.handle('trial-enter', (_event, text: unknown) => enterTrialToken(String(text)));
+ipc.handle('trial-enter', (_event, text: unknown) => enterTrialToken(String(text), 'typed'));
+/*
+ * The Paste button (2026-10-14): the clipboard is read here, once, on the person's press, and goes
+ * straight to the check — it never crosses into the page, and it is never logged (only its character
+ * classes are, on a refusal). A token is a few hundred characters; a longer paste is searched for one.
+ */
+ipc.handle('trial-paste', () => {
+  const text = clipboard.readText();
+  if (text.trim() === '') {
+    return { ok: false, message: 'There’s nothing on the clipboard to paste. Copy the token first, or open the token file.', data: publishTrial() };
+  }
+  if (text.length > 16_384) {
+    return { ok: false, message: 'What’s on the clipboard is far too long to be a beta token. Copy just the token, or open the token file.', data: publishTrial() };
+  }
+  return enterTrialToken(text, 'clipboard');
+});
 ipc.handle('trial-open-file', async () => {
   const picked = await dialog.showOpenDialog({
     title: 'Open a Sidekick beta token',
@@ -1069,7 +1084,7 @@ ipc.handle('trial-open-file', async () => {
   if (statSync(path).size > 16_384) {
     return { ok: false, message: 'That file is too large to be a Sidekick beta token.', data: publishTrial() };
   }
-  return enterTrialToken(readFileSync(path, 'utf8'));
+  return enterTrialToken(readFileSync(path, 'utf8'), 'file');
 });
 ipc.handle('trial-notice-shown', (_event, days: unknown) => {
   trial().noticeShown(days === 1 ? 1 : 7);
@@ -1192,6 +1207,30 @@ const APP_PAGES = ['index.html', 'float.html', 'share-window.html'].map((page) =
 app.on('web-contents-created', (_event, contents) => {
   guardWindow(contents, APP_PAGES, (what, reason) => log.warn('window', `refused a ${what}: ${reason}`));
 });
+
+/**
+ * The Keychain notice (2026-10-14), before the first read of the stored identity. `loadIdentity` is the
+ * first thing in this app to touch `safeStorage`, and so the first that can raise macOS's own password
+ * prompt. Fresh profile only: an identity or a stored phone on disk means this is not a first run, and the
+ * notice is never shown before a pairing is read. Logged either way.
+ *
+ * **Before the main window exists, deliberately** — both placements after it were measured in an isolated
+ * run and both are wrong. A sheet on the just-created window left *neither* on screen: the window was not
+ * yet ordered in and the sheet waited on it, so the process sat blocked behind nothing visible. A
+ * standalone alert after it was visible, but its modal loop serviced the page's first IPC calls before
+ * `whenReady` had registered their handlers (`share-offers`, `webcam-current`: *No handler registered*).
+ * With no window yet there is no page to ask anything.
+ */
+function keychainNoticeIfDue(): void {
+  const fresh = identityFolderEmpty(identityDir());
+  if (keychainNoticeDue({ enabled: app.isPackaged || debugSwitches().keychainNotice, folderEmpty: fresh, phoneStored: store.get('paired') !== null })) {
+    log.info('identity', 'Fresh profile: showing the Keychain notice before the first read of the identity');
+    dialog.showMessageBoxSync({ type: 'info', noLink: true, ...keychainNotice() });
+    log.info('identity', 'Keychain notice: Continue — reading the identity next');
+  } else {
+    log.info('identity', `Keychain notice not shown (${fresh ? 'fresh profile' : 'an identity is stored'}; ${app.isPackaged ? 'packaged' : 'development'})`);
+  }
+}
 
 /**
  * Defect 207 (a): this Mac's identity, or null when the person chose to quit.
@@ -1361,8 +1400,10 @@ app.whenReady().then(() => {
    * window is on screen, painted by its own renderer process, with the dialog over an app that
    * visibly exists. Everything below still registers inside this same synchronous callback, so no
    * `ipcMain` handler is late — the renderer's first `invoke` cannot be serviced until this callback
-   * returns either way.
+   * returns either way. (Not true under a *modal dialog*, whose run loop does service it — which is why
+   * the Keychain notice runs before this line rather than after it.)
    */
+  keychainNoticeIfDue();
   createWindow();
   // The displays changing under open windows — a monitor unplugged, a resolution or arrangement
   // changed, the Dock moved. Each window re-fits against the display it is on (2026-10-10).

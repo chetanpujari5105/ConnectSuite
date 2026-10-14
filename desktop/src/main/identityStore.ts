@@ -107,6 +107,41 @@ function writeSealed(dir: string, box: SealingBox, identity: StoredIdentity): vo
 }
 
 /**
+ * Whether this profile holds no identity yet — neither half on disk. Reads only whether two files exist;
+ * it never opens one, so it cannot touch the Keychain.
+ */
+export function identityFolderEmpty(dir: string): boolean {
+  return !existsSync(join(dir, CERT)) && !existsSync(join(dir, KEY));
+}
+
+/**
+ * The Keychain notice (2026-10-14): shown before the **first** read of the stored identity, on a fresh
+ * profile only. A person with an identity or a stored phone is never shown it — they are past the first
+ * run, and the notice would describe a prompt that is not theirs. `enabled` is the packaged build, or a
+ * development build with the `keychainNotice` switch named.
+ */
+export function keychainNoticeDue(i: { enabled: boolean; folderEmpty: boolean; phoneStored: boolean }): boolean {
+  return i.enabled && i.folderEmpty && !i.phoneStored;
+}
+
+/**
+ * The words for it. One button: the notice explains, it does not ask — the identity is needed either way,
+ * and `safeStorage` is what keeps it out of plain text. The prompt it describes is macOS's own; on an
+ * ad-hoc-signed build it returns once after each new build (the Keychain item's access names the build
+ * that made it), which `docs/beta-tester-guide.md` says to the tester.
+ */
+export function keychainNotice(): { message: string; detail: string; buttons: [string]; defaultId: 0; cancelId: 0 } {
+  return {
+    message: 'Sidekick keeps its pairing key in your Keychain',
+    detail: 'macOS will ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
+      'Choose Always Allow so it doesn’t ask again.',
+    buttons: ['Continue'],
+    defaultId: 0,
+    cancelId: 0,
+  };
+}
+
+/**
  * The words for a blocked identity — the native prompt `main.ts` shows before anything dials a phone.
  *
  * Quit is the default and the cancel action, because the commonest cause is a second copy of

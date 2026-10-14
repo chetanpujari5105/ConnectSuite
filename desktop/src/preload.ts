@@ -301,6 +301,8 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('trial-enter', text),
   trialOpenFile: (): Promise<{ ok: boolean; cancelled?: boolean; message: string; data: TrialCheck }> =>
     ipcRenderer.invoke('trial-open-file'),
+  /** The Paste button: the main process reads the clipboard and checks it; the text never comes here. */
+  trialPaste: (): Promise<{ ok: boolean; message: string; data: TrialCheck }> => ipcRenderer.invoke('trial-paste'),
   trialNoticeShown: (days: 7 | 1): Promise<unknown> => ipcRenderer.invoke('trial-notice-shown', days),
   onTrialChanged: (callback: (verdict: TrialCheck) => void) =>
     ipcRenderer.on('trial-changed', (_event, verdict) => callback(verdict)),

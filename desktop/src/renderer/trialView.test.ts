@@ -34,10 +34,12 @@ class FakeBridge {
   next: { ok: boolean; message: string; data: Verdict; cancelled?: boolean } | null = null;
   readonly entered: string[] = [];
   readonly opened: number[] = [];
+  readonly pasted: number[] = [];
   readonly shown: number[] = [];
   async trialStatus() { return { ok: true, data: NONE }; }
   async trialEnter(text: string) { this.entered.push(text); return this.next!; }
   async trialOpenFile() { this.opened.push(1); return this.next!; }
+  async trialPaste() { this.pasted.push(1); return this.next!; }
   async trialNoticeShown(days: 7 | 1) { this.shown.push(days); return { ok: true }; }
 }
 
@@ -146,7 +148,7 @@ test('an empty paste is answered without a round trip; Open token file asks the 
     button(m.gate, 'trial-use-gate').click();
     await settle();
     assert.deepEqual(m.bridge.entered, []);
-    assert.match(m.gate.textContent, /Paste the token first/);
+    assert.match(m.gate.textContent, /Paste the token into the box first, or press Paste token/);
     m.bridge.next = { ok: false, cancelled: true, message: '', data: NONE };
     button(m.gate, 'trial-open-gate').click();
     await settle();
@@ -221,6 +223,65 @@ test('a thank-you belongs to the moment it answered: a later clock-back or expir
       assert.doesNotMatch(host.textContent, /Thank you — beta access until/, `${later.state}: Settings still thanks the person`);
       assert.match(m.gate.textContent, new RegExp(later.headline), `${later.state}: control — the screen is drawn`);
     }
+  } finally {
+    m.restore();
+  }
+});
+
+// ---- the token screen, 2026-10-14 (the owner's first install) -----------------------------------------
+
+test('the token screen offers Paste first, then the file, and says where a token comes from', () => {
+  const m = mount(false);
+  try {
+    m.view.apply(NONE);
+    const buttons = m.gate.queryAll('.trial-entry-actions button').map((b) => b.id);
+    assert.deepEqual(buttons, ['trial-paste-gate', 'trial-open-gate', 'trial-use-gate']);
+    assert.equal(button(m.gate, 'trial-paste-gate').textContent, 'Paste token');
+    assert.match(button(m.gate, 'trial-paste-gate').className, /primary-action/, 'Paste is the main action');
+    assert.match(button(m.gate, 'trial-use-gate').className, /secondary/);
+    const help = m.gate.queryAll('.trial-help')[0];
+    assert.ok(help, 'there is a "Where do I get a token?" answer');
+    assert.match(help!.textContent, /^Where do I get a token\?/);
+    assert.match(help!.textContent, /Ask the person who sent you Sidekick\. They send it as text or as a file ending in \.sidekick-token\./);
+  } finally {
+    m.restore();
+  }
+});
+
+test('Paste asks the main process — the page never handles the clipboard — and shows its answer', async () => {
+  const m = mount(false);
+  try {
+    m.view.apply(NONE);
+    m.bridge.next = { ok: false, message: 'That looks like a download checksum, not a beta token.', data: NONE };
+    button(m.gate, 'trial-paste-gate').click();
+    await settle();
+    assert.equal(m.bridge.pasted.length, 1);
+    assert.deepEqual(m.bridge.entered, [], 'nothing was sent as typed text');
+    assert.match(m.gate.textContent, /download checksum, not a beta token/);
+    m.bridge.next = { ok: true, message: 'Thank you — beta access until 26 Nov 2026.', data: v({}) };
+    button(m.gate, 'trial-paste-gate').click();
+    await settle();
+    assert.equal(m.view.covers('overview'), false, 'a good paste lifts the screen');
+  } finally {
+    m.restore();
+  }
+});
+
+test('the token screen shows no Open Activity / Open Settings doors, paired or not; the expired screen keeps them', () => {
+  for (const paired of [true, false]) {
+    const m = mount(paired);
+    try {
+      m.view.apply(NONE);
+      assert.equal(m.gate.queryAll('.trial-doors').length, 0, `paired=${paired}`);
+      assert.ok(button(m.gate, 'trial-paste-gate'), 'control: the screen is drawn');
+    } finally {
+      m.restore();
+    }
+  }
+  const m = mount(true);
+  try {
+    m.view.apply(EXPIRED);
+    assert.equal(m.gate.queryAll('.trial-doors').length, 1, 'control: the expired screen still has them');
   } finally {
     m.restore();
   }

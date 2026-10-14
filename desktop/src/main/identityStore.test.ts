@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import forge from 'node-forge';
-import { loadStoredIdentity, startOver, type SealingBox } from './identityStore';
+import { identityFolderEmpty, keychainNotice, keychainNoticeDue, loadStoredIdentity, startOver, type SealingBox } from './identityStore';
 
 function mint(name: string) {
   const keys = forge.pki.rsa.generateKeyPair({ bits: 1024, e: 0x10001 });
@@ -140,4 +140,54 @@ test('the blocked prompt says nothing was changed, defaults to Quit, and states 
   assert.match(p.detail, /kept/);
   assert.doesNotMatch(p.message + p.detail, /deleted|replaced/i);
   assert.deepEqual(p.buttons, ['Quit Sidekick', 'Show the Key’s Folder', 'Start Over with a New Key…']);
+});
+
+// ---- the Keychain notice (2026-10-14) ---------------------------------------------------------------
+//
+// Shown once, before the first read of the stored identity, and only on a fresh profile: a person with a
+// pairing must never be told about a prompt that belongs to a first run. **Not reached here:** whether
+// macOS actually prompts — that needs a fresh macOS user (`docs/beta-tester-guide.md`).
+
+test('Keychain notice: due only on a fresh profile with no stored phone, and only when enabled', () => {
+  const fresh = { enabled: true, folderEmpty: true, phoneStored: false };
+  assert.equal(keychainNoticeDue(fresh), true, 'control: a first run is told');
+  assert.equal(keychainNoticeDue({ ...fresh, folderEmpty: false }), false, 'an existing identity is never preceded by it');
+  assert.equal(keychainNoticeDue({ ...fresh, phoneStored: true }), false, 'an existing pairing is never preceded by it');
+  assert.equal(keychainNoticeDue({ ...fresh, enabled: false }), false, 'a development build without the switch is not told');
+});
+
+test('Keychain notice: "fresh" means neither half of the identity is on disk', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kc-'));
+  assert.equal(identityFolderEmpty(join(dir, 'identity')), true, 'a folder that does not exist yet is fresh');
+  loadStoredIdentity(join(dir, 'identity'), box('A'), () => mint('A'));
+  assert.equal(identityFolderEmpty(join(dir, 'identity')), false, 'control: after the first run it is not');
+  for (const only of ['cert.pem', 'key.enc']) {
+    const half = mkdtempSync(join(tmpdir(), 'kc-'));
+    writeFileSync(join(half, only), 'x');
+    assert.equal(identityFolderEmpty(half), false, `${only} alone is a stored identity, not a fresh one`);
+  }
+});
+
+test('Keychain notice: the owner’s sentence, one Continue button, and nothing that can cancel the run', () => {
+  const n = keychainNotice();
+  assert.equal(n.detail, 'macOS will ask for your Mac password once so Sidekick can keep its pairing key safe. ' +
+    'Choose Always Allow so it doesn’t ask again.');
+  assert.deepEqual(n.buttons, ['Continue']);
+  assert.equal(n.defaultId, 0);
+  assert.equal(n.cancelId, 0);
+});
+
+test('main.ts shows the notice before the window and the first identity read, and only from the due rule', () => {
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8');
+  const ready = main.slice(main.indexOf('app.whenReady().then('));
+  const notice = ready.indexOf('keychainNoticeIfDue();');
+  const window = ready.indexOf('createWindow();');
+  const identity = ready.indexOf('resolveIdentity();');
+  assert.ok(notice > 0 && window > 0 && identity > 0, 'all three calls are in whenReady');
+  assert.ok(notice < window, 'the notice must come before the window — under a modal the page asks for handlers not yet registered');
+  assert.ok(window < identity, 'control: the window still comes before the identity read (D15)');
+  const fn = main.slice(main.indexOf('function keychainNoticeIfDue()'), main.indexOf('function resolveIdentity()'));
+  assert.match(fn, /enabled: app\.isPackaged \|\| debugSwitches\(\)\.keychainNotice/);
+  assert.match(fn, /phoneStored: store\.get\('paired'\) !== null/);
+  assert.match(fn, /dialog\.showMessageBoxSync\(\{/, 'a standalone alert — a sheet on a window not yet on screen is invisible');
 });

@@ -5531,6 +5531,16 @@ input.files-search {
 }
 .trial-message[data-ok='false'] { color: var(--destructive-text); }
 .trial-doors { display: flex; gap: var(--space-4); }
+/* "Where do I get a token?" (2026-10-14): a native disclosure, so it is a real control to the keyboard
+ * and to VoiceOver; quiet until asked. */
+.trial-help { font-size: 13px; line-height: 18px; color: var(--text-body); }
+.trial-help > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.trial-help > p { margin: var(--space-2) 0 0; }
 .trial-settings-title {
   margin: var(--space-9) 0 var(--space-3);
   font: var(--text-section);

@@ -160,6 +160,13 @@ export interface DebugSwitches {
    * development build checks exactly as a packaged one does.
    */
   skipTrial: boolean;
+  /**
+   * The Keychain notice (2026-10-14, `identityStore.ts`) in a **development** build, so its sheet can be
+   * seen on a scratch profile. A packaged build shows it on every fresh profile without this; a
+   * development build without it never does, because the development Electron already holds the
+   * Keychain item and there is no prompt to warn about.
+   */
+  keychainNotice: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -180,6 +187,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'callBanner',
   'pairDecoyFirst',
   'skipTrial',
+  'keychainNotice',
 ];
 
 function read(): DebugSwitches {
@@ -201,6 +209,7 @@ function read(): DebugSwitches {
     callBanner: false,
     pairDecoyFirst: false,
     skipTrial: false,
+    keychainNotice: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

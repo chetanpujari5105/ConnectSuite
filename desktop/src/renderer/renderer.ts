@@ -451,6 +451,7 @@ interface ConnectBridge {
   trialStatus?: TrialBridge['trialStatus'];
   trialEnter?: TrialBridge['trialEnter'];
   trialOpenFile?: TrialBridge['trialOpenFile'];
+  trialPaste?: TrialBridge['trialPaste'];
   trialNoticeShown?: TrialBridge['trialNoticeShown'];
   onTrialChanged?(callback: (verdict: TrialCheckView) => void): void;
 }
@@ -482,6 +483,7 @@ const trialView: TrialView | null =
           trialStatus: () => connect.trialStatus!(),
           trialEnter: (text) => connect.trialEnter!(text),
           trialOpenFile: () => connect.trialOpenFile!(),
+          ...(connect.trialPaste ? { trialPaste: () => connect.trialPaste!() } : {}),
           trialNoticeShown: (days) => connect.trialNoticeShown!(days),
         },
         el('trial-gate'),
