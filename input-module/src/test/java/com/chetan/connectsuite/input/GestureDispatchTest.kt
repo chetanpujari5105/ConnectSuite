@@ -8,6 +8,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * The four things that can become of a gesture, and the one that used to be unreachable.
@@ -151,6 +152,36 @@ class GestureDispatchTest {
         assertNull(foregroundGuard("com.android.settings", null))
         assertNull(foregroundGuard(null, "com.android.settings"))
         assertNull(foregroundGuard(null, null))
+    }
+
+    @Test
+    fun `the phone's own log names no app either — defect 223's second half`() {
+        // link.log is a file on the phone the owner may be asked to send, so a log line that
+        // interpolates the compared packages carries what the Accessibility service read off the
+        // phone by another route. Read from the source, because the line lives in an
+        // AccessibilityService a JVM test cannot construct.
+        val root = listOf(File(".."), File(".")).map { it.canonicalFile }
+            .firstOrNull { File(it, "settings.gradle.kts").isFile }
+            ?: error("Cannot find the repository root from ${File(".").canonicalPath}")
+        val sources = File(root, "input-module/src/main").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }.toList()
+        val read = Regex("""\$\{?(aimedAt|nowInFront|foregroundPackage)""")
+        val logLine = Regex("""LinkLog\.[iwe]\(([\s\S]*?)\)\s*\n""")
+        val calls = sources.flatMap { file ->
+            val code = file.readText()
+                .replace(Regex("""/\*[\s\S]*?\*/"""), "")
+                .replace(Regex("""(?m)^\s*//.*$"""), "")
+            logLine.findAll(code).map { file.name to it.groupValues[1] }.toList()
+        }
+        // Control: the scan reaches the service and finds the line this test is about.
+        assertTrue("found no log calls in input-module: ${sources.map { it.name }}", calls.size >= 3)
+        assertTrue(
+            "the Gesture dropped line was not found",
+            calls.any { (name, args) -> name == "ConnectSuiteInputService.kt" && args.contains("Gesture dropped") },
+        )
+        val offences = calls.filter { (_, args) -> read.containsMatchIn(args) }
+            .map { (name, args) -> "$name: ${args.trim().take(120)}" }
+        assertEquals("a log line records what the service read", emptyList<String>(), offences)
     }
 
     /** What [InputFeature] would end up sending: null to ack, an [InputFailure] to refuse. */
