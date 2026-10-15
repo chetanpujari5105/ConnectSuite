@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { debugSwitches, resetDebugSwitchesForTests } from './debugSwitches';
+import { debugSwitches, isPackaged, readDebugSwitches, resetDebugSwitchesForTests, setPackagedForTests } from './debugSwitches';
 
 /**
  * These switches weaken guards. The property worth pinning is not that they work — it is that they
@@ -10,6 +10,7 @@ import { debugSwitches, resetDebugSwitchesForTests } from './debugSwitches';
  */
 beforeEach(() => {
   delete process.env.CONNECTSUITE_DEBUG_SWITCHES;
+  setPackagedForTests(null);
   resetDebugSwitchesForTests();
 });
 
@@ -169,4 +170,52 @@ test('the call banner gate is forced off in a packaged build', () => {
   const gate = /function callBannerEnabled\(\): boolean \{\s*return ([^;]+);/.exec(main)?.[1];
   assert.ok(gate, 'control: the gate function is where this test looks for it');
   assert.equal(gate.replace(/\s+/g, ' '), '!app.isPackaged && debugSwitches().callBanner');
+});
+
+// ---- A packaged build ignores the environment entirely (2026-10-15) -----------------------------
+/*
+ * Six of the eighteen switches are read in their own modules (notifications, remote, sms, calls,
+ * link) with no `app.isPackaged` beside them, and a packaged build refused only argv switches
+ * (`entry.js`). So a packaged Sidekick started with this variable set ran with those guards weakened.
+ * The check now lives once, where the variable is read.
+ */
+
+test('packaged: every one of the eighteen is off with all of them named in the environment', () => {
+  const names = Object.keys(allOff());
+  assert.equal(names.length, 18, 'control: the full set is named');
+  setPackagedForTests(true);
+  process.env.CONNECTSUITE_DEBUG_SWITCHES = names.join(',');
+  resetDebugSwitchesForTests();
+  assert.deepEqual(debugSwitches(), allOff());
+});
+
+test('packaged: each switch named alone is still off', () => {
+  setPackagedForTests(true);
+  for (const name of Object.keys(allOff())) {
+    process.env.CONNECTSUITE_DEBUG_SWITCHES = name;
+    resetDebugSwitchesForTests();
+    assert.equal((debugSwitches() as unknown as Record<string, boolean>)[name], false, `${name} turned on in a packaged build`);
+  }
+});
+
+test('development: unchanged — every named switch turns on', () => {
+  const names = Object.keys(allOff());
+  setPackagedForTests(false);
+  process.env.CONNECTSUITE_DEBUG_SWITCHES = names.join(',');
+  resetDebugSwitchesForTests();
+  const on = debugSwitches() as unknown as Record<string, boolean>;
+  assert.deepEqual(names.filter((n) => !on[n]), [], 'a development switch stopped working');
+});
+
+test('the pure reader: the same answer for both builds, from its inputs alone', () => {
+  const names = Object.keys(allOff()).join(',');
+  assert.deepEqual(readDebugSwitches(names, true), allOff());
+  assert.deepEqual(readDebugSwitches('stallRemoved', false), only('stallRemoved'));
+  assert.deepEqual(readDebugSwitches(undefined, false), allOff());
+});
+
+test('control: under plain Node (this test runner) the build reads as development, not packaged', () => {
+  setPackagedForTests(null);
+  assert.equal(process.versions.electron, undefined);
+  assert.equal(isPackaged(), false);
 });

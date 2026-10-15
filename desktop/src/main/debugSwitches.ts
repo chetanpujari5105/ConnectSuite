@@ -30,8 +30,9 @@ import { log } from './logger';
  *    somebody else — and it means the last of the three is untested without this.
  *
  * Both are **off unless `CONNECTSUITE_DEBUG_SWITCHES` names them**, and the whole module is inert
- * in a packaged build. They weaken guards; they must never be reachable by a user who did not type
- * them on a command line.
+ * in a packaged build — enforced in [readDebugSwitches], which returns all-off when packaged.
+ * They weaken guards; they must never be reachable by a user who did not type them on a command
+ * line.
  *
  *     CONNECTSUITE_DEBUG_SWITCHES=stallRemoved,bypassReplyGuard npm start
  *
@@ -190,7 +191,13 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'keychainNotice',
 ];
 
-function read(): DebugSwitches {
+/**
+ * The switches named by `raw`, the value of `CONNECTSUITE_DEBUG_SWITCHES`.
+ *
+ * Pure, so the rule is reachable from a test: [debugSwitches] is the only caller, and it passes the
+ * real environment and the real packaging fact.
+ */
+export function readDebugSwitches(raw: string | undefined, packaged: boolean): DebugSwitches {
   const off: DebugSwitches = {
     stallRemoved: false,
     bypassReplyGuard: false,
@@ -211,9 +218,14 @@ function read(): DebugSwitches {
     skipTrial: false,
     keychainNotice: false,
   };
-  // `app.isPackaged` is not consulted here because this module must stay importable by tests with
-  // no Electron present; main.ts guards the startup read instead.
-  const raw = process.env.CONNECTSUITE_DEBUG_SWITCHES;
+  // The one place a packaged build is told apart, for all eighteen: the environment is ignored
+  // whole. Six switches are read in their own modules with nothing else between them and a guard,
+  // and a packaged build refuses only argv switches (`entry.js`), so this line is what stops
+  // `CONNECTSUITE_DEBUG_SWITCHES=bypassReplyGuard /Applications/Sidekick.app/…` weakening one.
+  if (packaged) {
+    if (raw) log.warn('debug', `CONNECTSUITE_DEBUG_SWITCHES ignored: a packaged build takes no debug switches`);
+    return off;
+  }
   if (!raw) return off;
 
   const asked = raw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -236,7 +248,7 @@ let cached: DebugSwitches | null = null;
 /** The switches for this run. Read once; announced once. */
 export function debugSwitches(): DebugSwitches {
   if (cached) return cached;
-  cached = read();
+  cached = readDebugSwitches(process.env.CONNECTSUITE_DEBUG_SWITCHES, isPackaged());
   const on = NAMES.filter((n) => cached![n]);
   if (on.length > 0) {
     log.warn('debug', `DEBUG SWITCHES ON: ${on.join(', ')} — guards are weakened, this is not a normal run`);
@@ -247,4 +259,34 @@ export function debugSwitches(): DebugSwitches {
 /** Test seam. Never called by the app. */
 export function resetDebugSwitchesForTests(): void {
   cached = null;
+}
+
+let packagedForTests: boolean | null = null;
+
+/** Test seam: what [isPackaged] answers, or `null` to ask Electron again. Never called by the app. */
+export function setPackagedForTests(packaged: boolean | null): void {
+  packagedForTests = packaged;
+  cached = null;
+}
+
+/**
+ * Whether this is a packaged build — asked of Electron lazily, so this module stays importable by
+ * tests with no Electron present.
+ *
+ * Under plain Node (the test runner) `process.versions.electron` is absent and `require('electron')`
+ * is a path string, so the answer is *development*. Inside Electron the answer is `app.isPackaged`;
+ * if `app` cannot be read there at all, the answer is *packaged*, because the cost of wrongly
+ * weakening a guard is higher than the cost of a development run that has to be restarted.
+ */
+export function isPackaged(): boolean {
+  if (packagedForTests !== null) return packagedForTests;
+  if (!process.versions.electron) return false;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const electron = require('electron') as { app?: { isPackaged?: boolean } } | string;
+    const app = typeof electron === 'object' && electron !== null ? electron.app : undefined;
+    return app ? app.isPackaged === true : true;
+  } catch {
+    return true;
+  }
 }
