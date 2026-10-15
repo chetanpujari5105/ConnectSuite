@@ -58,13 +58,13 @@ mac:
   # The Dock and Finder icon, derived from LOGOS/main_logo.png by scripts/derive-brand.mjs. Without
   # it electron-builder ships Electron's own icon ("default Electron icon is used").
   icon: build/icon.icns
-  # Both architectures. This project has only ever run on Apple silicon, so the x64 half is
-  # untested — recorded rather than quietly shipped.
+  # Apple silicon only (owner decision, 2026-10-14: the first public beta is Apple silicon only).
+  # The x64 half had never once run, so building it shipped a binary nobody had seen work.
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
     - target: zip
-      arch: [arm64, x64]
+      arch: [arm64]
   darkModeSupport: true
   # The app talks to a phone on the local network and nothing else. `NSLocalNetworkUsageDescription`
   # is what macOS shows in the permission prompt the first time it does, and an empty prompt is the

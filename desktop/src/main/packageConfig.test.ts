@@ -25,3 +25,11 @@ test('Save to Mac writes into ~/Downloads, so the Downloads prompt carries a pla
   assert.match(sentence, /^Sidekick .*Downloads.*\.$/);
   assert.ok(sentence.length <= 200, `the prompt sentence is ${sentence.length} characters`);
 });
+
+test('Apple silicon only: every mac target builds arm64 and nothing else', () => {
+  const target = yml.slice(yml.indexOf('\n  target:\n'), yml.indexOf('\n  darkModeSupport:'));
+  const kinds = [...target.matchAll(/- target: (\w+)/g)].map((m) => m[1]);
+  assert.deepEqual(kinds, ['dmg', 'zip'], 'control: both targets are found');
+  const arches = [...target.matchAll(/arch: \[([^\]]*)\]/g)].map((m) => m[1]!.trim());
+  assert.deepEqual(arches, ['arm64', 'arm64']);
+});

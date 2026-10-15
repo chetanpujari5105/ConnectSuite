@@ -66,7 +66,7 @@ decision 6 and it is a product commitment, not a code style.
 ## Operating Context
 
 **The shipping artifact.** Electron 43 + TypeScript, packaged by electron-builder as a macOS `.dmg`
-and `.zip`, arm64 and x64. `appId: com.chetan.sidekick.desktop`. Category:
+and `.zip`, arm64 only (Apple silicon; owner decision 2026-10-14). `appId: com.chetan.sidekick.desktop`. Category:
 `public.app-category.utilities`. `LSMinimumSystemVersion: 11.0`. Dark mode supported.
 
 **The window.** One resizable main window with a sidebar of **twelve** nav rows in two groups (MENU
