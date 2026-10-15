@@ -409,13 +409,13 @@ object RemoteFeature {
             // has already told us it cannot do this.
             "next" ->
                 if (actions and PlaybackState.ACTION_SKIP_TO_NEXT == 0L) {
-                    RemoteFailure.Unsupported("skip to the next track", controller.packageName)
+                    RemoteFailure.Unsupported("skip to the next track", AppLabels.of(context, controller.packageName))
                 } else {
                     transport.skipToNext(); null
                 }
             "previous" ->
                 if (actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS == 0L) {
-                    RemoteFailure.Unsupported("skip to the previous track", controller.packageName)
+                    RemoteFailure.Unsupported("skip to the previous track", AppLabels.of(context, controller.packageName))
                 } else {
                     transport.skipToPrevious(); null
                 }
@@ -424,7 +424,7 @@ object RemoteFeature {
                 when {
                     position == null -> RemoteFailure.BadRequest("seek needs positionMs")
                     actions and PlaybackState.ACTION_SEEK_TO == 0L ->
-                        RemoteFailure.Unsupported("seek", controller.packageName)
+                        RemoteFailure.Unsupported("seek", AppLabels.of(context, controller.packageName))
                     else -> { transport.seekTo(position); null }
                 }
             }
@@ -620,10 +620,10 @@ sealed class RemoteFailure(
         reason = "This session carries no cover art, or the track changed before the art was read.",
     )
 
-    class Unsupported(what: String, packageName: String) : RemoteFailure(
+    class Unsupported(what: String, appName: String) : RemoteFailure(
         label = "unsupported",
         code = ErrorCode.FEATURE_UNAVAILABLE,
-        reason = "$packageName does not let anything $what from outside the app.",
+        reason = "$appName does not let anything $what from outside the app.",
     )
 
     class BadRequest(detail: String) : RemoteFailure(

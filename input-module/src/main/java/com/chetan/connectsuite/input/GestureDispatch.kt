@@ -114,5 +114,5 @@ internal interface GestureSink {
 internal fun foregroundGuard(aimedAt: String?, nowInFront: String?): InputFailure? = when {
     aimedAt == null || nowInFront == null -> null
     aimedAt == nowInFront -> null
-    else -> InputFailure.ForegroundChanged(from = aimedAt, to = nowInFront)
+    else -> InputFailure.ForegroundChanged()
 }

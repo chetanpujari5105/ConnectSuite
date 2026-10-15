@@ -178,7 +178,9 @@ class ConnectSuiteInputService : AccessibilityService() {
             foregroundGuard(aimedAt, nowInFront)?.let { failure ->
                 LinkLog.w(
                     "input",
-                    "Gesture dropped: aimed at $aimedAt but $nowInFront is in front now",
+                    // Defect 223: no package names, here or in the refusal — the log is a file the
+                    // owner may be asked to send, so it carries the event and never the apps.
+                    "Gesture dropped: a different app came to the front while it waited",
                 )
                 return@withLock failure
             }
