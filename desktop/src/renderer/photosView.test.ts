@@ -541,3 +541,51 @@ test('control: a save that worked shows where it went and no failure line', asyn
   assert.deepEqual(saveFailureOf(pane), []);
   assert.ok(walk(pane.detail).some((e) => e.className === 'photos-detail-saved'), 'the saved line is drawn');
 });
+
+// ---- A phone that is not connected is not a phone refusing (2026-10-15) ---------------------------
+/*
+ * Read on the branch build with the link down: Photos said "The phone is not sharing its photos"
+ * (kind permission) while Camera, beside it, said "Your phone is not connected". The pane had one
+ * headline for every failed album fetch, and a link that is down was worded as the phone's refusal.
+ */
+
+const headlineOf = (pane: Pane) =>
+  walk(pane.banner).filter((e) => e.className === 'state-headline').map((e) => e.textContent);
+
+test('disconnected: the banner says the phone is not connected, never that it is not sharing', async () => {
+  const pane = mount();
+  (pane.view as unknown as { setConnected(on: boolean): void }).setConnected(false);
+  pane.bridge.bucketsFail = { reason: 'The Mac is not connected to the phone, so that was not sent.' };
+  await pane.view.refresh();
+  assert.equal(pane.banner.hidden, false);
+  assert.deepEqual(headlineOf(pane), ['Your phone is not connected']);
+  assert.doesNotMatch(pane.banner.textContent, /not sharing/);
+});
+
+test('connected: a phone that refuses its photos keeps the existing sentence', async () => {
+  const pane = mount();
+  (pane.view as unknown as { setConnected(on: boolean): void }).setConnected(true);
+  pane.bridge.bucketsFail = { reason: 'Photos permission is not granted.', fixHint: 'Grant it on the phone.' };
+  await pane.view.refresh();
+  assert.deepEqual(headlineOf(pane), ['The phone is not sharing its photos']);
+  assert.match(pane.banner.textContent, /Photos permission is not granted/);
+});
+
+test('reconnecting turns the not-connected banner back into whatever the phone answers', async () => {
+  const pane = mount();
+  const view = pane.view as unknown as { setConnected(on: boolean): void };
+  view.setConnected(false);
+  pane.bridge.bucketsFail = { reason: 'The Mac is not connected to the phone, so that was not sent.' };
+  await pane.view.refresh();
+  assert.deepEqual(headlineOf(pane), ['Your phone is not connected']);
+  view.setConnected(true);
+  assert.deepEqual(headlineOf(pane), ['The phone is not sharing its photos'], 'a stale failure, now worded as the phone’s, until the next fetch');
+});
+
+test('wiring: renderer.ts tells the pane the link phase from the same status that sets its capability', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { join } = require('node:path') as typeof import('node:path');
+  const src = readFileSync(join(__dirname, 'renderer.ts'), 'utf8');
+  assert.match(src, /photos\.setAdvertised\(/, 'control: the capability call is where this test looks');
+  assert.match(src, /photos\.setConnected\(status\?\.phase === 'connected'\)/);
+});

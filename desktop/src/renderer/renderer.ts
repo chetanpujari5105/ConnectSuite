@@ -631,6 +631,7 @@ function render(status: RendererStatus | null): void {
   // Defect 139: selected-only access is advertised *and* limited; the phone's sentence is passed
   // through so the pane says "Some photos allowed" exactly when the phone's checklist does.
   const limited = new Map((status?.limited ?? []).map((l) => [l.name, l.reason]));
+  photos.setConnected(status?.phase === 'connected');
   photos.setAdvertised(status?.capabilities?.includes('photos') ?? false, limited.get('photos') ?? null);
   // Apps, and it is the Photos rule with one difference worth naming: the grid works either way,
   // and what the capability decides is whether the *ask* can be delivered at all. The phone's own

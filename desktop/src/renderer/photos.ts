@@ -602,6 +602,7 @@ class PhotosView {
   /** Ids `media.list` returned that this pane already held. Must stay 0; see [loadMore]. */
   private repeats = 0;
   private failure: { reason: string; fixHint?: string } | null = null;
+  private connected = true;
 
   /** True when the phone advertises `photos` — all four verbs and a served bulk channel. */
   private advertised = false;
@@ -676,6 +677,19 @@ class PhotosView {
    * Only redraws — it never refetches. The three read verbs answer whether or not `photos` is
    * advertised, so a capability change alters what the pane *says about itself*, not what it holds.
    */
+  /**
+   * Whether the link is up, from the same status that sets the capability (renderer.ts).
+   *
+   * Only the banner reads it: a failed album fetch with the link down is the link, not the phone
+   * refusing, and must not be headed *the phone is not sharing its photos*. Starts `true` so a pane
+   * told nothing words its failures exactly as it always did.
+   */
+  setConnected(connected: boolean): void {
+    if (this.connected === connected) return;
+    this.connected = connected;
+    this.render();
+  }
+
   setAdvertised(advertised: boolean, limitedReason: string | null = null): void {
     if (this.advertised === advertised && this.limitedReason === limitedReason) return;
     this.advertised = advertised;
@@ -914,6 +928,20 @@ class PhotosView {
   private renderBanner(): void {
     this.banner.replaceChildren();
     const failure = this.failure;
+    if (failure && !this.connected) {
+      // The link is down: say that, in the words Camera uses for the same state. The phone has not
+      // refused anything, and "not sharing" would send someone to its permission settings for nothing.
+      this.banner.hidden = false;
+      this.banner.appendChild(
+        stateBlock({
+          kind: 'blocked',
+          headline: 'Your phone is not connected',
+          body: ['Photos come from your phone, so they appear here again when it reconnects.'],
+          compact: true,
+        }),
+      );
+      return;
+    }
     if (failure) {
       this.banner.hidden = false;
       this.banner.appendChild(
