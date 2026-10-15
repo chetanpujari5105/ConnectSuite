@@ -613,6 +613,12 @@ class PhotosView {
 
   /** Where the last pull landed, for the one line that tells the user their file exists. */
   private lastPull: { path: string; bytes: number; elapsedMs: number; verified?: boolean } | null = null;
+  /**
+   * Why the last Save to Mac did not save, for the photo it was about. Its own field rather than
+   * `failure`: that one is the pane's — it hides the grid and is headed *the phone is not sharing
+   * its photos* — and a save refused by this Mac is neither of those things.
+   */
+  private saveFailure: { itemId: string; reason: string; fixHint?: string } | null = null;
 
   /** 512 px previews by id. `null` means the phone answered that it has none. */
   private preview512 = new Map<string, string | null>();
@@ -1109,20 +1115,32 @@ class PhotosView {
   private async pull(item: MediaItemRow): Promise<void> {
     if (this.pulling) return;
     this.pulling = item.id;
+    this.saveFailure = null;
     this.render();
     try {
       const result = await this.bridge.mediaOriginal({ id: item.id });
       if (result.ok && result.data) {
         this.lastPull = result.data;
       } else {
-        // The phone's own sentence, not a generic one. A failed transfer is the case where a
+        // The sentence the refusal carried, not a generic one. A failed transfer is the case where a
         // specific reason matters most: "no space" and "the socket dropped" want opposite responses.
         // The fix hint too — an unavailable receive folder names where to choose another.
-        this.failure = {
+        this.saveFailure = {
+          itemId: item.id,
           reason: result.reason ?? 'The transfer did not finish.',
           ...(result.fixHint ? { fixHint: result.fixHint } : {}),
         };
       }
+    } catch (error) {
+      // The handler threw instead of answering — this Mac failed somewhere before a sentence existed.
+      // Until 2026-10-15 there was no `catch`: the button went back to idle and nothing was said.
+      // The error's own text stays in the console, never on screen: it is an IPC wrapper's wording.
+      console.warn('[photos] Save to Mac failed without a reason:', error);
+      this.saveFailure = {
+        itemId: item.id,
+        reason: 'Sidekick could not save this to the Mac.',
+        fixHint: 'Check the receive folder in Settings → File transfer, then try again.',
+      };
     } finally {
       this.pulling = null;
       this.render();
@@ -1438,6 +1456,12 @@ class PhotosView {
       button.textContent = busy ? 'Saving…' : 'Save to Mac';
       button.addEventListener('click', () => void this.pull(item));
       actions.appendChild(button);
+
+      const refused = this.saveFailure?.itemId === item.id && !busy ? this.saveFailure : null;
+      if (refused) {
+        actions.appendChild(photoLine('photos-detail-save-failed', `Not saved. ${refused.reason}`));
+        if (refused.fixHint) actions.appendChild(photoLine('photos-detail-save-failed-hint', refused.fixHint));
+      }
 
       if (this.lastPull && !busy) {
         // Where the file went, in full. A "saved" toast that does not say where leaves someone

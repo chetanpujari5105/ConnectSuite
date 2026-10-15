@@ -54,7 +54,12 @@ class FakeBridge {
     this.thumbCalls.push(options.ids);
     return { ok: true as const, data: this.thumbs };
   }
+  /** Save to Mac's two failure shapes: an IPC handler that threw, and a refusal with a sentence. */
+  originalThrows: Error | null = null;
+  originalRefusal: { reason: string; fixHint?: string } | null = null;
   async mediaOriginal() {
+    if (this.originalThrows) throw this.originalThrows;
+    if (this.originalRefusal) return { ok: false as const, ...this.originalRefusal };
     if (!this.originals) return { ok: false as const, reason: 'no' };
     return { ok: true as const, data: this.originals };
   }
@@ -474,4 +479,65 @@ test('a focus and a route inside the gap are one ask, and the first return ever 
   assert.equal(pane.bridge.listCalls.length, after, 'a route half a second after a focus asked the phone again');
   await pane.view.onReturn('reconnect', 1_600);
   assert.equal(pane.bridge.listCalls.length, after + 1, 'a reconnect must always ask');
+});
+
+// ---- Save to Mac when this Mac cannot write (2026-10-15) ----------------------------------------
+/*
+ * Two failures, both found reading the code rather than on a screen. A pull whose IPC handler
+ * threw had a `try/finally` and no `catch`: the button went back to "Save to Mac" and nothing was
+ * said. A pull that was refused with a sentence wrote it into the pane's own `failure` — which hides
+ * the whole grid and heads it "The phone is not sharing its photos", about a refusal from the Mac.
+ */
+
+const saveButtonOf = (pane: Pane) =>
+  walk(pane.detail).find((e) => (e.className ?? '').split(' ').includes('photos-detail-save'));
+const saveFailureOf = (pane: Pane) =>
+  walk(pane.detail).filter((e) => (e.className ?? '').startsWith('photos-detail-save-failed')).map((e) => e.textContent);
+
+async function selectAndSave(pane: Pane): Promise<void> {
+  pane.view.setAdvertised(true);
+  pane.bridge.buckets = [bucket('camera', 2)];
+  pane.bridge.pages = [{ items: [item('a', noon(1)), item('b', noon(1, 5))], hasMore: false }];
+  await pane.view.refresh();
+  tilesOf(pane)[0]!.click();
+  const save = saveButtonOf(pane);
+  assert.ok(save, 'control: the detail card draws a Save to Mac button');
+  save.click();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+}
+
+test('Save to Mac whose handler threw says so in the detail card, and the button comes back', async () => {
+  const pane = mount();
+  pane.bridge.originalThrows = new Error("Error invoking remote method 'media-original': EPERM");
+  await selectAndSave(pane);
+  const said = saveFailureOf(pane);
+  assert.equal(said.length >= 1, true, 'a thrown save left the pane silent');
+  assert.match(said[0]!, /^Not saved\. Sidekick could not save this to the Mac\./);
+  assert.equal(saveButtonOf(pane)?.textContent, 'Save to Mac');
+  assert.equal(tilesOf(pane).length, 2, 'the grid stays');
+});
+
+test('Save to Mac refused with a sentence keeps the grid and is not worded as the phone refusing', async () => {
+  const pane = mount();
+  pane.bridge.originalRefusal = {
+    reason: 'Sidekick is not allowed to save into /Users/x/Downloads/Sidekick. Nothing was copied.',
+    fixHint: 'Allow Sidekick to use your Downloads folder in System Settings.',
+  };
+  await selectAndSave(pane);
+  assert.deepEqual(saveFailureOf(pane), [
+    'Not saved. Sidekick is not allowed to save into /Users/x/Downloads/Sidekick. Nothing was copied.',
+    'Allow Sidekick to use your Downloads folder in System Settings.',
+  ]);
+  assert.equal(tilesOf(pane).length, 2, 'one refused save emptied the grid');
+  assert.equal(pane.banner.hidden, true, 'a Mac-side refusal raised the pane banner');
+  assert.doesNotMatch(pane.banner.textContent, /not sharing its photos/);
+});
+
+test('control: a save that worked shows where it went and no failure line', async () => {
+  const pane = mount();
+  pane.bridge.originals = { path: '/tmp/IMG.jpg', bytes: 2048, elapsedMs: 5 };
+  await selectAndSave(pane);
+  assert.deepEqual(saveFailureOf(pane), []);
+  assert.ok(walk(pane.detail).some((e) => e.className === 'photos-detail-saved'), 'the saved line is drawn');
 });

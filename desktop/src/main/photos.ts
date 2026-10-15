@@ -1,6 +1,5 @@
 import { join } from 'node:path';
-import { promises as fs } from 'node:fs';
-import { ensureReceiveFolder } from './downloads';
+import { ensureReceiveFolder, prepareReceiveFolder } from './downloads';
 import {
   MessageType,
   type MediaBucket,
@@ -266,7 +265,20 @@ export class PhotosClient {
 
     // Room first (L3). The phone has already agreed this transfer, so a refusal here also cancels it
     // there rather than leaving it waiting for a socket nobody will open.
-    await fs.mkdir(folder, { recursive: true });
+    // The folder is made through the same guarded call as the receive folder: a bare `mkdir` here
+    // threw past the cancel below, so the phone kept an agreed transfer and the pane got no sentence.
+    const made = await prepareReceiveFolder(null, folder);
+    if (!made.ok) {
+      log.warn('photos', `media.original ${ticket.data.transferId} refused on this Mac: the folder could not be created`);
+      await this.link()?.request(MessageType.FS_TRANSFER_CANCEL, { transferId: ticket.data.transferId, reason: 'folder-unavailable' }, 5_000).catch(() => undefined);
+      return {
+        ok: false,
+        feature: 'photos',
+        type: MessageType.MEDIA_ORIGINAL,
+        reason: made.reason,
+        fixHint: made.fixHint,
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string; verified: boolean }>;
+    }
     const short = await pullSpaceRefusal(folder, ticket.data.size);
     if (short) {
       log.warn('photos', `media.original ${ticket.data.transferId} refused on this Mac: ${short}`);

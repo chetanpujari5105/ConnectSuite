@@ -73,6 +73,10 @@ mac:
     NSLocalNetworkUsageDescription: >-
       Sidekick connects to your phone on this network. Nothing leaves your local network and
       there is no server involved.
+    # Save to Mac and every pull write into ~/Downloads/Sidekick by default, and macOS asks before an app
+    # writes there. Denying it is answered in the pane (`prepareReceiveFolder`), not by a silent reset.
+    NSDownloadsFolderUsageDescription: >-
+      Sidekick saves the photos, videos and files you copy from your phone into your Downloads folder.
     LSMinimumSystemVersion: '11.0'
     # S8 (defect 186): files this app creates are quarantined **by macOS** — Apple's documented key, so a
     # file pulled or shared from the phone is assessed by Gatekeeper when opened as an app or script.

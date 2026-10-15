@@ -3314,6 +3314,21 @@ img#qr {
   word-break: break-all;
 }
 
+/* Save to Mac refused or failed on this Mac: the warning tone, not the destructive one — nothing was
+   lost, and the hint under it says what to do. */
+.photos-detail-save-failed {
+  font: var(--text-meta-size);
+  color: var(--warning);
+  margin-top: var(--space-3);
+  word-break: break-word;
+}
+
+.photos-detail-save-failed-hint {
+  font: var(--text-meta-size);
+  color: var(--text-body);
+  margin-top: var(--space-1);
+}
+
 .photos-detail-limit {
   font: var(--text-meta-size);
   color: var(--text-meta);

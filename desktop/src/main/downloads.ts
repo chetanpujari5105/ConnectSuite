@@ -48,14 +48,40 @@ export function downloadsFolder(): string {
  * Called at the start of every pull, never at app start: a drive can be unplugged between two
  * transfers, and the answer that matters is the one at the moment of writing.
  */
-export async function ensureReceiveFolder(): Promise<
-  { ok: true; folder: string } | { ok: false; reason: string; fixHint: string }
-> {
-  const chosen = chosenDownloadsFolder();
+export async function ensureReceiveFolder(): Promise<ReceiveFolder> {
+  return prepareReceiveFolder(chosenDownloadsFolder(), defaultDownloadsFolder());
+}
+
+export type ReceiveFolder = { ok: true; folder: string } | { ok: false; reason: string; fixHint: string };
+
+/**
+ * [ensureReceiveFolder] with its two inputs passed in, so a test can reach the write that fails.
+ *
+ * **The default folder's `mkdir` was the one unguarded write on the Save to Mac path.** It threw
+ * rather than returning, so every caller's `{ ok: false }` branch — the photo, the file pull, the
+ * share offer, Reveal — was skipped, and the rejection reached the renderer as an IPC error with no
+ * sentence. The Photos pane's Save button went back to idle with nothing said. That is the outcome
+ * on a fresh macOS account that answers **Don't Allow** to the Downloads prompt (`EPERM`), and on any
+ * Mac where `~/Downloads/Sidekick` cannot be made (`ENOTDIR`, `EACCES`, a full disk).
+ */
+export async function prepareReceiveFolder(chosen: string | null, defaultFolder: string): Promise<ReceiveFolder> {
   if (chosen === null) {
-    const folder = defaultDownloadsFolder();
-    await fsp.mkdir(folder, { recursive: true });
-    return { ok: true, folder };
+    try {
+      await fsp.mkdir(defaultFolder, { recursive: true });
+      return { ok: true, folder: defaultFolder };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      const refused = code === 'EPERM' || code === 'EACCES';
+      return {
+        ok: false,
+        reason: refused
+          ? `Sidekick is not allowed to save into ${defaultFolder}. Nothing was copied.`
+          : `Sidekick could not create the folder ${defaultFolder}${code ? ` (${code})` : ''}. Nothing was copied.`,
+        fixHint: refused
+          ? 'Allow Sidekick to use your Downloads folder in System Settings → Privacy & Security → Files & Folders, or choose another folder in Settings → File transfer.'
+          : 'Choose another folder in Settings → File transfer.',
+      };
+    }
   }
   try {
     const info = await fsp.stat(chosen);
