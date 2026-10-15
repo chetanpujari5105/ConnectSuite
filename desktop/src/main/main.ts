@@ -60,6 +60,7 @@ import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp, readFileSync, statSync } from 'node:fs';
 import { BulkClient } from './bulk';
+import { TrayWriter, trayFace, type TrayMenuItem } from './trayWriter';
 import { pullPartPathFor } from '../shared/transferFiles';
 import { activity } from './activity';
 // `shared/activity.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
@@ -193,6 +194,8 @@ let float: FloatMirrorWindow | null = null;
 /** The receive window (docs/feature-a-receive-window.md). Built beside the receiver, in `whenReady`. */
 let shareWindow: ShareReceiveWindow | null = null;
 let tray: Tray | null = null;
+/** The only writer of `tray`'s title, tooltip and menu — it skips a status tick that changed nothing. */
+let trayWriter: TrayWriter | null = null;
 /**
  * Edge detector for the native notifier's replay cutoff.
  *
@@ -876,40 +879,43 @@ function revealMainWindow(why: string): void {
 }
 
 function refreshTray(): void {
-  if (!tray) return;
+  if (!tray || !trayWriter) return;
   // The mask as a menu-bar **template** image (UX batch 2026-10-10) — one colour, which macOS redraws
   // for light and dark menu bars itself, so nothing is redrawn per theme — and the connection state
   // beside it as the dot it always was. The title used to be "● CS": ConnectSuite's initials.
-  const connected = lastStatus?.phase === 'connected';
-  tray.setTitle(connected ? '●' : '○');
-  tray.setToolTip(statusLabel(lastStatus));
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: statusLabel(lastStatus), enabled: false },
-      { type: 'separator' },
-      {
-        // Through `revealMainWindow` rather than its own `show()`: this item did not restore a
-        // minimised window and did not focus the one it showed, so it was a third half-answer to the
-        // question defect 117 is about. One function, four callers.
-        label: 'Open Sidekick',
-        click: () => revealMainWindow('tray'),
-      },
-      {
-        label: 'Reconnect now',
-        enabled: !connected,
-        click: () => link?.retryNow('tray'),
-      },
-      {
-        label: connected ? 'Disconnect' : 'Connect',
-        click: () => {
-          if (!connected) return link?.start();
-          stopCause = 'user';
-          return link?.stop('tray');
-        },
-      },
-      { type: 'separator' },
-      { label: 'Quit', click: () => app.quit() },
-    ]),
+  //
+  // Through the writer (2026-10-15): this runs on every status — every 30 s retry while the phone is
+  // away — and each setter asks AppKit to redraw the status item. Only a change is written now.
+  trayWriter.write(trayFace(lastStatus?.phase === 'connected', statusLabel(lastStatus)));
+}
+
+/** The tray's menu from its spec; each `action` becomes its click here, where `link` and `app` live. */
+function trayMenu(items: readonly TrayMenuItem[]): Menu {
+  const click: Record<NonNullable<TrayMenuItem['action']>, () => unknown> = {
+    // Through `revealMainWindow` rather than its own `show()`: this item did not restore a
+    // minimised window and did not focus the one it showed, so it was a third half-answer to the
+    // question defect 117 is about. One function, four callers.
+    open: () => revealMainWindow('tray'),
+    reconnect: () => link?.retryNow('tray'),
+    // Read when clicked: the menu is rebuilt whenever the connection changes, so this agrees with the
+    // label the person clicked.
+    toggle: () => {
+      if (lastStatus?.phase !== 'connected') return link?.start();
+      stopCause = 'user';
+      return link?.stop('tray');
+    },
+    quit: () => app.quit(),
+  };
+  return Menu.buildFromTemplate(
+    items.map((item): Electron.MenuItemConstructorOptions =>
+      item.type === 'separator'
+        ? { type: 'separator' }
+        : {
+            label: item.label,
+            ...(item.enabled === false ? { enabled: false } : {}),
+            ...(item.action ? { click: click[item.action] } : {}),
+          },
+    ),
   );
 }
 
@@ -2351,6 +2357,12 @@ app.whenReady().then(() => {
   const trayImage = nativeImage.createFromPath(join(__dirname, '..', 'renderer', 'assets', 'brand', 'trayTemplate.png'));
   trayImage.setTemplateImage(true);
   tray = new Tray(trayImage.isEmpty() ? nativeImage.createEmpty() : trayImage);
+  const createdTray = tray;
+  trayWriter = new TrayWriter({
+    setTitle: (title) => createdTray.setTitle(title),
+    setToolTip: (tooltip) => createdTray.setToolTip(tooltip),
+    setMenu: (items) => createdTray.setContextMenu(trayMenu(items)),
+  });
   refreshTray();
   // The window is created at the top of this callback now, ahead of `loadIdentity` — see D15 there.
 
