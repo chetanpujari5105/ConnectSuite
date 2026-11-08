@@ -431,9 +431,6 @@ class ShellView {
    * defect and the reason that surface was rebuilt.
    */
   private subtitleFor(id: string, fallback: string): string {
-    // Under the trial's screen the pane is not drawn, so its subtitle would describe something absent
-    // ("Pair a phone to get started" on a paired Mac whose link the trial stopped). The trial says it.
-    if (this.trialCovers(id)) return this.trialSubtitle();
     if (id === 'overview') return overviewSubtitle(toneOf(this.status));
     if (id === 'pairing') return pairingSubtitle(this.pairReachable);
     return fallback;
@@ -465,7 +462,9 @@ class ShellView {
     connect.routeChanged(id);
     if (settingsPane) this.settingsPane = settingsPane;
 
-    this.applyTrialGate();
+    document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {
+      section.hidden = section.dataset.screen !== id;
+    });
     for (const [rowId, row] of this.navRows) {
       if (rowId === id) row.setAttribute('aria-current', 'page');
       else row.removeAttribute('aria-current');
@@ -483,32 +482,6 @@ class ShellView {
     this.movePill();
     this.replayEntrance();
     for (const listener of this.routeListeners) listener(id);
-  }
-
-  /**
-   * The beta trial's screen (2026-10-12, `trial.ts`): told which routes it covers, and re-applied on
-   * every route and every verdict. One writer of which section is visible — here — so the trial screen
-   * and a pane can never both show.
-   */
-  private trialCovers: (id: string) => boolean = () => false;
-  private trialSubtitle: () => string = () => '';
-
-  setTrialGate(covers: (id: string) => boolean, subtitle: () => string): void {
-    this.trialCovers = covers;
-    this.trialSubtitle = subtitle;
-    this.applyTrialGate();
-  }
-
-  applyTrialGate(): void {
-    const covered = this.trialCovers(this.current);
-    const gate = document.getElementById('trial-gate');
-    if (gate) gate.hidden = !covered;
-    document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {
-      section.hidden = covered || section.dataset.screen !== this.current;
-    });
-    const sub = document.getElementById('page-sub');
-    const screen = screenById(this.current);
-    if (sub && screen) sub.textContent = this.subtitleFor(this.current, screen.subtitle);
   }
 
   /** Register a listener for [route]. See [routeListeners]. */

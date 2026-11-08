@@ -154,14 +154,6 @@ export interface DebugSwitches {
    */
   pairDecoyFirst: boolean;
   /**
-   * The beta trial's development gate (2026-10-12, `src/main/trial.ts`): a **development** build with this
-   * switch named does not check beta access, so the owner's own development app keeps working without a
-   * token. `trialEnforced` ignores it in a packaged build — a packaged Sidekick always checks, and
-   * `trial.test.ts` proves that over the packaged configuration. Off by default: without it, a
-   * development build checks exactly as a packaged one does.
-   */
-  skipTrial: boolean;
-  /**
    * The Keychain notice (2026-10-14, `identityStore.ts`) in a **development** build, so its sheet can be
    * seen on a scratch profile. A packaged build shows it on every fresh profile without this; a
    * development build without it never does, because the development Electron already holds the
@@ -187,7 +179,6 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'webcamSpike',
   'callBanner',
   'pairDecoyFirst',
-  'skipTrial',
   'keychainNotice',
 ];
 
@@ -215,10 +206,9 @@ export function readDebugSwitches(raw: string | undefined, packaged: boolean): D
     webcamSpike: false,
     callBanner: false,
     pairDecoyFirst: false,
-    skipTrial: false,
     keychainNotice: false,
   };
-  // The one place a packaged build is told apart, for all eighteen: the environment is ignored
+  // The one place a packaged build is told apart, for all seventeen: the environment is ignored
   // whole. Six switches are read in their own modules with nothing else between them and a guard,
   // and a packaged build refuses only argv switches (`entry.js`), so this line is what stops
   // `CONNECTSUITE_DEBUG_SWITCHES=bypassReplyGuard /Applications/Sidekick.app/…` weakening one.

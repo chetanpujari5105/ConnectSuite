@@ -60,9 +60,6 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // Added 2026-09-26 as the request for share.file 3; since 2026-09-29 an unpackaged Mac advertises 3 by
       // default and this is the opposite, off by default (asserted below): hold at share.file 2 for skew tests.
       'shareV3Off',
-      // Added 2026-10-12 for the beta trial, off by default (asserted below): a DEVELOPMENT build named
-      // with it skips the beta check. trialEnforced ignores it when packaged (trial.test.ts).
-      'skipTrial',
       'stallCallEnded',
       'stallRemoved',
       // Added 2026-10-04 for Camera v2's wiring, off by default (asserted below) and forced off in a
@@ -174,15 +171,15 @@ test('the call banner gate is forced off in a packaged build', () => {
 
 // ---- A packaged build ignores the environment entirely (2026-10-15) -----------------------------
 /*
- * Six of the eighteen switches are read in their own modules (notifications, remote, sms, calls,
+ * Six of the seventeen switches are read in their own modules (notifications, remote, sms, calls,
  * link) with no `app.isPackaged` beside them, and a packaged build refused only argv switches
  * (`entry.js`). So a packaged Sidekick started with this variable set ran with those guards weakened.
  * The check now lives once, where the variable is read.
  */
 
-test('packaged: every one of the eighteen is off with all of them named in the environment', () => {
+test('packaged: every one of the seventeen is off with all of them named in the environment', () => {
   const names = Object.keys(allOff());
-  assert.equal(names.length, 18, 'control: the full set is named');
+  assert.equal(names.length, 17, 'control: the full set is named (eighteen until 2.0.2 removed skipTrial)');
   setPackagedForTests(true);
   process.env.CONNECTSUITE_DEBUG_SWITCHES = names.join(',');
   resetDebugSwitchesForTests();
