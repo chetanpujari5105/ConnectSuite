@@ -85,8 +85,24 @@ data class LinkState(
      * trusted Mac can also produce.
      */
     val lastPairSuccess: PairSuccess? = null,
+    /**
+     * When a TCP connection last **arrived** on the control port — before any handshake, whoever sent it.
+     *
+     * The one thing the phone can observe about a Mac that is trying and failing. Without it the waiting
+     * screen could not tell *nothing has reached this phone* from *your Mac reached it and gave up
+     * mid-handshake*: a handshake the Mac abandons presents no certificate, so it never became a
+     * [lastRefusal] and reached only the log (defect 228). It says a connection arrived, not whose.
+     */
+    val lastInboundAtMillis: Long? = null,
 ) {
     val isConnected: Boolean get() = clients.isNotEmpty()
+
+    /**
+     * The state after `accept()` returned a socket on the control port. Named, like its neighbours, so
+     * the write is a call a JVM test can make — the rule that reads it ([ConnectStage.quietSinceScan])
+     * is otherwise tested against a field nothing is known to fill (defect 67's shape).
+     */
+    fun afterInboundConnection(nowMillis: Long): LinkState = copy(lastInboundAtMillis = nowMillis)
 
     /**
      * The state after a `hello` was turned away over its pairing token.
@@ -218,6 +234,8 @@ class LinkServer(
      */
     private val refusedCount = java.util.concurrent.atomic.AtomicInteger()
     private val acceptedCount = java.util.concurrent.atomic.AtomicInteger()
+    /** TCP connections `accept()` returned on the control port, whatever became of them. */
+    private val inboundCount = java.util.concurrent.atomic.AtomicInteger()
 
     // Pairing has its own pair of counters for the same reason: "3 pairings refused" says nothing
     // until you know whether any has ever succeeded.
@@ -520,6 +538,14 @@ class LinkServer(
                 LinkLog.w("server", "Control accept failed", e)
                 continue
             }
+            // Before the handshake, so a Mac that connects and then gives up is still counted: the
+            // waiting screen reads this to tell "nothing arrived" from "something arrived".
+            _state.update { it.afterInboundConnection(System.currentTimeMillis()) }
+            LinkLog.i(
+                "server",
+                "Inbound connection from ${socket.inetAddress?.hostAddress} — ${inboundCount.incrementAndGet()} arrived / " +
+                    "${acceptedCount.get()} accepted / ${refusedCount.get()} refused since start",
+            )
             // The handshake runs on the connection's own thread: an unpaired Mac failing
             // certificate checks must not stall the next legitimate client.
             scope.launch {

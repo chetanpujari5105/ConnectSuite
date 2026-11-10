@@ -4040,6 +4040,20 @@ ipc.handle('disconnect', () => {
 });
 ipc.handle('retry-now', () => link?.retryNow('user'));
 
+/**
+ * Open System Settings at Privacy & Security → Local Network.
+ *
+ * The URL is a constant in this process and the channel takes no argument, so the renderer can ask
+ * for this one pane and nothing else — `openExternal` with a renderer-supplied string would open any
+ * scheme registered on this Mac. There is no API to *read* the permission (`reachDiagnosis.ts`); the
+ * most this can do is take the person to the switch.
+ */
+const LOCAL_NETWORK_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork';
+ipc.handle('open-local-network-settings', async () => {
+  log.info('pairing', 'Opening System Settings → Privacy & Security → Local Network');
+  await shell.openExternal(LOCAL_NETWORK_SETTINGS_URL);
+});
+
 ipc.handle('set-manual-address', (_event, address: string) => {
   // Stored in the parsed form, so `10.35.99.249:42501` — how the phone displays it — and a pasted
   // `http://…/` both become something discovery can dial. Text that will not parse is stored as typed

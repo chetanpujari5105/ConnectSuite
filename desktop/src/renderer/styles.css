@@ -5187,6 +5187,8 @@ input.files-search {
 .pair-help-line { margin: 0 0 var(--space-3); font: var(--text-meta-size); line-height: 1.5; color: var(--text-body); }
 .pair-help-row { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
 .pair-help-row input { flex: 1; min-width: 0; font-family: var(--font-mono); }
+/* A button under its own sentence, between two paragraphs: the paragraph's rhythm, not the form row's. */
+.pair-help-row-inline { margin: 0 0 var(--space-5); }
 
 /*
  * `34:12152` — the explanation that takes the code's place. It occupies the plate rather than

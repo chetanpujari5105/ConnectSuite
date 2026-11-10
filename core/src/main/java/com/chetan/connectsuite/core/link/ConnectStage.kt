@@ -70,6 +70,12 @@ sealed interface ConnectStage {
         val macName: String,
         val scannedAtMillis: Long,
         val expiresAtMillis: Long,
+        /**
+         * [QUIET_HINT_AFTER_MS] have passed since the scan and **no connection has reached this phone**
+         * ([quietSinceScan]). The wait continues and the code stays armed; only the words change, from
+         * "verifying" — which nothing is doing yet — to what to check.
+         */
+        val quiet: Boolean = false,
     ) : ConnectStage {
         fun millisLeft(nowMillis: Long): Long = (expiresAtMillis - nowMillis).coerceAtLeast(0L)
 
@@ -125,6 +131,27 @@ sealed interface ConnectStage {
     data class Refused(val fingerprintPrefix: String, val address: String?) : ConnectStage
 
     companion object {
+        /** How long a scan may go with nothing arriving before the screen says so. */
+        const val QUIET_HINT_AFTER_MS = 15_000L
+
+        /**
+         * Whether [scanned] has waited [QUIET_HINT_AFTER_MS] with **no TCP connection arriving**.
+         *
+         * One rule for both screens that draw the wait (Connect a Mac, and onboarding's pairing page).
+         *
+         * A connection from *before* the scan does not count: it is about an earlier attempt, and a Mac
+         * whose code was not yet scanned is refused at TLS by design. One at or after the scan ends the
+         * quiet for good — from then on something is reaching this phone, the network is not the
+         * problem, and telling the person to change Wi-Fi would send them the wrong way.
+         *
+         * It claims only what the phone can see. *Why* nothing arrived — a different network, a router
+         * isolating clients, macOS withholding Local Network access — is not visible from here.
+         */
+        fun quietSinceScan(state: LinkState, scanned: ScannedPairing, nowMillis: Long): Boolean {
+            val heard = state.lastInboundAtMillis?.let { it >= scanned.scannedAtMillis } ?: false
+            return !heard && nowMillis - scanned.scannedAtMillis >= QUIET_HINT_AFTER_MS
+        }
+
         /**
          * The decision, in one place, composed from [LinkWaitStatus] rather than restating it.
          *
@@ -203,7 +230,12 @@ sealed interface ConnectStage {
                 return if (nowMillis >= scanned.expiresAtMillis) {
                     Expired(scanned.macName)
                 } else {
-                    Waiting(scanned.macName, scanned.scannedAtMillis, scanned.expiresAtMillis)
+                    Waiting(
+                        scanned.macName,
+                        scanned.scannedAtMillis,
+                        scanned.expiresAtMillis,
+                        quiet = quietSinceScan(state, scanned, nowMillis),
+                    )
                 }
             }
 

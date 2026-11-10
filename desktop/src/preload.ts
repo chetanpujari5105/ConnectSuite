@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('connect', {
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   retryNow: () => ipcRenderer.invoke('retry-now'),
+  openLocalNetworkSettings: () => ipcRenderer.invoke('open-local-network-settings'),
   setManualAddress: (address: string) => ipcRenderer.invoke('set-manual-address', address),
   setTailscaleAddress: (address: string) => ipcRenderer.invoke('set-tailscale-address', address),
   forgetDevice: () => ipcRenderer.invoke('forget-device'),
