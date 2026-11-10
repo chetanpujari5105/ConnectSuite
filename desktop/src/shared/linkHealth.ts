@@ -44,6 +44,8 @@
  * mapping below stays load-bearing either way.
  */
 
+import { reachSentence, type ReachDiagnosis } from './reachDiagnosis';
+
 /** TLS alert numbers, from the wire. Only 46 has been observed from this phone. */
 const ALERT_CERTIFICATE_UNKNOWN = 46;
 const ALERT_BAD_CERTIFICATE = 42;
@@ -102,7 +104,7 @@ export const RENAME_REFUSAL =
  */
 export function classifyLinkError(
   raw: string | undefined,
-  context: { rePairPending?: boolean } = {},
+  context: { rePairPending?: boolean; reach?: ReachDiagnosis } = {},
 ): LinkFailure | null {
   if (!raw) return null;
   const text = String(raw);
@@ -128,9 +130,13 @@ export function classifyLinkError(
   if (/ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|EHOSTDOWN|No phone answered/i.test(text)) {
     return {
       kind: 'unreachable',
+      // A round that recorded how each address failed says which of four different situations this
+      // is (`reachDiagnosis.ts`). Without one — a single socket error, an older caller — the general
+      // sentence stands. The kind does not change: every surface keyed on it reads as before.
       message:
+        (context.reach && reachSentence(context.reach)) ??
         'Could not reach your phone. Check that both are on the same Wi-Fi and that Sidekick ' +
-        'is running on the phone.',
+          'is running on the phone.',
       raw: text,
     };
   }

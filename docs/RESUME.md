@@ -1,3 +1,92 @@
+# TESTER PAIRING HANG — 2026-11-10: 3 Mac defects fixed in source, the hang itself still open (228); nothing built, committed, installed or sent
+
+**Nothing built (`desktop/dist` and the running dev app are unchanged), nothing committed, no phone touched.** Input
+was a pasted brief plus a tester's five photos and three videos (realme RMX3987, *Rehans-MacBook-Air*, 2026-11-09).
+
+1. **The brief's premise is the reverse of this app.** It asks for a Mac listener, a phone-side connect timeout and
+   fallback IPs in the QR. The phone listens and the Mac dials (locked decision #2); the QR's `host` is never dialled
+   by anyone. Its USB/ADB fallback is forbidden by locked decision #1 and was not built.
+2. **225, fixed in source:** the phone shows its address as `ip:42501`; typed that way on the Mac it was dialled as a
+   hostname → `ENOTFOUND` (reproduced). This is what failed in the 20:32 video.
+3. **226, fixed in source:** the Mac kept no per-address reason, used one 2 s clock for connect + handshake, and drew
+   no reason on the pairing screen. Now: one sentence per situation (Local Network setting / Sidekick not listening /
+   different or isolating network → hotspot / handshake stalled / bad address), an 8 s handshake clock, a log line
+   listing every address with its outcome, and `#pair-reach` on the pairing card.
+4. **227, fixed in source:** the code's address prefers `en*` and private ranges over tunnels and bridges.
+5. **228, open: why the tester's Mac cannot complete a connection is unproven.** Three causes fit; the tester's
+   `sidekick.log` `… failed:` lines separate them (`docs/defects.md` → 228). Their settings photo is **Location
+   Services**, not **Privacy & Security → Local Network**, so that switch has not been checked.
+6. **Tests:** Mac 2,156 / 0 on the second run; the first had 3 failures in `webcamSpike.test.ts` (15 / 15 alone, not
+   recurring, imports nothing changed). Mutations red for 225–227. Phone suite not run: no Kotlin changed.
+7. **Not verified:** anything against a phone; the notice in a running app (it draws only on an unpaired Mac, and the
+   dev profile is paired); a real macOS Local Network refusal.
+8. **Owner decisions:** build and relaunch the dev app; commit (files below are uncommitted); ask the tester for the
+   log and the Local Network switch; whether the phone should show *nothing has reached this phone* during the wait.
+9. **Files:** new `desktop/src/shared/{phoneAddress,reachDiagnosis}.ts` + tests, `desktop/src/main/linkReach.test.ts`;
+   changed `desktop/src/main/{link,discovery,main}.ts`, `desktop/src/shared/{linkHealth,pairReach}.ts` + test,
+   `desktop/src/renderer/{index.html,renderer.ts}`, `docs/{defects,testing,RESUME}.md`.
+
+# PHONE-PERMITTED NIGHT CHECKS — 2026-10-15 02:45–03:01: no commits; no install; one Save to Mac pair, both files deleted
+
+**Nothing installed, uninstalled, cleared, tapped, signed or pushed; no setting or permission changed; no
+re-pair; trust data and Keychain untouched; the Mac app not rebuilt or relaunched.** Phone reads went through
+`scripts/adb-pinned.sh samsung` (SM-S938B).
+
+1. **Link state (read first):** the dev app (`sidekick-desktop-dev` profile) logged 148 *certificate mismatch*
+   refusals up to 02:39:31; the owner re-paired at 02:40:03 and it has been **connected since 02:40:19, 0
+   mismatches after**. The dev identity files are unchanged (9 Oct).
+2. **There is no debug app on the phone.** `pm list packages` (control: 596 packages, `android` present) shows
+   only **`com.chetan.connectsuite` 2.0.0, versionCode 3, installer Play Store, installed 2026-10-14 00:33**. The
+   Mac is paired with that **release** app. **The debug install was skipped as owner-only**: it would be a fresh
+   second app, not an `install -r` over an existing one, and would bind the same ports [A] as the release app the
+   owner had just paired.
+3. **Capabilities (renderer `lastStatus`, via `probe.mjs`, control 11):** apps, calls, clipboard, contacts, files,
+   mirror, notifications, photos, remote, share, sms; `limited` empty; no `camera`. `media.original` has no flag
+   of its own: it rides on `photos` (protocol.md § `media.original`). Extensions: phone `share.file 2,
+   share.ask 1`, no `fs.blocks`.
+4. **The rebuild was refused** by the permission classifier (`npm run build`), so the Photos reads are from the
+   **running 2026-10-12 02:11 build**, older than `7039c8d`. Its subtitle still reads *"View, organise and import
+   photos from your phone."* Photos, nothing selected: 152 album entries (`button[option]`), 120 tiles
+   (`button[gridcell]`; 93 image / 27 video, 8 videos > 64 MiB), no other control; detail reads *"Nothing
+   selected — Choose a photo to see its details and save it to this Mac."* `scripts/caps-reason-probe.mjs` is
+   stale: `#caps` no longer exists.
+5. **Save to Mac, one photo and one video**, picked from metadata only (no tile clicked, no preview loaded),
+   through `photos.bridge.mediaOriginal` (the same `media-original` IPC as the button):
+
+   | | bytes | transfer | verified | on disk |
+   |---|---|---|---|---|
+   | photo (jpeg) | 2,175,570 | 151 ms | **true** (agreed in advance) | size equal |
+   | video (mp4) | 103,414,937 | 2,184 ms | **false** (over the 64 MiB ceiling) | size equal |
+
+   Receive folder `~/Downloads/Sidekick`: 31 entries before, +2 new, 0 `.part`, 0 removed. Both files were
+   deleted by the exact paths the handler returned, and the listing is identical to before (31).
+6. **A finding for Tier 2 §4 (G6 Photos half):** for the *unverified* video, the phone's `[bulk] … sent` line and
+   the Mac's `[bulk] … pulled` line **both print a SHA-256 (`1a64eb5a2f9c…`)**, and it equals a hash of the
+   file on disk. So both ends already hash while streaming; nothing compares the two. That makes option **b** (send
+   the digest in the end message, publish only on a match) cheaper than the plan's estimate [V from the logs, U
+   from code].
+7. **Owner-only:** (a) whether a debug build belongs on this phone next to the Play release app; (b) rebuilding and
+   relaunching the dev app (`npm run build` in `desktop/`); (c) **the Mac's data volume has 1.5 GiB free (100%
+   used)**; (d) **a packaged `/Applications/Sidekick.app` has been running on the owner's account since 2026-10-14
+   16:29** (own profile `sidekick-desktop`, its identity dated 8 Oct, unchanged). Its log stopped at 21:15
+   (`ENETUNREACH`) despite a 30 s retry loop. It was left running.
+8. **Left changed:** the dev app is routed to Photos; the phone and both Mac profiles are as found.
+9. **Follow-up, 03:10–03:25 (no phone, nothing deleted, nothing built):** the "overnight steps 1–5 and 8"
+   (worktree, fixes, Intel, Route C, DMG, static check, report) were **never received**. No transcript in this
+   project holds that prompt, `../ConnectSuite-overnight` does not exist, and
+   `~/Documents/Sidekick-private/share-staging-2026-10-15/` does not exist. Related earlier work: `5cc0826`
+   (Intel out of the guide), and `~/Documents/Sidekick-private/route-c-223-224.patch` (02:24, not applied).
+10. **The packaged app (PID 27401) looks hung, not just quiet [inference].** It is sleeping at 0.0 % CPU with 0
+    windows. Its log's last line is 14 Oct 21:15:33 despite a 30 s retry loop, and a child it started in that
+    same second (`/sbin/route -n get default`, `discovery.ts:57`, 2 s timeout) is still an unreaped zombie
+    (PID 49568). A running Node event loop reaps its children, so the main loop has probably not run since
+    21:15:33. `sample 27401` would settle it; not run.
+11. **Disk:** 1.7 GB free of 494 GB. Largest under home: `~/Downloads/.git` 61.2 GiB (one commit, 2026-04-08)
+    and `~/.git` 42.8 GiB (0 commits, objects only). Both look like an accidental `git init`; they are not
+    caches and the owner decides. Then Claude 10.9, Google 9.9, `.vscode/extensions` 14.3, Android AVD 12.2,
+    SDK 11.8. Photos Library and Messages were not measurable (macOS privacy). The build and DMG step and the
+    rebuilt Photos walkthrough wait on free space and on the worktree.
+
 # OWNER'S AUDIT DECISIONS APPLIED — 2026-10-15: 5 local commits; nothing pushed, signed, installed or published; no gate flipped
 
 1. **H-1 corrected** (`ffd8f89`): Photos has no drag to Finder. **Guide: Apple silicon only** (`82dbc9e`).

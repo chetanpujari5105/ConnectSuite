@@ -238,6 +238,12 @@ own heading there, and its own row here.
 | **220** | **A deliberate quit or relaunch of the Mac app was recorded in Activity as "Disconnected — The connection to your phone failed. See the log for details."** `link.stop('app quit')` classifies its reason like a failure and `app quit` matches no pattern, so it fell to the classifier's generic sentence; a pressed Disconnect was already special-cased, a quit was not. Seen on Overview's Recent activity after a relaunch, 2026-10-11 14:53 | **fixed 2026-10-11, verified on the running app** — one shared rule, `disconnectActivityDetail(stopCause, status)`; `main.ts` names its cause (`user` / `quit`) before stopping the link. A quit now reads **"Sidekick was closed on this Mac"** (seq 5459, the quit performed by the new build); a session the Mac did not end keeps the link's sentence (the 15:06 hotspot restart kept *"dropped. Reconnecting."*). *Device forgotten* still takes the generic sentence — not in this fix's scope, noted | `disconnectActivity.test.ts` (4): red first on the rule and the wiring, green after | `docs/testing.md` → Defect 220 |
 | **221** | **A refused token entered in Settings › About while beta access was valid got no answer at all.** The entry wrote its message *after* applying the verdict; applying a valid verdict cleared a refusal, the Settings redraw built a fresh entry with none, and the next line read `this.message.text` on `null` — `TypeError` once per press, the refusal in the log (`beta token refused: malformed`) and nothing on screen. Found 2026-10-12 on the running app while walking the trial states | **fixed 2026-10-12, verified on the running app** — the answer is recorded against the verdict it came with *before* that verdict is applied, so the redraw draws it | `trialView.test.ts`: red first on the exact `TypeError`; mutation M2 (the old order) red on 3 | `docs/testing.md` → Defect 221 |
 | **222** | **A thank-you outlived the access it thanked for.** After a token was accepted, the entry's *"Thank you — beta access until 25 Nov 2026."* stayed under a later blocking screen — seen under *"This Mac's date looks earlier than before"* (screenshot 6a); a tester whose token expires while Sidekick stays open would read it under *"ended on"*. The message was cleared only when a refusal met a valid verdict, never when a success met a blocking one. Found 2026-10-12 | **fixed 2026-10-12** — a message carries the state it answered and is dropped when the state changes | `trialView.test.ts`: red first on clock-back; mutation M1 (the old clearing rule) red | `docs/testing.md` → Defect 222 |
+| **223** | **The input refusal sent raw package ids to the Mac, in a sentence a person reads.** `InputFailure.ForegroundChanged(from, to)` wrote *"That click was aimed at $from, but $to is in front of the phone now…"* with the packages `foregroundPackage()` read through the Accessibility API; `InputFeature` sent that `reason` to the Mac, and `ConnectSuiteInputService` wrote both to the phone's log. It broke the package-id rule (defects 28/33/46), and the Accessibility disclosure said the Mac "is told the app's name". Found 2026-10-13 while answering Play's Accessibility sensitive-data question | **fixed in source 2026-10-13** on `play/release-vc3` (`6e0acb4`, versionCode 3) — the refusal and the log line name no app; `InputDisclosure.WHERE` says nothing it reads is sent, not even to the paired Mac. **Not installed, not hardware-verified** | `GestureDispatchTest`, `InputDisclosureTest`, `PackageIdInProseTest` | see below |
+| **224** | **Two more refusals sent raw package ids to the Mac**, found by widening the defect 33 guard for 223: `RemoteFailure.Unsupported` (*"com.spotify.music does not let anything seek…"*, three call sites) and `NotificationFailure.IntentRefused` (*"The phone passed that to com.whatsapp and it was refused…"*, reply and action). `PackageIdInProseTest` read only `NotificationFeature.kt`'s `NoReplyAction`, so neither was visible | **fixed in source 2026-10-13** on `play/release-vc3` (`6e0acb4`) — both through `AppLabels.of`. **Not installed, not hardware-verified** | `PackageIdInProseTest` (every failure class, every module) | see below |
+| **225** | **A phone address typed the way the phone displays it could never connect.** The phone shows `10.35.99.249:42501`; the Mac stored the text as typed and discovery passed it to `tls.connect` as the **host**, which fails `ENOTFOUND` in ~150 ms. The screen said *"Trying …"* and nothing after | **fixed in source 2026-11-10** — `shared/phoneAddress.ts`, applied where the address is stored and where discovery reads it. **Not built, not run against a phone** | `phoneAddress.test.ts`, `linkReach.test.ts` | see below |
+| **226** | **The Mac discarded why no address answered, and the pairing screen showed no reason at all.** Each address's own failure was overwritten by `No phone answered on any known address` when the round ended; refused, unreachable and timed-out shared one sentence; one 2 s clock covered TCP connect **and** the TLS handshake; `lastError` reached only the debug HUD | **fixed in source 2026-11-10** — `shared/reachDiagnosis.ts`, an 8 s handshake clock, `#pair-reach` on the pairing card. **Not built; the notice has not been seen in a running app** | `reachDiagnosis.test.ts`, `linkReach.test.ts` (real sockets) | see below |
+| **227** | **The pairing code named the first IPv4 address in platform order**, which on a Mac with a VPN, Internet Sharing or a VM can be a tunnel or bridge no phone can reach | **fixed in source 2026-11-10** — `localPairAddress` ranks `en*` and private addresses first. **Not the cause of 228**: the phone never dials this address | `pairReach.test.ts` | see below |
+| **228** | **A tester's pairing never completes** (realme RMX3987 + a MacBook Air, 2026-11-09): the phone waits out the code's five minutes on *"Verifying your Mac…"*, on Wi-Fi and with the Mac on the phone's hotspot | **open — cause unproven.** 225 explains the typed-address attempt only | none | see below |
 
 ---
 
@@ -4200,3 +4206,47 @@ each goes. **Wrong fixes:** casting the call to `any` to silence it (the test ke
 gating on every error the full check reports (the other 148 of the 162 are strictness errors — possibly-undefined values,
 implicit `any` — and the `tsx` execution-mode noise the config warns about; gating them all would get the gate switched
 off); raising the baseline.
+
+### 223 — the input refusal sent raw package ids to the Mac · **fixed in source 2026-10-13 (`6e0acb4`), not installed**
+
+Evidence: `docs/testing.md` → *Defect 223*. The fix drops both apps from the sentence and from the phone's log line, so
+nothing the Accessibility service reads leaves the phone — Play's Accessibility sensitive-data answer is a plain No
+without leaning on an exemption. **Wrong fixes:** replacing the package with a label while still naming both apps
+(still Accessibility-derived data sent off the phone); adding `ForegroundChanged` to the guard's old one-file list.
+**Still owed:** the signed v3 on a phone, a refused tap seen on the Mac with the new sentence.
+
+### 224 — media-remote and notification refusals sent raw package ids · **fixed in source 2026-10-13 (`6e0acb4`), not installed**
+
+Evidence: `docs/testing.md` → *Defect 224*. Found by the widened guard, not by a screen — the third time this class was
+found by enumerating rather than by looking (28, 33, now 224). **Wrong fix:** allow-listing `packageName` in the guard's
+reviewed names. **Still owed:** one refused seek on a session that cannot seek, read on the Mac.
+
+### 225 — a typed phone address carrying its port was dialled as a hostname · **fixed in source 2026-11-10, not built**
+
+Evidence: `docs/testing.md` → *Defect 225*. Found in a tester's video, then reproduced in Node. **Wrong fix:** changing
+the phone to display a bare address — the stored values and every pasted `ip:port` would still fail.
+
+### 226 — the reason no address answered was discarded · **fixed in source 2026-11-10, not built**
+
+Evidence: `docs/testing.md` → *Defect 226*. **Wrong fix:** a longer single timeout — a wrong address would then cost 8 s
+each, and the four situations would still share one sentence. **Still owed:** the notice seen on an unpaired Mac;
+`EHOSTUNREACH` produced by a real macOS Local Network refusal rather than supplied as a code.
+
+### 227 — the pairing code's address was whichever interface the kernel listed first · **fixed in source 2026-11-10**
+
+Evidence: `docs/testing.md` → *Defect 227*. **Not decided:** which of two `en*` interfaces holds the default route.
+
+### 228 — a tester's pairing never completes · **open**
+
+Evidence: `docs/testing.md` → *Defect 228*. Three causes fit the media and it separates none of them: (a) macOS is
+refusing Sidekick local-network sends — the tester's settings photo is of **Location Services**, so Local Network is
+unchecked; (b) nothing is listening on the phone, or the network drops the Mac's connection; (c) the handshake outlasts
+the old 2 s clock on that handset.
+
+**Fix direction:** read the tester's Mac log (`sidekick.log`) for the `… failed:` lines of one attempt — `EHOSTUNREACH`
+is (a), `ECONNREFUSED` or `timed out` is (b), and a build with 226 says *timed out during the TLS handshake* for (c).
+Then, on the phone, publish whether **any** connection arrived during the wait: `acceptControl` counts accepted and
+refused but a handshake the Mac abandons has no certificate, so it reaches the log and never the screen — the waiting
+stage cannot tell *nothing came* from *your Mac came and gave up*. **Wrong fix:** a connect timeout on the phone — the
+phone does not dial (locked decision #2), so there is nothing for it to time out; and a USB/ADB route, which locked
+decision #1 forbids.

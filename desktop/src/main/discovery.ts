@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { Bonjour } from 'bonjour-service';
 import { pairIntentKey, pairIntentMatches } from '../shared/protocol';
 import { PORT_CONTROL, SERVICE_TYPE, type ConnectionStatus } from '../shared/protocol';
+import { parsePhoneAddress } from '../shared/phoneAddress';
 import { log } from './logger';
 import { store } from './store';
 
@@ -32,6 +33,18 @@ export async function* discoverCandidates(): AsyncGenerator<Candidate> {
     seen.add(host);
     return { host, port: PORT_CONTROL, via };
   };
+  /**
+   * An address a person typed. The phone displays its own as `ip:42501`, so that is what gets typed;
+   * handed to TLS whole it is not a host and fails with ENOTFOUND (`shared/phoneAddress.ts`). Parsed
+   * here, on the read, so a value stored by an older build heals too. Text that will not parse is
+   * still tried as written: its failure is then diagnosed as a bad address rather than vanishing.
+   */
+  const emitTyped = (text: string | null | undefined, via: Candidate['via']): Candidate | null => {
+    const parsed = parsePhoneAddress(text);
+    if (!parsed.ok) return parsed.reason === 'empty' ? null : emit(text?.trim(), via);
+    const candidate = emit(parsed.host, via);
+    return candidate && parsed.port !== null ? { ...candidate, port: parsed.port } : candidate;
+  };
 
   const last = emit(store.get('lastAddress'), 'last-known');
   if (last) yield last;
@@ -44,10 +57,10 @@ export async function* discoverCandidates(): AsyncGenerator<Candidate> {
     if (candidate) yield candidate;
   }
 
-  const tailscale = emit(store.get('tailscaleAddress'), 'tailscale');
+  const tailscale = emitTyped(store.get('tailscaleAddress'), 'tailscale');
   if (tailscale) yield tailscale;
 
-  const manual = emit(store.get('manualAddress'), 'manual');
+  const manual = emitTyped(store.get('manualAddress'), 'manual');
   if (manual) yield manual;
 }
 

@@ -29,6 +29,8 @@ interface RendererStatus {
   limited?: UnavailableCapability[];
   rttMs?: number;
   lastError?: string;
+  /** `LinkFailure.kind`. Read here only to tell an unreachable phone from every other failure. */
+  lastFailureKind?: string;
   nextRetryInMs?: number;
   paired: boolean;
   /** The stored phone was paired by the v1 flow: legacy (docs/protocol.md → Existing pairings). */
@@ -583,6 +585,25 @@ function paintMirrorLink(status: RendererStatus | null): void {
 /** Whether the last status was connected — null before the first. A change to `true` is a return. */
 let wasConnected: boolean | null = null;
 
+/**
+ * The pairing card's "why nothing answered" line — one writer, off the status and nothing else.
+ *
+ * Drawn only for an **unpaired** Mac whose last round ended `unreachable`: that is the person holding
+ * a phone that says "Verifying your Mac…" while this screen said nothing at all. The sentence is the
+ * main process's (`reachDiagnosis.ts`); this decides only whether there is one to show. It also
+ * answers "Use this address", which used to end in a toast reading "Trying …" and no outcome.
+ */
+function drawPairReach(status: RendererStatus | null): void {
+  const box = document.getElementById('pair-reach');
+  if (!box) return;
+  const sentence =
+    status && !status.paired && status.phase !== 'connected' && status.lastFailureKind === 'unreachable'
+      ? status.lastError ?? null
+      : null;
+  box.textContent = sentence ?? '';
+  box.hidden = sentence === null;
+}
+
 function render(status: RendererStatus | null): void {
   shell.setStatus(status);
   // Held for Settings → Device info, which is built when it is opened rather than on every status.
@@ -597,6 +618,7 @@ function render(status: RendererStatus | null): void {
   // Settings → Connection's trusted-device sentence follows every pairing change, not only a rebuild.
   paintTrustedDevice(status);
   drawPairSteps();
+  drawPairReach(status);
 
   setDiag('state', status?.phase ?? '—');
   setDiag('via', status?.via ?? '—');

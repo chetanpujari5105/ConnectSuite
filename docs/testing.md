@@ -30969,3 +30969,59 @@ dropped the link once (15:06:39 `ECONNRESET`), reconnected at 15:06:40 via last-
 identity; Mac `10.51.59.160`, phone `10.51.59.236` unchanged. Phone free space 5,308,232 KiB of 478,509,056 KiB
 — the Overview Storage card's "5.4 GB free of 490 GB" is this volume (`StatFs` on shared storage) in decimal GB,
 and is correct; the Mac's own volume (15.9 GB free of 494.4 GB) is not what it shows.
+
+### Defect 223 — package ids in the input refusal sent to the Mac (phone)
+
+Read 2026-10-13 from `ef94ebe` (versionCode 2): `GestureDispatch.kt:117` built `ForegroundChanged(from = aimedAt,
+to = nowInFront)` from `foregroundPackage()`; `InputFailure.kt:124-129` interpolated both into `reason`;
+`InputFeature.kt:393` sent `message = failure.reason`; `ConnectSuiteInputService.kt:181` logged both. Fixed in `6e0acb4`.
+Red first: *the refusal tells the Mac nothing the Accessibility service read* failed on the old sentence (both packages
+present). After: input-module 64/64. Mutations: the sentence restored → 2 red (GestureDispatchTest, InputDisclosureTest);
+the log line restored → 1 red (*the phone's own log names no app either*); 223 verbatim (signature + sentence + call
+site) → 2 red in `PackageIdInProseTest`. Not installed; no device run.
+
+### Defect 224 — package ids in media-remote and notification refusals (phone)
+
+Found 2026-10-13 by the widened `PackageIdInProseTest` on the real tree: *no refusal sentence interpolates a value
+nobody reviewed* → `RemoteFeature.kt: $packageName`; *no failure is constructed from a package id* →
+`NotificationFailure.IntentRefused(sbn.packageName, detail)` ×2 and `RemoteFailure.Unsupported(…, controller.packageName)`
+×3. Fixed in `6e0acb4` through `AppLabels.of`. After: sync-module 688/688. Mutations: one call site of each restored →
+red; the parameter renamed back to `packageName` → red. A name hidden in a lambda inside the sentence stays green
+(source-scan limit). Control: the scan finds ≥ 9 failure files including `InputFailure.kt` and `MirrorFailure.kt`.
+
+### Defect 225 — a typed phone address carrying its port was dialled as a hostname (Mac)
+
+Found 2026-11-10 in a tester's video (2026-11-09 20:32): `10.35.99.249:42501` typed into *Not finding it?*, a toast
+reading *"Trying 10.35.99.249:42501…"*, then nothing. Reproduced: `tls.connect({host: '10.35.99.249:42501', port: 42501})`
+→ `ENOTFOUND` after 148 ms; control `net.isIP('10.35.99.249')` = 4, with the port = 0. The phone displays that form
+(`PhoneAddress.controlEndpoint`). Fixed by `shared/phoneAddress.ts`, used by `set-manual-address` and by discovery on
+the read, so a value an older build stored heals. Not reached: a phone.
+
+### Defect 226 — the reason no address answered was discarded (Mac)
+
+Found 2026-11-10 by reading `link.ts` against the same videos (island: *"Not paired · no answer on any known address"*).
+`attempt()` ended every failed round with `failed('No phone answered on any known address')`, overwriting each
+address's own reason; `classifyLinkError` gave four errnos one sentence; `CANDIDATE_TIMEOUT_MS` covered connect and
+handshake; the pairing screen drew no reason. Fixed: `shared/reachDiagnosis.ts` (per-address outcomes, the one that got
+furthest decides), `HANDSHAKE_TIMEOUT_MS` = 8 s from the socket's `connect`, a log line carrying every address beside
+its outcome, and `#pair-reach`. `linkReach.test.ts` runs the real connect loop against real sockets — a listener that
+accepts TCP and never speaks (control: it accepted 1), and a closed port. Mutations: the summary overwriting again →
+5 of 5 red; TCP connect unnoticed → 2 red. Mac suite 2,156 / 0 (a first run had 3 failures in `webcamSpike.test.ts`,
+which passes alone 15 / 15 and did not recur). **Not reached:** a real phone; `EHOSTUNREACH` from macOS's Local Network
+refusal (supplied as a code, never produced); the notice in a running app — nothing was built.
+
+### Defect 227 — the pairing code's address was whichever interface the kernel listed first (Mac)
+
+Found 2026-11-10 by reading `localPairAddress`. Fixed by ranking `en*` over tunnels and bridges and private addresses
+over the rest, platform order breaking ties. Mutation (first in platform order again) → 3 red, 9 green. In the tester's
+videos the Mac's address followed the network it was on (`192.168.101.3`, then `10.35.99.99` beside a phone at
+`10.35.99.249`), so this was not observed misbehaving there. Control: the live machine (`lo0`, `en0`) answers as before.
+
+### Defect 228 — a tester's pairing never completes (open)
+
+Media, 2026-11-09 20:24–20:42, realme RMX3987 and *Rehans-MacBook-Air*: the phone on *"Code scanned. Verifying your
+Mac…"* at 3:09 and 4:34 left (two attempts); a hotspot indicator reading *1 device* at 20:30; the Mac at
+`192.168.101.3` (20:25, 20:42) and `10.35.99.99` (20:32); a settings photo of **Location Services** with Sidekick on.
+No log from either device has been read. What the media rules out: nothing. What it shows: the Mac did not complete a
+connection on Wi-Fi or on what appears to be the phone's hotspot. 225 accounts for the typed address only.
+

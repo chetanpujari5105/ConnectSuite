@@ -63,6 +63,40 @@ test('a link-local address is offered rather than refused', () => {
 });
 
 /**
+ * 2026-11-10. The first address in platform order was the answer, and platform order is the
+ * kernel's. Each case lists the wrong interface **first**, which is the order that used to win.
+ */
+const v4 = (address: string): InterfaceAddress => ({ address, family: 'IPv4', internal: false });
+
+test('a VPN tunnel listed first does not take the code from the Wi-Fi', () => {
+  const found = localPairAddress({ lo0: [lo], utun4: [v4('100.101.102.103')], en0: [v4('10.35.99.99')] });
+  assert.equal(found.address, '10.35.99.99');
+});
+
+test('an Internet Sharing or VM bridge listed first does not take the code from the Wi-Fi', () => {
+  assert.equal(localPairAddress({ bridge100: [v4('192.168.101.1')], en0: [v4('10.35.99.99')] }).address, '10.35.99.99');
+  assert.equal(localPairAddress({ vmnet8: [v4('172.16.44.1')], en0: [v4('192.168.1.24')] }).address, '192.168.1.24');
+});
+
+test('on one interface a LAN address beats a link-local one', () => {
+  const found = localPairAddress({ en0: [v4('169.254.7.3'), v4('192.168.1.24')] });
+  assert.equal(found.address, '192.168.1.24');
+});
+
+test('a tunnel is still offered when it is the only address there is', () => {
+  // Refusing it would be a guess, and the wrong direction to be wrong in.
+  assert.deepEqual(localPairAddress({ lo0: [lo], utun4: [v4('100.101.102.103')] }), {
+    address: '100.101.102.103',
+    reachable: true,
+  });
+});
+
+test('control: equal candidates keep platform order, as before', () => {
+  assert.equal(localPairAddress({ en0: [v4('192.168.1.24')], en5: [v4('192.168.7.2')] }).address, '192.168.1.24');
+  assert.equal(localPairAddress({ en5: [v4('192.168.7.2')], en0: [v4('192.168.1.24')] }).address, '192.168.7.2');
+});
+
+/**
  * The control this rule would otherwise lack: every case above is a hand-built interface list, so
  * nothing above asks whether a **real** `os.networkInterfaces()` is the shape this reads. It is run
  * against the live machine, and only the invariant that holds on any machine is asserted — that the

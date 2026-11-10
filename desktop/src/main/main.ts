@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tr
   clipboard, dialog, shell, screen,
 } from 'electron';
 import { homedir, networkInterfaces, tmpdir } from 'node:os';
+import { formatPhoneAddress, parsePhoneAddress } from '../shared/phoneAddress';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
@@ -4040,7 +4041,11 @@ ipc.handle('disconnect', () => {
 ipc.handle('retry-now', () => link?.retryNow('user'));
 
 ipc.handle('set-manual-address', (_event, address: string) => {
-  const trimmed = address.trim();
+  // Stored in the parsed form, so `10.35.99.249:42501` — how the phone displays it — and a pasted
+  // `http://…/` both become something discovery can dial. Text that will not parse is stored as typed
+  // and its failure is diagnosed as a bad address (`shared/reachDiagnosis.ts`).
+  const parsed = parsePhoneAddress(address);
+  const trimmed = parsed.ok ? formatPhoneAddress(parsed) : address.trim();
   store.set('manualAddress', trimmed.length > 0 ? trimmed : null);
   link?.retryNow('manual address changed');
 });

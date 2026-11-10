@@ -234,6 +234,14 @@
               -->
               <section class="pair-help">
                 <h3 class="pair-help-title">Not finding it?</h3>
+                <!--
+                  Why the last round of addresses failed, in the main process's own sentence
+                  (`shared/reachDiagnosis.ts`). Hidden until a round has actually failed: before
+                  that there is nothing to report, and the three standing lines below are the copy.
+                  It sits here rather than on the code card because every sentence it can carry ends
+                  in something this card offers: the hotspot, or the address field.
+                -->
+                <div class="pair-notice" data-tone="warning" id="pair-reach" role="status" hidden></div>
                 <p class="pair-help-line">Both machines have to be on the same Wi-Fi. A guest or work network often blocks devices from seeing each other.</p>
                 <p class="pair-help-line">The phone’s hotspot works too: turn it on, join it from this Mac, and scan again.</p>
                 <p class="pair-help-line">If you know the phone’s address, type it here and this Mac will try it directly.</p>
