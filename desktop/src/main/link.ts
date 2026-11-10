@@ -19,6 +19,7 @@ import {
   type PairRejected,
 } from '../shared/protocol';
 import { classifyLinkError, pairingHealth, type LinkFailure } from '../shared/linkHealth';
+import { diagnoseReach, reachSummary, type ReachAttempt, type ReachDiagnosis } from '../shared/reachDiagnosis';
 import { clearedSession, SESSION_ENDED_EVENT, type SessionEnded, type SessionScoped } from '../shared/session';
 import { MAC_EXT, negotiateAll, parseExt } from '../shared/extensions';
 import { debugSwitches } from './debugSwitches';
@@ -36,10 +37,23 @@ const PAIR_TOKEN_TTL_MS = 5 * 60 * 1000;
 /** Failed phone proofs one pairing code survives before it is retired (docs/protocol.md → Pairing (version 2)). */
 export const PAIR_MAX_FAILURES = 8;
 
+/**
+ * How long the TLS handshake gets once TCP has connected.
+ *
+ * `CANDIDATE_TIMEOUT_MS` (2 s) used to cover TCP connect **and** the handshake. The first is a
+ * question about the network and 2 s is generous; the second is the phone signing with a
+ * hardware-backed Keystore key, measured on exactly one handset (`docs/single-device-audit.md`). A
+ * phone that needs longer than the remainder of 2 s was indistinguishable from one that is not there,
+ * on every retry, forever. Separate clocks: a wrong address still costs 2 s, a slow phone gets 8.
+ */
+export const HANDSHAKE_TIMEOUT_MS = 8_000;
+
 /** Test seams. The product passes nothing: discovery is `discoverCandidates`, the clock is `Date.now`. */
 export interface LinkClientOptions {
   candidates?: () => AsyncIterable<Candidate>;
   now?: () => number;
+  /** HANDSHAKE_TIMEOUT_MS, shortened so a test of a stalled handshake does not take eight seconds. */
+  handshakeTimeoutMs?: number;
 }
 
 /**
@@ -114,8 +128,8 @@ export class LinkClient extends EventEmitter {
   private lastFailure: LinkFailure | null = null;
 
   /** Record a failure. The one way this state is entered — see [lastFailure]. */
-  private failed(raw: string): void {
-    this.lastFailure = classifyLinkError(raw, { rePairPending: this.rePairPending() });
+  private failed(raw: string, reach?: ReachDiagnosis): void {
+    this.lastFailure = classifyLinkError(raw, { rePairPending: this.rePairPending(), reach });
   }
 
   /**
@@ -359,17 +373,26 @@ export class LinkClient extends EventEmitter {
     this.connecting = true;
     this.setPhase(this.lastFailure ? 'reconnecting' : 'searching');
 
+    // How each address failed, kept past the loop. The round's summary used to overwrite every
+    // per-address reason with one sentence; see `shared/reachDiagnosis.ts`.
+    const attempts: ReachAttempt[] = [];
+
     try {
       for await (const candidate of (this.options.candidates ?? discoverCandidates)()) {
         if (!this.running) return;
         log.info('link', `Trying ${candidate.host}:${candidate.port} (${candidate.via})`);
-        const connected = await this.tryCandidate(candidate);
+        const connected = await this.tryCandidate(candidate, attempts);
         if (connected) {
           this.connecting = false;
           return;
         }
       }
-      this.failed('No phone answered on any known address');
+      const reach = diagnoseReach(attempts);
+      log.warn(
+        'link',
+        `No phone answered — ${reach.tried} address(es) tried, diagnosis ${reach.kind}: ${reachSummary(attempts)}`,
+      );
+      this.failed('No phone answered on any known address', reach);
     } catch (error) {
       this.failed(String(error));
       log.error('link', 'Discovery failed', error);
@@ -380,15 +403,24 @@ export class LinkClient extends EventEmitter {
     if (this.running && !this.isConnected()) this.scheduleRetry();
   }
 
-  private tryCandidate(candidate: Candidate): Promise<boolean> {
+  private tryCandidate(candidate: Candidate, attempts: ReachAttempt[] = []): Promise<boolean> {
     return new Promise((resolve) => {
       this.setPhase('connecting');
       const paired = store.get('paired');
       let settled = false;
-      const finish = (ok: boolean, reason?: string) => {
+      let tcpConnected = false;
+      const handshakeTimeoutMs = this.options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS;
+      const finish = (ok: boolean, reason?: string, how: { timedOut?: boolean; code?: string | null } = {}) => {
         if (settled) return;
         settled = true;
         if (!ok) {
+          attempts.push({
+            host: candidate.host,
+            via: candidate.via,
+            tcpConnected,
+            timedOut: how.timedOut === true,
+            code: how.code ?? null,
+          });
           // Every failed candidate says why. Without this a refused handshake looks identical to
           // a phone that is simply not there, which is exactly the case that wastes an evening.
           if (reason) {
@@ -412,9 +444,26 @@ export class LinkClient extends EventEmitter {
         timeout: CANDIDATE_TIMEOUT_MS,
       });
 
-      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => finish(false, `${candidate.host} timed out`));
+      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () =>
+        finish(
+          false,
+          tcpConnected
+            ? `${candidate.host} timed out during the TLS handshake (${handshakeTimeoutMs}ms after TCP connected)`
+            : `${candidate.host} timed out`,
+          { timedOut: true },
+        ),
+      );
 
-      socket.once('error', (error) => finish(false, `${candidate.host}: ${error.message}`));
+      // TCP is up: the address is right and the network lets us through. What remains is the phone's
+      // half of the handshake, which gets its own, longer clock — see HANDSHAKE_TIMEOUT_MS.
+      socket.once('connect', () => {
+        tcpConnected = true;
+        socket.setTimeout(handshakeTimeoutMs);
+      });
+
+      socket.once('error', (error) =>
+        finish(false, `${candidate.host}: ${error.message}`, { code: (error as NodeJS.ErrnoException).code ?? null }),
+      );
 
       socket.once('secureConnect', () => {
         socket.setTimeout(0);
