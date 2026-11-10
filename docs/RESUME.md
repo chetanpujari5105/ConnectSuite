@@ -1,34 +1,35 @@
-# TESTER PAIRING HANG — 2026-11-10: 225–227 committed (`2f38056`) and built; two aids for 228 in source, uncommitted; the hang's cause still unproven
+# TESTER PAIRING HANG — 2026-11-10: app commits `2f38056` + `3031eee`; Mac DMG built, not sent to anyone; website pushed and live; the hang's cause still unproven
 
-**Dev app built and started (it was not running). Nothing installed on a phone, nothing pushed, signed or sent.** A
-packaged `/Applications/Sidekick.app` (running since 9 Nov) was left alone. Input: two pasted briefs and a tester's
-five photos and three videos (realme RMX3987, *Rehans-MacBook-Air*, 2026-11-09).
+**Nothing installed on a phone, nothing signed or notarized, the DMG published nowhere, the app repo not pushed.**
+The website repo was pushed, on the owner's instruction. The packaged app was built and inspected, never launched.
 
-1. **Direction.** The phone listens and the Mac dials (locked decision #2). The first brief assumed the reverse; its
-   USB/ADB fallback is forbidden by locked decision #1 and was not built.
-2. **Committed, `2f38056`:** 225 (a typed `ip:42501` was dialled as a hostname → `ENOTFOUND`, reproduced), 226 (the
-   Mac keeps and words each address's failure; 8 s handshake clock; a reason on the pairing card), 227 (the code's
-   address prefers `en*` and private ranges).
-3. **Uncommitted, Mac:** a *suspected* Local Network block (a send to the Mac's own gateway failing outright), a
-   standing line and an **Open Local Network settings** button on the pairing card. **The permission cannot be read
-   by an app**, so this is an inference and a route to the switch, not a check of it.
-4. **Uncommitted, phone:** after 15 s with no connection arriving, both waiting screens change to *"Still waiting for
-   your Mac…"* with the Wi-Fi / hotspot guidance; the code stays armed. A late arrival turns it back.
-5. **228 stays open.** No log from the tester's devices has been read. `docs/defects.md` → 228 has the three causes
-   and the log lines that separate them.
-6. **Suites:** phone 1,500 / 0, Mac 2,160 / 0. Mutations red for every new rule (`docs/testing.md` → Defect 228).
-7. **Not verified:** anything on the tester's pair; the phone change on any phone; the card's notice and button in the
-   running app (this Mac holds a stored phone, so the card draws its remembered shape); a real macOS denial.
-8. **Seen on this Mac, not acted on:** the dev app's own rounds end `10.101.54.230 (gateway): answered` with *not the
-   paired phone (certificate mismatch)* — the phone at the gateway is not the one the dev profile is paired with.
-9. **Owner decisions:** commit the uncommitted work; an Android build for the tester (needs the release track);
-   ask the tester for `sidekick.log` and the Local Network switch; re-pair the dev profile (item 8).
-10. **Uncommitted files:** `desktop/src/shared/reachDiagnosis.ts` + test, `desktop/src/main/{main,ipcPolicy}.ts`,
-    `desktop/src/preload.ts`, `desktop/src/renderer/{index.html,renderer.ts,styles.css}`,
-    `core/…/link/{LinkServer,ConnectStage}.kt`, `core/…/ConnectStageTest.kt`,
-    `app/…/onboarding/{OnboardingCopy,OnboardingScreen}.kt`, `app/…/link/ConnectMacScreen.kt`,
-    `app/…/PairingWordingTest.kt`, `docs/{defects,testing,RESUME}.md`. Unrelated and untouched: `skills-lock.json`,
-    `.vscode/`, `my-session.*`, the `high-end-visual-design` skill folders.
+1. **App, committed locally:** `2f38056` (defects 225, 226, 227) and `3031eee` (two aids for 228: the phone's
+   15-second *"Still waiting for your Mac…"* state, and the Mac's suspected Local Network block with a button to the
+   Settings pane). An app cannot read that permission; the Mac's notice is an inference.
+2. **228 is open.** No log from the tester's devices has been read; `docs/defects.md` → 228 names the three causes
+   and the log lines that separate them. The owner's own Samsung paired with this build at 19:32 (pairing v2, via the
+   gateway), which shows pairing was not broken and nothing about the tester's pair.
+3. **DMG:** `desktop/release/Sidekick-2.0.1-arm64.dmg`, 121,659,197 bytes, SHA-256
+   `7da914fad7e46f9c8efad2dc6240d592368e872a48362fc4f7c8bf8ef01212b1`, from `3031eee`. Ad-hoc signed
+   (`codesign --verify --deep --strict` exit 0), `spctl` → `rejected` (control: Calculator `accepted`). No Developer
+   ID identity is in the keychain (0 valid), so nothing was notarized. `SHA256SUMS.txt` and `RELEASE-NOTES.md`
+   (Open Anyway steps) sit beside it; `release/` is gitignored.
+4. **The DMG has the same name and version as the one testers already have** (`docs/beta-tester-guide.md` names
+   `Sidekick-2.0.1-arm64.dmg`). Only the hash tells them apart. The version was not bumped: that moves the Android
+   version too.
+5. **Website** (`chetanpujari5105/SIDEkick-website`, `16348cd`, cloned in the session scratchpad, no checkout on this
+   Mac): `currentBuild` 2.0.1 / 2026-11-10 and a changelog entry. Vercel production deployment succeeded and the live
+   site shows both. **No download was added:** `signed` is reserved for a notarized build and `/download` exists only
+   when every link is signed; the DMG exceeds GitHub's 100 MB file limit; the beta form is closed, so there is no
+   success page to carry a link. `/download` is still 404, by that design.
+6. **Suites:** Mac 2,160 / 0 (rerun on the committed tree); phone 1,500 / 0 (Gradle found every module up to date and
+   reused the results from the run made on these same sources, about 4.5 hours earlier); website 18 / 0, `astro
+   check` 0 errors.
+7. **Not done:** the release verification the 2026-10-11 candidate had; an Android build; an Intel build.
+8. **Owner decisions:** how the DMG reaches testers (a private link, as before, or a public release); a version bump;
+   an Android test build carrying the phone change; asking the tester for `sidekick.log` and the Local Network switch.
+9. **Left as found, uncommitted and not mine:** `skills-lock.json`, `.vscode/`, `my-session.md`, `my-session.txt`, 54
+   `high-end-visual-design` skill folders. **Disk:** 4.4 GiB free.
 
 # PHONE-PERMITTED NIGHT CHECKS — 2026-10-15 02:45–03:01: no commits; no install; one Save to Mac pair, both files deleted
 
