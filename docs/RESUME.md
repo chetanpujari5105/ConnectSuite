@@ -1,3 +1,40 @@
+# MAC 2.0.2 PUBLIC (NO TOKEN) — 2026-11-11: release/2.0.2 + the pairing fixes, published and live on the Vercel site; sidekickapp.in untouched; 8+ GiB free
+
+**Published on the owner's instruction: GitHub prerelease `v2.0.2` and one website push. Not pushed: any app branch.
+The packaged app was never launched (it would overwrite this Mac's identity); "no token prompt" is a reading of the
+packaged files, not of a running app.**
+
+1. **`release/2.0.2`** (worktree `~/Desktop/ConnectSuite-release-2.0.2`): `2f38056` and `3031eee` cherry-picked as
+   `8fa931f` and `c5619bd`. One conflict, in `link.ts`: 2.0.2 had deleted the token gate beside the line the fix
+   added; resolved by keeping the fix's test seam and leaving the gate deleted.
+2. **Tests on that tree:** full run 2,128 pass / 21 fail, **all 21 in the three webcam test files**, each *"the
+   bridge is not built: run `swift build`"* (the baseline that branch's own commit records). After `swift build`, those
+   three files: 52 / 0. So 2,149 / 0 across the two runs. Typecheck clean.
+3. **DMG:** `~/Desktop/ConnectSuite-release-2.0.2/desktop/release/Sidekick-2.0.2-arm64.dmg`, 121,677,045 bytes,
+   SHA-256 `a7de5d28b56be39d92d9d2e55ed1976171772bd6470081649b9690911d4fb5b2`. Ad-hoc signed (verify exit 0), `spctl`
+   → `rejected`. In the packaged app: version 2.0.2; token strings only in `dist/shared/trial.js`, which nothing
+   loads (control string found); `main.js`, `renderer.js`, `preload.js`, `ipcPolicy.js`, `index.html` hold 0; the
+   pairing fixes are present; no email, home path, key or test file in 920 files.
+4. **Public:** https://github.com/chetanpujari5105/SIDEkick-website/releases/download/v2.0.2/Sidekick-2.0.2-arm64.dmg
+   (prerelease). Re-hashed from the release URL **and** through the site's own link: equal both times.
+5. **Website** (`76fefc0`, deployed): `/get/Sidekick-arm64.dmg` → the 2.0.2 asset, the old 2.0.1 path redirects to
+   the same file; `/download` and `/setup` no longer mention a token. Tests 23 / 0. **Still describing a hand-issued
+   45-day token, and now wrong:** `/beta`, `/privacy`, the home page's beta section, two FAQ answers.
+6. **`sidekickapp.in` was not changed and could not be from here.** No Vercel CLI or login on this Mac. The domain
+   is live from `Side-Kick-V1`, which already offers its own 2.0.1 DMG (`bf8042be…`, release `sidekick-mac-2.0.1`).
+   To serve 2.0.2 there: add the asset to that repo's release and update `data/site-config.js`.
+7. **Cleanup, and one mistake in it:** a loop meant for Gradle `build` folders also matched the tracked
+   `desktop/build/` in `ConnectSuite-play` and `ConnectSuite-play-vc4` and deleted four packaging files in each.
+   Restored from git at once; both worktrees read clean, and the signed vc4 bundle still verifies.
+   Removed: Gradle output in three worktrees (bundles kept), Gradle caches and distributions for versions no project
+   here uses (9.0.0, 9.2.0, 9.3.1, 8.9), old daemon logs, the unpacked `.app` folders, this session's
+   `node_modules`, and the npm, pip and Homebrew download caches. **Not touched:** `~/Downloads/.git` (63 G) and
+   `~/.git` (43 G), which are where the space actually is.
+8. **Android:** the owner signed the vc4 bundle (`jarsigner`: verified, 6,637,878 bytes) at
+   `~/Desktop/ConnectSuite-play-vc4/app/build/outputs/bundle/release/app-release.aab`. Upload is the owner's.
+9. **Owner decisions:** push `release/2.0.2`, `play/release-vc4` and this branch; the stale token copy in item 5;
+   `sidekickapp.in`; whether the v2.0.1 prerelease should stay up. Defect 228 is still open.
+
 # PUBLIC MAC DOWNLOAD + PLAY vc4 — 2026-11-11: DMG published as a GitHub prerelease and linked from the Vercel site; vc4 bundle built UNSIGNED; three things need the owner
 
 **Published on the owner's instruction: a GitHub prerelease and two website pushes. Not done: signing the Android
