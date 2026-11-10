@@ -1,3 +1,38 @@
+# PUBLIC MAC DOWNLOAD + PLAY vc4 — 2026-11-11: DMG published as a GitHub prerelease and linked from the Vercel site; vc4 bundle built UNSIGNED; three things need the owner
+
+**Published on the owner's instruction: a GitHub prerelease and two website pushes. Not done: signing the Android
+bundle (refused by `scripts/hooks/no-release-signing.sh`, by design), anything on a phone, any push of the app repo.**
+
+1. **Mac DMG, public:** prerelease `v2.0.1` on `chetanpujari5105/SIDEkick-website` (the app commits are unpushed, so a
+   tag on ConnectSuite would have named source that does not match the binary). Asset `Sidekick-2.0.1-arm64.dmg`,
+   SHA-256 `7da914fa…f01212b1`, **re-hashed after download from the release URL: equal**. Before publishing, the
+   packaged app was scanned (922 files; control string found in 67): no email, no home path, no key, no test file.
+2. **Website** (`SIDEkick-website`, `50644e4`): `releaseMode: 'public'`, `/download` with the link, the SHA-256, the
+   Open Anyway steps, and the statement that the app needs a beta access token and Android is an invited Play test.
+   **`signed` is still `false`** — a new `allowUnnotarizedDownloads: true` is what lets the page render. The link is
+   `/get/Sidekick-2.0.1-arm64.dmg`, redirected by `vercel.json`, because a site test forbids the owner's name in any
+   page and the GitHub URL contains it. Tests 23 / 0. Live at `sidekick-website-website.vercel.app/download`
+   (200; the redirect answers 307 to the asset).
+3. **`sidekickapp.in` is a different site and was not changed.** It is deployed from `Side-Kick-V1` (static
+   `.dc.html`), not from `SIDEkick-website`; its checkout at `~/Downloads/sidekick-site-v1` has push set to
+   `NO_PUSH_local_only`. `/download` there is 404.
+4. **Android vc4:** new worktree `~/Desktop/ConnectSuite-play-vc4`, branch `play/release-vc4` = `play/release-vc3` +
+   the phone half of `3031eee` + versionCode 4 / versionName 2.0.1 (`6b6797a`). **Not built from this branch**: it
+   lacks the seven Play-only commits (disclosures, no battery-exemption request) and its versionCode is 1. Phone
+   suite on that branch 1,537 / 0, all rerun. **Unsigned** bundle:
+   `~/Desktop/ConnectSuite-play-vc4/app/build/outputs/bundle/release/app-release.aab` (6,610,645 bytes; `jarsigner`:
+   unsigned; manifest versionCode 4, 2.0.1; the new copy is in its dex, with a control). Play will not accept it
+   unsigned. To sign, the owner runs, in that worktree:
+   `! ./gradlew :app:bundleRelease -Pconnectsuite.signRelease=true` (JAVA_HOME = Android Studio's JBR).
+5. **`release/2.0.2` exists and is ahead of what was published.** Ten commits past `5cc0826`, the last on 8 Nov:
+   *Mac 2.0.2: no beta token*. The public DMG is 2.0.1 from `clipboard-watcher-and-phase-5-close` and **still asks
+   for a token**, which the download page says. The pairing fixes (`2f38056`, `3031eee`) are not on `release/2.0.2`.
+6. **Owner decisions:** sign and upload vc4; whether the public download should be a 2.0.2 build with the pairing
+   fixes merged in; pointing `sidekickapp.in` at the download; pushing the app branches; defect 228 is still open.
+7. **Disk: 2.9 GiB free.** The new worktree's build output is the largest recent addition.
+8. **Left as found:** `~/Desktop/ConnectSuite-play` and its 3 Nov `.aab`; the packaged app running since 9 Nov;
+   `skills-lock.json`, `.vscode/`, `my-session.*`, the skill folders.
+
 # TESTER PAIRING HANG — 2026-11-10: app commits `2f38056` + `3031eee`; Mac DMG built, not sent to anyone; website pushed and live; the hang's cause still unproven
 
 **Nothing installed on a phone, nothing signed or notarized, the DMG published nowhere, the app repo not pushed.**
