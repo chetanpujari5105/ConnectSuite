@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.PairRejectReason
+import com.chetan.connectsuite.onboarding.OnboardingCopy
 import com.chetan.connectsuite.core.ui.Radius
 import com.chetan.connectsuite.core.ui.SidekickColors
 import com.chetan.connectsuite.core.ui.SidekickType
@@ -313,19 +314,24 @@ private fun WaitingStage(stage: ConnectStage.Waiting, nowMillis: Long, onCancel:
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Space.md),
         ) {
-            Box(
-                Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(SidekickColors.accentTint)
-                    .border(BorderStroke(Size.hairline, SidekickColors.accentBorder), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size(16.dp).clip(CircleShape).background(SidekickColors.accent))
+            // The live dot is the "something is happening" mark. Fifteen seconds with no connection
+            // arriving, nothing is — so it goes, and the words below say what to check. The countdown
+            // and Cancel stay exactly as they were: the code is still armed (`ConnectStage.quietSinceScan`).
+            if (!stage.quiet) {
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(SidekickColors.accentTint)
+                        .border(BorderStroke(Size.hairline, SidekickColors.accentBorder), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(16.dp).clip(CircleShape).background(SidekickColors.accent))
+                }
             }
 
             Text(
-                "Code scanned. Verifying your Mac\u2026",
+                if (stage.quiet) OnboardingCopy.PAIR_QUIET_TITLE else "Code scanned. Verifying your Mac\u2026",
                 style = SidekickType.title,
                 color = SidekickColors.textPrimary,
                 textAlign = TextAlign.Center,
@@ -334,8 +340,12 @@ private fun WaitingStage(stage: ConnectStage.Waiting, nowMillis: Long, onCancel:
             // connects and both prove the code before either saves the other. Saying so is also the
             // instruction — the next move is on the Mac.
             Text(
-                "${stage.macName} connects to this phone and both prove the code before either trusts " +
-                    "the other. Keep Sidekick open on the Mac.",
+                if (stage.quiet) {
+                    OnboardingCopy.PAIR_QUIET_BODY
+                } else {
+                    "${stage.macName} connects to this phone and both prove the code before either trusts " +
+                        "the other. Keep Sidekick open on the Mac."
+                },
                 style = SidekickType.body,
                 color = SidekickColors.textBody,
                 textAlign = TextAlign.Center,

@@ -344,18 +344,24 @@ private fun PairPage(onFinished: (OnboardingOutcome) -> Unit) {
     if (current != null) {
         when (val outcome = ConnectStage.pairingOutcome(state, current, now)) {
             PairingOutcome.Paired -> PairedState(current.macName, onFinished)
-            PairingOutcome.Verifying -> PageScaffold(
-                page = copy,
-                title = OnboardingCopy.PAIR_VERIFYING_TITLE,
-                subtitle = OnboardingCopy.PAIR_VERIFYING_SUBTITLE,
-                primaryLabel = OnboardingCopy.PAIR_VERIFYING_CANCEL,
-                onPrimary = {
-                    server.cancelPairing()
-                    scanned = current.copy(cancelled = true)
-                },
-                onSecondary = null,
-            ) {
-                item { CircularProgressIndicator() }
+            PairingOutcome.Verifying -> {
+                // Fifteen seconds with nothing arriving: the same wait, the same armed code and the same
+                // Cancel, with the spinner gone — nothing is being verified yet, and the words say what to
+                // check instead. A connection arriving puts the spinner back (`ConnectStage.quietSinceScan`).
+                val quiet = ConnectStage.quietSinceScan(state, current, now)
+                PageScaffold(
+                    page = copy,
+                    title = if (quiet) OnboardingCopy.PAIR_QUIET_TITLE else OnboardingCopy.PAIR_VERIFYING_TITLE,
+                    subtitle = if (quiet) OnboardingCopy.PAIR_QUIET_BODY else OnboardingCopy.PAIR_VERIFYING_SUBTITLE,
+                    primaryLabel = OnboardingCopy.PAIR_VERIFYING_CANCEL,
+                    onPrimary = {
+                        server.cancelPairing()
+                        scanned = current.copy(cancelled = true)
+                    },
+                    onSecondary = null,
+                ) {
+                    if (!quiet) item { CircularProgressIndicator() }
+                }
             }
             else -> {
                 val title = if (outcome == PairingOutcome.Cancelled) OnboardingCopy.PAIR_CANCELLED_TITLE else OnboardingCopy.PAIR_FAILED_TITLE

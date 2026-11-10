@@ -1,6 +1,6 @@
 {
   "name": "sidekick-desktop",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Sidekick for macOS \u2014 pairs with the Android app over TLS on the local network.",
   "main": "entry.js",

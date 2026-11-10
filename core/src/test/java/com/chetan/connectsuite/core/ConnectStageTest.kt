@@ -160,4 +160,59 @@ class ConnectStageTest {
         val verifiedThenCancelledLater = listening().afterPairSucceeded(macFp, "Chetans-MacBook-Pro", t0 + 2_000)
         assertEquals("Cancel is the person's last word", PairingOutcome.Cancelled, ConnectStage.pairingOutcome(verifiedThenCancelledLater, cancelled, t0 + 3_000))
     }
+
+    // ---- the quiet wait (defect 228): fifteen seconds and no connection has reached this phone ----
+
+    private val quietAfter = ConnectStage.QUIET_HINT_AFTER_MS
+
+    private fun waiting(state: LinkState, at: Long) =
+        ConnectStage.of(state, scan, "10.0.0.5", at) as ConnectStage.Waiting
+
+    @Test
+    fun `a wait is not quiet before fifteen seconds and is from then on`() {
+        assertEquals(15_000L, quietAfter)
+        assertEquals(false, waiting(listening(), t0 + quietAfter - 1).quiet)
+        assertEquals(true, waiting(listening(), t0 + quietAfter).quiet)
+    }
+
+    /**
+     * The transition, not a hand-built field: the state is what `LinkServer.acceptControl` produces by
+     * calling [LinkState.afterInboundConnection], so this is red if that write stops filling what the
+     * rule reads.
+     */
+    @Test
+    fun `a connection arriving after the scan ends the quiet for good`() {
+        val heard = listening().afterInboundConnection(t0 + 4_000)
+        assertEquals(false, waiting(heard, t0 + quietAfter).quiet)
+        assertEquals(false, waiting(heard, t0 + 4 * quietAfter).quiet)
+        // Control: the same clock with nothing arriving is quiet.
+        assertEquals(true, waiting(listening(), t0 + 4 * quietAfter).quiet)
+    }
+
+    @Test
+    fun `a connection arriving late turns a quiet wait back into verifying`() {
+        assertEquals(true, waiting(listening(), t0 + 20_000).quiet)
+        assertEquals(false, waiting(listening().afterInboundConnection(t0 + 21_000), t0 + 22_000).quiet)
+    }
+
+    @Test
+    fun `a connection from before the scan is about an earlier attempt`() {
+        val stale = listening().afterInboundConnection(t0 - 1)
+        assertEquals(true, waiting(stale, t0 + quietAfter).quiet)
+    }
+
+    /** The helper changes the words only. The code's own deadline is untouched, so nobody has to rescan. */
+    @Test
+    fun `a quiet wait keeps the code armed until its own deadline`() {
+        val quiet = waiting(listening(), t0 + quietAfter)
+        assertEquals(t0 + ttl, quiet.expiresAtMillis)
+        assertEquals(PairingOutcome.Verifying, ConnectStage.pairingOutcome(listening(), scan, t0 + quietAfter))
+        assertTrue(ConnectStage.of(listening(), scan, "10.0.0.5", t0 + ttl - 1) is ConnectStage.Waiting)
+        assertTrue(ConnectStage.of(listening(), scan, "10.0.0.5", t0 + ttl) is ConnectStage.Expired)
+    }
+
+    @Test
+    fun `stopping the listeners forgets what arrived`() {
+        assertEquals(null, listening().afterInboundConnection(t0 + 1).afterStopped().lastInboundAtMillis)
+    }
 }

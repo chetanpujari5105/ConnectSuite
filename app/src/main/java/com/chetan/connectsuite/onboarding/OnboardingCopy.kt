@@ -235,6 +235,17 @@ object OnboardingCopy {
             "Keep Sidekick open on the Mac."
     const val PAIR_VERIFYING_CANCEL = "Cancel"
 
+    /**
+     * The same wait once `ConnectStage.quietSinceScan` is true: fifteen seconds, and no connection has
+     * reached this phone. The code is still armed, so this replaces the words and nothing else. It
+     * states what the phone saw and what to check; it does not say *why*, which the phone cannot see.
+     */
+    const val PAIR_QUIET_TITLE = "Still waiting for your Mac\u2026"
+    const val PAIR_QUIET_BODY =
+        "No connection from your Mac has reached this phone yet. Make sure both devices are on the exact same " +
+            "Wi-Fi, or connect your Mac directly to this phone\u2019s personal hotspot if your router blocks " +
+            "device-to-device communication. This code stays valid while you do \u2014 there is no need to scan again."
+
     /** The outcome is not a pairing: a refusal, an expiry, or the person cancelling. */
     const val PAIR_FAILED_TITLE = "Pairing did not finish"
     const val PAIR_EXPIRED_BODY = "The code expired before your Mac connected. Show a fresh code on the Mac and scan it again."
@@ -262,6 +273,8 @@ object OnboardingCopy {
             PAIR_VERIFYING_TITLE,
             PAIR_VERIFYING_SUBTITLE,
             PAIR_VERIFYING_CANCEL,
+            PAIR_QUIET_TITLE,
+            PAIR_QUIET_BODY,
             PAIR_FAILED_TITLE,
             PAIR_EXPIRED_BODY,
             PAIR_CANCELLED_TITLE,
