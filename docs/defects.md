@@ -243,7 +243,7 @@ own heading there, and its own row here.
 | **225** | **A phone address typed the way the phone displays it could never connect.** The phone shows `10.35.99.249:42501`; the Mac stored the text as typed and discovery passed it to `tls.connect` as the **host**, which fails `ENOTFOUND` in ~150 ms. The screen said *"Trying …"* and nothing after | **fixed in source 2026-11-10** — `shared/phoneAddress.ts`, applied where the address is stored and where discovery reads it. **Not built, not run against a phone** | `phoneAddress.test.ts`, `linkReach.test.ts` | see below |
 | **226** | **The Mac discarded why no address answered, and the pairing screen showed no reason at all.** Each address's own failure was overwritten by `No phone answered on any known address` when the round ended; refused, unreachable and timed-out shared one sentence; one 2 s clock covered TCP connect **and** the TLS handshake; `lastError` reached only the debug HUD | **fixed in source 2026-11-10** — `shared/reachDiagnosis.ts`, an 8 s handshake clock, `#pair-reach` on the pairing card. **Not built; the notice has not been seen in a running app** | `reachDiagnosis.test.ts`, `linkReach.test.ts` (real sockets) | see below |
 | **227** | **The pairing code named the first IPv4 address in platform order**, which on a Mac with a VPN, Internet Sharing or a VM can be a tunnel or bridge no phone can reach | **fixed in source 2026-11-10** — `localPairAddress` ranks `en*` and private addresses first. **Not the cause of 228**: the phone never dials this address | `pairReach.test.ts` | see below |
-| **228** | **A tester's pairing never completes** (realme RMX3987 + a MacBook Air, 2026-11-09): the phone waits out the code's five minutes on *"Verifying your Mac…"*, on Wi-Fi and with the Mac on the phone's hotspot | **open — cause unproven.** 225 explains the typed-address attempt only | none | see below |
+| **228** | **A tester's pairing never completes** (realme RMX3987 + a MacBook Air, 2026-11-09): the phone waits out the code's five minutes on *"Verifying your Mac…"*, on Wi-Fi and with the Mac on the phone's hotspot | **open — cause unproven.** 225 explains the typed-address attempt only. **Two aids fixed in source 2026-11-10, neither proven on that pair:** the phone's wait says after 15 s that nothing has reached it, and the Mac names a suspected Local Network block | `ConnectStageTest` (quiet wait), `reachDiagnosis.test.ts` | see below |
 
 ---
 
@@ -4250,3 +4250,11 @@ refused but a handshake the Mac abandons has no certificate, so it reaches the l
 stage cannot tell *nothing came* from *your Mac came and gave up*. **Wrong fix:** a connect timeout on the phone — the
 phone does not dial (locked decision #2), so there is nothing for it to time out; and a USB/ADB route, which locked
 decision #1 forbids.
+
+**Built 2026-11-10, after the entry above.** *Phone:* `acceptControl` records every arrival
+(`LinkState.afterInboundConnection`, and a log line with arrived / accepted / refused), and `ConnectStage.quietSinceScan`
+turns the wait into *"Still waiting for your Mac…"* after 15 s with none — the code stays armed to its own deadline.
+*Mac:* a send to its own default gateway failing outright is reported as a **suspected** Local Network block, and the
+pairing card carries a standing line and a button that opens that Settings pane. **Still owed:** the phone change on a
+phone (not installed); a real macOS denial — the permission cannot be read by an app, the errno macOS returns for a
+denied send was looked for and not confirmed, and the dev app is exempt because Terminal launches it.

@@ -31025,3 +31025,18 @@ Mac…"* at 3:09 and 4:34 left (two attempts); a hotspot indicator reading *1 de
 No log from either device has been read. What the media rules out: nothing. What it shows: the Mac did not complete a
 connection on Wi-Fi or on what appears to be the phone's hotspot. 225 accounts for the typed address only.
 
+**2026-11-10, later the same day — built, and two aids for 228.** `2f38056` commits 225–227. `npm run build` exit 0;
+the dev app was **not running** beforehand (a packaged `/Applications/Sidekick.app` from 9 Nov was, and was left
+alone), so it was started, not relaunched; CDP lists one page target. Its log carries the new line on a live round:
+`No phone answered — 2 address(es) tried, diagnosis answered: 10.51.59.236 (last-known): silent; 10.101.54.230
+(gateway): answered` — the gateway answered with a certificate that is not the paired phone's, which the diagnosis
+correctly does not call unreachable. *Mac, Local Network:* `localNetworkSuspected` (a gateway send failing outright,
+withdrawn by any proof that local sends work), `open-local-network-settings`, a standing line and button on the
+pairing card. Mutations: not limited to the gateway → 3 red; proof no longer withdraws it → 4 red. *Phone, the quiet
+wait:* `LinkState.afterInboundConnection`, `ConnectStage.quietSinceScan`, both waiting screens. Mutations, read from
+result files 0 s old: the write returning `this` → gradle exit 1, 2 red in `ConnectStageTest`; a pre-scan connection
+counting as heard → exit 1, 1 red. **Suites:** phone 1,500 / 0 (app 218, camera 188, core 292, input 52, mirror 65,
+sync 685; the app module's 28 result files predate the last run because Gradle found it up to date); Mac 2,160 / 0.
+**Not reached:** either aid on the tester's devices; the phone build on any phone; the pairing card's notice or button
+in the running app (the dev Mac holds a stored phone, so the card draws its *remembered* shape); a real macOS denial.
+

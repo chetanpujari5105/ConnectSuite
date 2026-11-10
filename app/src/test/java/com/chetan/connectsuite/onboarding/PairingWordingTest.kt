@@ -42,4 +42,24 @@ class PairingWordingTest {
         assertTrue(src.contains("is ConnectStage.Paired -> ConnectedStage("))
         assertTrue("the waiting stage says it is verifying", src.contains("Code scanned. Verifying your Mac\\u2026"))
     }
+
+    /**
+     * The quiet wait (defect 228). The copy states what the phone saw and what to check; both screens
+     * that draw the wait take the decision from the one rule rather than each timing it themselves.
+     */
+    @Test
+    fun `the quiet wait says what to check, claims no cause, and is decided in one place`() {
+        val body = OnboardingCopy.PAIR_QUIET_BODY
+        assertTrue(OnboardingCopy.allText.containsAll(listOf(OnboardingCopy.PAIR_QUIET_TITLE, body)))
+        assertTrue(body.contains("same Wi-Fi"))
+        assertTrue(body.contains("hotspot"))
+        assertTrue("the code is not thrown away", body.contains("no need to scan again"))
+        assertFalse("still not a success claim", OnboardingCopy.PAIR_QUIET_TITLE.contains("Paired"))
+
+        val onboarding = code("app/src/main/java/com/chetan/connectsuite/onboarding/OnboardingScreen.kt")
+        val connect = code("app/src/main/java/com/chetan/connectsuite/link/ConnectMacScreen.kt")
+        assertTrue("onboarding asks the rule", onboarding.contains("ConnectStage.quietSinceScan(state, current, now)"))
+        assertTrue("Connect a Mac reads the stage the rule filled", connect.contains("stage.quiet"))
+        assertFalse("no second timer in a screen", onboarding.contains("15_000") || connect.contains("15_000"))
+    }
 }

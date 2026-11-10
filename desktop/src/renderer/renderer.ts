@@ -110,6 +110,7 @@ interface ConnectBridge {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   retryNow(): Promise<void>;
+  openLocalNetworkSettings(): Promise<void>;
   setManualAddress(address: string): Promise<void>;
   setTailscaleAddress(address: string): Promise<void>;
   forgetDevice(): Promise<void>;
@@ -910,6 +911,12 @@ void (async () => {
 {
   // The pairing screen's manual address — the same store Settings → Connection writes, through the
   // same IPC. One setting, two doors: this one is at the moment the address is needed.
+  // Standing, not conditional: macOS gives an app no way to read the Local Network switch, so the
+  // route to it is offered before anything has failed rather than only after a guess that it is off.
+  document.getElementById('pair-local-network')?.addEventListener('click', () => {
+    void connect.openLocalNetworkSettings();
+  });
+
   const field = document.getElementById('pair-manual') as HTMLInputElement | null;
   const save = document.getElementById('pair-manual-save');
   if (field && save) {

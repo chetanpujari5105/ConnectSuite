@@ -58,6 +58,11 @@ export interface ReachAttempt {
 }
 
 export interface ReachDiagnosis {
+  /**
+   * macOS is probably refusing Sidekick the local network — see [localNetworkSuspected]. When true it
+   * outranks [kind] in the sentence, because every other address fails for the same reason.
+   */
+  localNetworkSuspected: boolean;
   /** `nothing-to-try` when discovery produced no address at all. */
   kind: ReachOutcome | 'nothing-to-try';
   /** The addresses that produced [kind], in the order they were tried. */
@@ -99,16 +104,57 @@ export function outcomeOf(attempt: ReachAttempt): ReachOutcome {
   }
 }
 
+/**
+ * Whether this round looks like macOS withholding **Local Network** access from Sidekick.
+ *
+ * ### What can and cannot be known
+ *
+ * There is no API by which an app reads this permission, so nothing here is a reading of the
+ * setting. It is an inference from one structural fact: **the send to this Mac's own default gateway
+ * failed outright** — not refused, not timed out, an error before TCP. The gateway is the one local
+ * address known to be on the link and alive, since the system is routing through it at that moment;
+ * the OS declining to send to it is the anomaly a blocked app produces and an ordinary network does
+ * not.
+ *
+ * Keyed on that structure rather than on an errno: which errno macOS returns for a denied send was
+ * looked for on 2026-11-10 and **not confirmed**, so no single code is trusted to mean it.
+ *
+ * It is withdrawn by any attempt that proves local sends work — a TCP connection, or a refusal,
+ * which is a reply from the local network.
+ *
+ * **Not reached by any test or run:** a real denial. The dev app is launched from Terminal, which
+ * macOS exempts from local network privacy, and the owner's setting was not changed to produce one.
+ */
+export function localNetworkSuspected(attempts: readonly ReachAttempt[]): boolean {
+  const sendsWork = attempts.some((attempt) => attempt.tcpConnected || outcomeOf(attempt) === 'refused');
+  if (sendsWork) return false;
+  return attempts.some(
+    (attempt) =>
+      attempt.via === 'gateway' &&
+      !attempt.tcpConnected &&
+      !attempt.timedOut &&
+      attempt.code !== null &&
+      outcomeOf(attempt) !== 'silent' &&
+      outcomeOf(attempt) !== 'bad-address',
+  );
+}
+
 export function diagnoseReach(attempts: readonly ReachAttempt[]): ReachDiagnosis {
-  if (attempts.length === 0) return { kind: 'nothing-to-try', hosts: [], tried: 0 };
+  if (attempts.length === 0) return { localNetworkSuspected: false, kind: 'nothing-to-try', hosts: [], tried: 0 };
   const outcomes = attempts.map(outcomeOf);
   const kind = PRECEDENCE.find((candidate) => outcomes.includes(candidate)) ?? 'other';
   const hosts = attempts.filter((_, index) => outcomes[index] === kind).map((attempt) => attempt.host);
-  return { kind, hosts: [...new Set(hosts)], tried: attempts.length };
+  return { localNetworkSuspected: localNetworkSuspected(attempts), kind, hosts: [...new Set(hosts)], tried: attempts.length };
 }
 
 const HOTSPOT =
   'Turn on the phone’s hotspot, join it from this Mac, and scan a fresh code — that takes the network out of the question.';
+
+/** Worded as "looks like": it is an inference, and the setting itself cannot be read. */
+export const LOCAL_NETWORK_SUSPECTED =
+  'It looks like macOS is not letting Sidekick use the local network: this Mac could not even send to its own ' +
+  'router. Open System Settings → Privacy & Security → Local Network, turn Sidekick on, then quit and reopen ' +
+  'Sidekick. If Sidekick is not in that list, or is already on, restart the Mac and try once more.';
 
 /**
  * One sentence for a person, naming the next step — or null when reachability is not the story.
@@ -118,6 +164,7 @@ const HOTSPOT =
  * the Mac itself tried.
  */
 export function reachSentence(diagnosis: ReachDiagnosis): string | null {
+  if (diagnosis.localNetworkSuspected) return LOCAL_NETWORK_SUSPECTED;
   const where = diagnosis.hosts.slice(0, 2).join(' or ');
   switch (diagnosis.kind) {
     case 'handshake-stalled':

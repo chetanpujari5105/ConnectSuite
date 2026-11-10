@@ -1,30 +1,34 @@
-# TESTER PAIRING HANG — 2026-11-10: 3 Mac defects fixed in source, the hang itself still open (228); nothing built, committed, installed or sent
+# TESTER PAIRING HANG — 2026-11-10: 225–227 committed (`2f38056`) and built; two aids for 228 in source, uncommitted; the hang's cause still unproven
 
-**Nothing built (`desktop/dist` and the running dev app are unchanged), nothing committed, no phone touched.** Input
-was a pasted brief plus a tester's five photos and three videos (realme RMX3987, *Rehans-MacBook-Air*, 2026-11-09).
+**Dev app built and started (it was not running). Nothing installed on a phone, nothing pushed, signed or sent.** A
+packaged `/Applications/Sidekick.app` (running since 9 Nov) was left alone. Input: two pasted briefs and a tester's
+five photos and three videos (realme RMX3987, *Rehans-MacBook-Air*, 2026-11-09).
 
-1. **The brief's premise is the reverse of this app.** It asks for a Mac listener, a phone-side connect timeout and
-   fallback IPs in the QR. The phone listens and the Mac dials (locked decision #2); the QR's `host` is never dialled
-   by anyone. Its USB/ADB fallback is forbidden by locked decision #1 and was not built.
-2. **225, fixed in source:** the phone shows its address as `ip:42501`; typed that way on the Mac it was dialled as a
-   hostname → `ENOTFOUND` (reproduced). This is what failed in the 20:32 video.
-3. **226, fixed in source:** the Mac kept no per-address reason, used one 2 s clock for connect + handshake, and drew
-   no reason on the pairing screen. Now: one sentence per situation (Local Network setting / Sidekick not listening /
-   different or isolating network → hotspot / handshake stalled / bad address), an 8 s handshake clock, a log line
-   listing every address with its outcome, and `#pair-reach` on the pairing card.
-4. **227, fixed in source:** the code's address prefers `en*` and private ranges over tunnels and bridges.
-5. **228, open: why the tester's Mac cannot complete a connection is unproven.** Three causes fit; the tester's
-   `sidekick.log` `… failed:` lines separate them (`docs/defects.md` → 228). Their settings photo is **Location
-   Services**, not **Privacy & Security → Local Network**, so that switch has not been checked.
-6. **Tests:** Mac 2,156 / 0 on the second run; the first had 3 failures in `webcamSpike.test.ts` (15 / 15 alone, not
-   recurring, imports nothing changed). Mutations red for 225–227. Phone suite not run: no Kotlin changed.
-7. **Not verified:** anything against a phone; the notice in a running app (it draws only on an unpaired Mac, and the
-   dev profile is paired); a real macOS Local Network refusal.
-8. **Owner decisions:** build and relaunch the dev app; commit (files below are uncommitted); ask the tester for the
-   log and the Local Network switch; whether the phone should show *nothing has reached this phone* during the wait.
-9. **Files:** new `desktop/src/shared/{phoneAddress,reachDiagnosis}.ts` + tests, `desktop/src/main/linkReach.test.ts`;
-   changed `desktop/src/main/{link,discovery,main}.ts`, `desktop/src/shared/{linkHealth,pairReach}.ts` + test,
-   `desktop/src/renderer/{index.html,renderer.ts}`, `docs/{defects,testing,RESUME}.md`.
+1. **Direction.** The phone listens and the Mac dials (locked decision #2). The first brief assumed the reverse; its
+   USB/ADB fallback is forbidden by locked decision #1 and was not built.
+2. **Committed, `2f38056`:** 225 (a typed `ip:42501` was dialled as a hostname → `ENOTFOUND`, reproduced), 226 (the
+   Mac keeps and words each address's failure; 8 s handshake clock; a reason on the pairing card), 227 (the code's
+   address prefers `en*` and private ranges).
+3. **Uncommitted, Mac:** a *suspected* Local Network block (a send to the Mac's own gateway failing outright), a
+   standing line and an **Open Local Network settings** button on the pairing card. **The permission cannot be read
+   by an app**, so this is an inference and a route to the switch, not a check of it.
+4. **Uncommitted, phone:** after 15 s with no connection arriving, both waiting screens change to *"Still waiting for
+   your Mac…"* with the Wi-Fi / hotspot guidance; the code stays armed. A late arrival turns it back.
+5. **228 stays open.** No log from the tester's devices has been read. `docs/defects.md` → 228 has the three causes
+   and the log lines that separate them.
+6. **Suites:** phone 1,500 / 0, Mac 2,160 / 0. Mutations red for every new rule (`docs/testing.md` → Defect 228).
+7. **Not verified:** anything on the tester's pair; the phone change on any phone; the card's notice and button in the
+   running app (this Mac holds a stored phone, so the card draws its remembered shape); a real macOS denial.
+8. **Seen on this Mac, not acted on:** the dev app's own rounds end `10.101.54.230 (gateway): answered` with *not the
+   paired phone (certificate mismatch)* — the phone at the gateway is not the one the dev profile is paired with.
+9. **Owner decisions:** commit the uncommitted work; an Android build for the tester (needs the release track);
+   ask the tester for `sidekick.log` and the Local Network switch; re-pair the dev profile (item 8).
+10. **Uncommitted files:** `desktop/src/shared/reachDiagnosis.ts` + test, `desktop/src/main/{main,ipcPolicy}.ts`,
+    `desktop/src/preload.ts`, `desktop/src/renderer/{index.html,renderer.ts,styles.css}`,
+    `core/…/link/{LinkServer,ConnectStage}.kt`, `core/…/ConnectStageTest.kt`,
+    `app/…/onboarding/{OnboardingCopy,OnboardingScreen}.kt`, `app/…/link/ConnectMacScreen.kt`,
+    `app/…/PairingWordingTest.kt`, `docs/{defects,testing,RESUME}.md`. Unrelated and untouched: `skills-lock.json`,
+    `.vscode/`, `my-session.*`, the `high-end-visual-design` skill folders.
 
 # PHONE-PERMITTED NIGHT CHECKS — 2026-10-15 02:45–03:01: no commits; no install; one Save to Mac pair, both files deleted
 

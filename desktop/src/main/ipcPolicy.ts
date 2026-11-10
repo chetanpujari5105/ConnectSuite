@@ -74,6 +74,7 @@ export const IPC_POLICY: Readonly<Record<string, ChannelPolicy>> = {
   connect: p(M, 'action'),
   disconnect: p(M, 'action'),
   'retry-now': p(M, 'action'),
+  'open-local-network-settings': p(M, 'action'),
   'set-manual-address': p(M, 'action', [str({ max: 255 })]),
   'set-tailscale-address': p(M, 'action', [str({ max: 255 })]),
   'forget-device': p(M, 'action'),
