@@ -1,3 +1,42 @@
+# SIDEKICKAPP.IN SERVES MAC 2.0.2 — 2026-11-11: no token on any page or email; Android vc4 signed, awaiting Play upload; 228 open
+
+**Published on the owner's instruction: two PRs merged on `chetanpujari5105/Side-Kick-V1` (the repo behind Vercel
+project `side` and `sidekickapp.in`). Worked in fresh clones in the session scratchpad; the local checkout
+`~/Downloads/sidekick-site-v1` (push disabled) was not touched. No domain, DNS, env var or billing change. The Mac
+build is not called signed anywhere.**
+
+1. **Live:** `https://sidekickapp.in/download/mac` → 302 to the `SIDEkick-website` `v2.0.2` asset. Downloaded through
+   that link: 121,677,045 bytes, SHA-256 `a7de5d28b56be39d92d9d2e55ed1976171772bd6470081649b9690911d4fb5b2`, equal to
+   the DMG in item 3 of the entry below.
+2. **PR #22**, merge `e8ef129`. Production deployment **7700457901** (GitHub deployment id;
+   `side-qqr5b9e9t-chetanpujari5105s-projects.vercel.app`). **Rollback target: 7683483445** (`7b37914`, the 2.0.1
+   site). Contents: `data/releases.json` 2.0.2 (bytes and hash from `data-sync --from-dmg`, `directUrl` written by
+   `--verify-direct-url` after an anonymous download matched), install steps without the token, and the owner's
+   option 2: **no page or email shows a beta token, while the server still issues and stores one.** The pool,
+   instant issuing, the signer's `/api/admin/token`, storage, the JSON API's `token` field and `tokenRequired` are
+   unchanged. The separate token email is no longer queued; a sign-up is `delivered` once the invitation is sent.
+3. **Support page, PR #23**, merge `95be7fb`, production deployment **7700607696**
+   (`side-mvddawson-…vercel.app`); its rollback target is 7700457901. Setup has four steps (the token step and the
+   "A beta token" item are gone; the local-network sentence moved into "4. Pair your phone"). Help's "Beta token"
+   rows became "Beta access": a token prompt means a build before 2.0.2, plus a row on the invited Google Play test
+   link. Live check: `Enter your beta token` 0 matches, with `4. Pair your phone` and a privacy sentence present as
+   controls. **Privacy section not edited:** it still describes how tokens are made, stored and erased, which stays
+   true while the server issues them. Also left: the manual-mode request-access small print (`tools/noscript.mjs`)
+   says "Don't send passwords or your beta token" inside its privacy consent sentence.
+4. **Checks before merge:** `npm test` 245 / 245, `npm run check`, `npm run demo` 31 / 31, both `SITE_MODE` builds. A
+   new email guard was shown red with the old token step restored. `tools/browser-e2e.mjs` was updated, not run.
+5. **Android:** vc4 bundle **signed by the owner** (`jarsigner`: verified, 6,637,878 bytes) at
+   `~/Desktop/ConnectSuite-play-vc4/app/build/outputs/bundle/release/app-release.aab`, versionCode 4, 2.0.1.
+   **Awaiting the owner's Play Console upload.** Branch `play/release-vc4` is unpushed.
+6. **Defect 228 is open.** Its cause on the tester's pair (realme RMX3987 + a MacBook Air) is unproven: no
+   `sidekick.log` from those devices has been read. Next step: ask the tester for the log and the state of
+   System Settings › Privacy & Security › Local Network for Sidekick. `docs/defects.md` → 228 names the log lines
+   that separate the causes.
+7. **Owner decisions still open:** push `release/2.0.2`, `play/release-vc4` and `clipboard-watcher-and-phase-5-close`;
+   whether the `v2.0.1` prerelease on `SIDEkick-website` stays; the other site (`SIDEkick-website`, not
+   `sidekickapp.in`) still describes a hand-issued 45-day token on `/beta`, `/privacy`, the home beta section and two
+   FAQ answers; the 2.0.0 and 2.0.1 changelog entries on `sidekickapp.in` mention tokens as history.
+
 # MAC 2.0.2 PUBLIC (NO TOKEN) — 2026-11-11: release/2.0.2 + the pairing fixes, published and live on the Vercel site; sidekickapp.in untouched; 8+ GiB free
 
 **Published on the owner's instruction: GitHub prerelease `v2.0.2` and one website push. Not pushed: any app branch.
